@@ -274,6 +274,8 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     // intervals); all-day closures return empty gaps.
     expect(lower).toContain("v_free");
     expect(lower).toContain("v_cursor");
+    // Occupied aggregation and gap walk share one chronological order.
+    expect(lower.match(/order by c\.s, c\.kind/g)?.length).toBe(2);
     // Empty occupied days return empty gaps so the full window never
     // ships as endpoints (empty days render as Seharian tersedia).
     expect(lower).toMatch(/jsonb_array_length\(v_occupied\)\s*=\s*0/);

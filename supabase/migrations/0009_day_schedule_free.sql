@@ -84,17 +84,19 @@ begin
       select c.s as s, c.e as e
         from (
           select greatest(bk.start_time, v_open) as s,
-                 least(bk.end_time, v_close) as e
+                 least(bk.end_time, v_close) as e,
+                 'booked'::text as kind
             from bookings bk
            where bk.date = p_date and bk.status = 'confirmed'
           union all
           select greatest(bl.start_time, v_open) as s,
-                 least(bl.end_time, v_close) as e
+                 least(bl.end_time, v_close) as e,
+                 'blocked'::text as kind
             from blocks bl
            where bl.date = p_date and not bl.all_day
         ) c
        where c.s < c.e
-       order by c.s
+       order by c.s, c.kind
     loop
       if v_rec.s > v_cursor then
         v_free := v_free || jsonb_build_array(

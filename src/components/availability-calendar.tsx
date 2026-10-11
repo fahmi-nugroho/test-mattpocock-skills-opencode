@@ -67,8 +67,8 @@ function formatDayId(dateKey: string): string {
  * client-side because its bookings/blocks inputs would leak PII.
  *
  * Tapping a today/future day loads `get_day_schedule` for that date
- * (status + all-day flag only, no PII/hours) into the detail panel below.
- * Timed ranges arrive in tickets 02/03; v1 shows closure vs open states.
+ * (status + all-day flag + occupied Terisi/Tutup ranges + Sisa tersedia
+ * gaps; times+kind only, no PII/hours) into the detail panel below.
  *
  * Partial-occupancy dots: the RPC intentionally hides occupancy counts,
  * so the public wiring passes no `partialDates` (all available days
@@ -163,11 +163,10 @@ export function AvailabilityCalendar({
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
   const monthLabel = formatMonthId(monthKey);
   const empty = loaded && !error && Object.keys(statusByDate).length === 0;
+  const isClosedDetail =
+    detail !== null && (detail.status === "blocked" || detail.allDayBlocked);
   const mergedOccupied = useMemo(
-    () =>
-      detail && detail.status !== "blocked" && !detail.allDayBlocked
-        ? mergeOccupied(detail.occupied)
-        : [],
+    () => (isClosedDetail ? [] : mergeOccupied(detail?.occupied ?? [])),
     [detail],
   );
 
@@ -262,14 +261,11 @@ export function AvailabilityCalendar({
                 />
               ) : null;
               // Past days stay inert so clients can't ask about the past.
+              // No aria-label: a role-less div exposes no accessible name,
+              // so labelling it would be silently ignored by AT.
               if (past) {
                 return (
-                  <div
-                    key={date}
-                    title={ariaLabel}
-                    aria-label={ariaLabel}
-                    className={dayClass}
-                  >
+                  <div key={date} title={ariaLabel} className={dayClass}>
                     <span>{dayNum}</span>
                     {dot}
                   </div>
@@ -340,7 +336,7 @@ export function AvailabilityCalendar({
                 Jadwal {formatDayId(detail.date)} ·{" "}
                 {STATUS_META[detail.status].label}
               </p>
-              {detail.status === "blocked" || detail.allDayBlocked ? (
+              {isClosedDetail ? (
                 <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-900">
                   Sehari penuh — Tutup
                 </p>
