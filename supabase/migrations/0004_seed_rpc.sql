@@ -10,6 +10,19 @@
 -- (names, phones, notes, block reasons) can leak to the public calendar.
 -- Security definer + fixed search_path: anon can execute the RPC while
 -- raw-table RLS still denies anon reads on bookings/blocks/settings.
+--
+-- Past-date greying is a UI-side concern (ticket 04 calendar view greys
+-- past dates client-side); the RPC intentionally returns no past flag and
+-- its (date, status) return shape must stay unchanged so the ticket 04
+-- contract is not broken.
+--
+-- Occupancy is confirmed-only by design: pending/cancelled bookings do not
+-- occupy the day (they may never happen / were called off).
+-- full_dates (the manual "mark day full" toggle from settings id=1) maps to
+-- blocked, same as an all-day block — per ticket 02 scope, manual
+-- full-toggle coverage IS the full_dates array.
+-- fully_booked means confirmed bookings + time-range blocks jointly cover
+-- every minute of [open, close).
 
 insert into settings (id, wa_number, open_hour, close_hour, full_dates)
 values (1, '6280000000000', '09:00', '19:00', '{}')
@@ -94,5 +107,7 @@ end;
 $$;
 
 -- Public calendar reads the RPC; raw tables stay anon-denied.
-grant execute on function hhmm_to_min(text) to anon, authenticated;
+-- hhmm_to_min stays internal: no anon grant (SECURITY DEFINER RPCs can
+-- still call it as owner); only authenticated keeps direct access.
+grant execute on function hhmm_to_min(text) to authenticated;
 grant execute on function get_month_availability(integer, integer) to anon, authenticated;

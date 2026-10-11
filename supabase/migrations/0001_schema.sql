@@ -35,8 +35,8 @@ create table portfolio_items (
 create table bookings (
   id uuid primary key default gen_random_uuid(),
   date date not null,
-  start_time text not null check (start_time ~ '^[0-2][0-9]:[0-5][0-9]$'),
-  end_time text not null check (end_time ~ '^[0-2][0-9]:[0-5][0-9]$'),
+  start_time text not null check (start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  end_time text not null check (end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   service_id uuid references services (id) on delete set null,
   client_name text not null,
   client_phone text not null,
@@ -51,12 +51,16 @@ create table blocks (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   all_day boolean not null default false,
-  start_time text check (start_time ~ '^[0-2][0-9]:[0-5][0-9]$'),
-  end_time text check (end_time ~ '^[0-2][0-9]:[0-5][0-9]$'),
+  start_time text check (start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  end_time text check (end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   reason text not null default '',
+  -- all_day=true forces NULL times (no valid-time bypass); otherwise a
+  -- valid non-null HH:MM range with start < end is required.
   check (
-    all_day
-    or (start_time is not null and end_time is not null and start_time < end_time)
+    (all_day and start_time is null and end_time is null)
+    or (not all_day
+        and start_time is not null and end_time is not null
+        and start_time < end_time)
   )
 );
 
@@ -65,9 +69,10 @@ create table blocks (
 create table settings (
   id integer primary key,
   wa_number text not null,
-  open_hour text not null check (open_hour ~ '^[0-2][0-9]:[0-5][0-9]$'),
-  close_hour text not null check (close_hour ~ '^[0-2][0-9]:[0-5][0-9]$'),
+  open_hour text not null check (open_hour ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  close_hour text not null check (close_hour ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   full_dates date[] not null default '{}',
+  check (id = 1),
   check (open_hour < close_hour)
 );
 

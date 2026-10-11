@@ -126,4 +126,65 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(lower).toContain("to anon");
     expect(lower).toMatch(/set\s+search_path/);
   });
+
+  it("0001 enforces single-row settings (id = 1)", () => {
+    const code = codeOnly(readMigration("0001_schema.sql")).toLowerCase();
+    expect(code).toMatch(/check\s*\(\s*id\s*=\s*1\s*\)/);
+  });
+
+  it("0001 rejects invalid 24-29 hours in all HH:MM checks", () => {
+    const code = codeOnly(readMigration("0001_schema.sql"));
+    // No loose [0-2][0-9] hour class may remain in any CHECK.
+    expect(code).not.toMatch(/\[0-2\]\[0-9\]/);
+    // Every HH:MM check uses the strict 00-23 hour class.
+    const checks = code.match(/~\s*'[^']*'/g) ?? [];
+    expect(checks.length).toBeGreaterThan(0);
+    for (const check of checks) {
+      expect(check).toContain("([01][0-9]|2[0-3])");
+    }
+  });
+
+  it("0001 requires NULL times when all_day, valid range otherwise", () => {
+    const code = codeOnly(readMigration("0001_schema.sql")).toLowerCase();
+    const blocks = code.match(/create table\s+blocks[\s\S]*?;/);
+    expect(blocks).not.toBeNull();
+    const body = blocks![0];
+    // all_day=true must force start/end NULL (no valid-time bypass).
+    expect(body).toMatch(/all_day[\s\S]*start_time\s+is\s+null/);
+    expect(body).toMatch(/all_day[\s\S]*end_time\s+is\s+null/);
+    // all_day=false still requires a valid non-null range.
+    expect(body).toMatch(/not\s+all_day[\s\S]*start_time\s+is\s+not\s+null/);
+  });
+
+  it("0003 lets the admin role read buckets (not anon-only)", () => {
+    const code = codeOnly(readMigration("0003_storage.sql")).toLowerCase();
+    const select = code.match(/for select[^;]*;/g) ?? [];
+    expect(select.length).toBeGreaterThan(0);
+    for (const policy of select) {
+      expect(policy).toContain("authenticated");
+    }
+  });
+
+  it("0004 keeps hhmm_to_min internal (no anon grant)", () => {
+    const code = codeOnly(readMigration("0004_seed_rpc.sql")).toLowerCase();
+    const grants = code.match(/grant execute on function hhmm_to_min[^;]*;/g) ?? [];
+    expect(grants.length).toBeGreaterThan(0);
+    for (const grant of grants) {
+      expect(grant).not.toContain("anon");
+    }
+    // The public RPC itself stays anon-callable.
+    expect(code).toMatch(
+      /grant execute on function get_month_availability[^;]*to anon/,
+    );
+  });
+
+  it("0004 header documents past-greying, confirmed-only, full-toggle scope", () => {
+    const sql = readMigration("0004_seed_rpc.sql").toLowerCase();
+    // Past-date greying is a UI concern (ticket 04), RPC shape unchanged.
+    expect(sql).toMatch(/past[^.\n]*ui|ui[^.\n]*past|grey/);
+    // confirmed-only occupancy is intentional (pending/cancelled don't occupy).
+    expect(sql).toMatch(/pending\/cancelled|pending.*cancelled/);
+    // full_dates maps to blocked (manual full-toggle coverage).
+    expect(sql).toMatch(/full_dates[\s\S]{0,120}blocked/);
+  });
 });
