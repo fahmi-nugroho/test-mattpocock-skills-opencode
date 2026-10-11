@@ -14,3 +14,15 @@ export function parseRequiredNumber(raw: string, label: string): number {
   }
   return n;
 }
+
+/**
+ * Shared non-negative-integer assertion (ticket 06 follow-up). The
+ * portfolio/service sort checks had the same shape, so it lives here
+ * once; range/integer rules for other fields stay in their validators.
+ */
+export function assertNonNegativeInt(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} harus bilangan bulat >= 0`);
+  }
+  return value;
+}

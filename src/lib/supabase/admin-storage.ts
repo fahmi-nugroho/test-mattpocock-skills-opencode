@@ -85,3 +85,22 @@ export async function deleteImageByUrl(
   const { error } = await bucketApi(client, bucket).remove([path]);
   if (error) throw new Error(`Failed to delete image: ${error.message}`);
 }
+
+/**
+ * Best-effort storage prune (ticket 06 follow-up). Wraps
+ * deleteImageByUrl for callers where the row write already won: returns
+ * true when no known orphan remains (cleaned, or nothing to clean),
+ * false when a parsed removal failed so the UI can warn. Never throws.
+ */
+export async function deleteImageBestEffort(
+  client: TypedClient,
+  bucket: AdminImageBucket,
+  url: string | null,
+): Promise<boolean> {
+  try {
+    await deleteImageByUrl(client, bucket, url);
+    return true;
+  } catch {
+    return false;
+  }
+}

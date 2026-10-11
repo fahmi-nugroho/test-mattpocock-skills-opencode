@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { validateServiceInput } from "@/lib/admin/validate-service";
+import { checkImageFile } from "@/lib/admin/validate-image";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
-  deleteImageByUrl,
+  deleteImageBestEffort,
   uploadAdminImage,
 } from "@/lib/supabase/admin-storage";
 import {
@@ -16,17 +17,6 @@ import {
 } from "@/lib/supabase/admin-services";
 import type { Service } from "@/lib/supabase/database";
 import { formatIDR } from "@/lib/format";
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-function checkImageFile(file: File): void {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("File harus berupa gambar");
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new Error("Ukuran gambar maksimal 5 MB");
-  }
-}
 
 /**
  * Price/service CRUD manager for the admin dashboard (ticket 06).
@@ -57,6 +47,7 @@ export function ServicesManager() {
   const [editFile, setEditFile] = useState<File | null>(null);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -118,11 +109,7 @@ export function ServicesManager() {
       // Row insert failed after upload: prune the orphan so a retry
       // doesn't leak storage objects (best-effort).
       if (uploaded) {
-        try {
-          await deleteImageByUrl(supabaseBrowser(), "prices", uploaded);
-        } catch {
-          // Ignore: orphaned object is harmless, prunable from storage.
-        }
+        await deleteImageBestEffort(supabaseBrowser(), "prices", uploaded);
       }
       setFormError("Gagal menyimpan layanan. Coba lagi.");
     } finally {
@@ -190,11 +177,7 @@ export function ServicesManager() {
       });
       if (editFile && item.cover_image_url) {
         // Cover replaced: prune the previous object, best-effort.
-        try {
-          await deleteImageByUrl(supabase, "prices", item.cover_image_url);
-        } catch {
-          // Orphaned object is harmless; ignore.
-        }
+        await deleteImageBestEffort(supabase, "prices", item.cover_image_url);
       }
       setItems((prev) =>
         prev.map((p) => (p.id === item.id ? row : p)).sort((a, b) => a.sort - b.sort),
@@ -204,11 +187,7 @@ export function ServicesManager() {
       // Update failed after a replacement upload: prune the new object
       // so it doesn't leak (best-effort); the old cover stays live.
       if (uploadedNew) {
-        try {
-          await deleteImageByUrl(supabaseBrowser(), "prices", uploadedNew);
-        } catch {
-          // Ignore: orphaned object is harmless, prunable from storage.
-        }
+        await deleteImageBestEffort(supabaseBrowser(), "prices", uploadedNew);
       }
       setRowError("Gagal menyimpan perubahan. Coba lagi.");
     } finally {
@@ -225,11 +204,7 @@ export function ServicesManager() {
       const row = await updateService(supabase, item.id, {
         cover_image_url: null,
       });
-      try {
-        await deleteImageByUrl(supabase, "prices", item.cover_image_url);
-      } catch {
-        // Orphaned object is harmless; ignore.
-      }
+      await deleteImageBestEffort(supabase, "prices", item.cover_image_url);
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
     } catch {
       setRowError("Gagal menghapus cover. Coba lagi.");
@@ -245,12 +220,22 @@ export function ServicesManager() {
     }
     if (rowBusy) return;
     setRowError(null);
+    setNotice(null);
     setRowBusy(item.id);
     try {
-      await deleteService(supabaseBrowser(), item.id, item.cover_image_url);
+      const { cleanupOk } = await deleteService(
+        supabaseBrowser(),
+        item.id,
+        item.cover_image_url,
+      );
       setItems((prev) => prev.filter((p) => p.id !== item.id));
       setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
+      if (!cleanupOk) {
+        setNotice(
+          "Layanan dihapus, tapi cover lama gagal dibersihkan dari penyimpanan.",
+        );
+      }
     } catch {
       setRowError("Gagal menghapus layanan. Coba lagi.");
     } finally {
@@ -272,6 +257,11 @@ export function ServicesManager() {
       {rowError ? (
         <p role="alert" className="mt-2 text-sm text-red-600">
           {rowError}
+        </p>
+      ) : null}
+      {notice ? (
+        <p role="status" className="mt-2 text-sm text-amber-700">
+          {notice}
         </p>
       ) : null}
 

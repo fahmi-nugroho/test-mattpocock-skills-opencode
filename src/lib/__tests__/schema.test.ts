@@ -203,4 +203,19 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     // full_dates maps to blocked (manual full-toggle coverage).
     expect(sql).toMatch(/full_dates[\s\S]{0,120}blocked/);
   });
+
+  it("0006 caps portfolio categories at six via trigger (client cap bypass-proof)", () => {
+    const sql = readMigration("0006_portfolio_category_cap.sql");
+    const lower = sql.toLowerCase();
+    // Trigger fires on portfolio category writes.
+    expect(lower).toMatch(/create trigger[^;]*on portfolio_items/);
+    expect(lower).toMatch(/insert or update/);
+    expect(lower).toContain("category");
+    // Raises once distinct categories exceed six.
+    expect(lower).toMatch(/distinct[^;]*category/);
+    expect(lower).toMatch(/>\s*6/);
+    expect(lower).toMatch(/raise exception/);
+    // Same hardening as other backend functions: fixed search_path.
+    expect(lower).toMatch(/set\s+search_path/);
+  });
 });

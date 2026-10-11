@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  deleteImageBestEffort,
   deleteImageByUrl,
   storagePathFromUrl,
   uploadAdminImage,
@@ -139,5 +140,59 @@ describe("deleteImageByUrl", () => {
         "https://xyz.supabase.co/storage/v1/object/public/portfolio/abc.jpg",
       ),
     ).rejects.toThrow(/denied/);
+  });
+});
+
+describe("deleteImageBestEffort", () => {
+  it("returns true when the removal succeeds", async () => {
+    const client = {
+      storage: {
+        from: () => ({
+          remove: async () => ({ data: ["abc.jpg"], error: null }),
+        }),
+      },
+    };
+    await expect(
+      deleteImageBestEffort(
+        asClient(client),
+        "portfolio",
+        "https://xyz.supabase.co/storage/v1/object/public/portfolio/abc.jpg",
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("returns true when there is nothing to clean up", async () => {
+    let removeCalls = 0;
+    const client = {
+      storage: {
+        from: () => ({
+          remove: async () => {
+            removeCalls += 1;
+            return { data: [], error: null };
+          },
+        }),
+      },
+    };
+    await expect(
+      deleteImageBestEffort(asClient(client), "portfolio", null),
+    ).resolves.toBe(true);
+    expect(removeCalls).toBe(0);
+  });
+
+  it("returns false instead of throwing when the removal fails", async () => {
+    const client = {
+      storage: {
+        from: () => ({
+          remove: async () => ({ data: null, error: { message: "denied" } }),
+        }),
+      },
+    };
+    await expect(
+      deleteImageBestEffort(
+        asClient(client),
+        "portfolio",
+        "https://xyz.supabase.co/storage/v1/object/public/portfolio/abc.jpg",
+      ),
+    ).resolves.toBe(false);
   });
 });

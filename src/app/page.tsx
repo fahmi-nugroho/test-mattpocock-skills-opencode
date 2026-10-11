@@ -13,6 +13,10 @@ import { buildGeneralWaLink } from "@/lib/whatsapp";
 
 // Ticket 06: no ISR cache — admin portfolio/price edits read the same
 // tables live, so the landing reflects them on the very next load.
+// Global (not per-section) is the available scope: this is a single route,
+// and admin writes go through client-side Supabase, so no server action
+// exists that could call revalidatePath. "Instantly" means next load;
+// already-open tabs don't live-update (no realtime subscription in v1).
 export const revalidate = 0;
 
 /** Fallback contact when the WA RPC has no value yet (seed placeholder). */

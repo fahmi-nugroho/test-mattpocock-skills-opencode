@@ -1,3 +1,5 @@
+import { assertNonNegativeInt } from "./form-number";
+
 export interface ServiceInput {
   name: string;
   description?: string;
@@ -35,15 +37,13 @@ export function validateServiceInput(
   if (!Number.isInteger(input.duration_min) || input.duration_min <= 0) {
     throw new Error("Durasi layanan harus bilangan bulat > 0 (menit)");
   }
-  if (!Number.isInteger(input.sort) || input.sort < 0) {
-    throw new Error("Urutan layanan harus bilangan bulat >= 0");
-  }
+  const sort = assertNonNegativeInt(input.sort, "Urutan layanan");
   return {
     name,
     description: (input.description ?? "").trim(),
     price_idr: input.price_idr,
     duration_min: input.duration_min,
     active: input.active,
-    sort: input.sort,
+    sort,
   };
 }

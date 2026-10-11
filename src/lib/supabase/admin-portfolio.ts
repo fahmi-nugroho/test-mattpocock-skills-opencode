@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, PortfolioItem } from "./database";
-import { deleteImageByUrl } from "./admin-storage";
+import {
+  deleteImageBestEffort,
+} from "./admin-storage";
+import {
+  deleteRowById,
+  insertRow,
+  listOrderedBySort,
+  updateRowById,
+  type DeleteWithCleanupResult,
+} from "./admin-crud";
 
 type TypedClient = SupabaseClient<Database>;
 
@@ -22,23 +31,11 @@ export type PortfolioPatch = Partial<PortfolioInsert>;
 export async function listPortfolioItemsAdmin(
   client: TypedClient,
 ): Promise<PortfolioItem[]> {
-  const loose = client as unknown as {
-    from(t: string): {
-      select(c: string): {
-        order(
-          c: string,
-          o: { ascending: boolean },
-        ): Promise<{ data: unknown; error: { message: string } | null }>;
-      };
-    };
-  };
-  const { data, error } = await loose
-    .from("portfolio_items")
-    .select("*")
-    .order("sort", { ascending: true });
-  if (error) throw new Error(`Failed to load portfolio items: ${error.message}`);
-  if (!Array.isArray(data)) return [];
-  return data as PortfolioItem[];
+  return listOrderedBySort<PortfolioItem>(
+    client,
+    "portfolio_items",
+    "Failed to load portfolio items",
+  );
 }
 
 /**
@@ -50,22 +47,12 @@ export async function createPortfolioItem(
   client: TypedClient,
   input: PortfolioInsert,
 ): Promise<PortfolioItem> {
-  const loose = client as unknown as {
-    from(t: string): {
-      insert(v: unknown): {
-        select(): {
-          single(): Promise<{ data: unknown; error: { message: string } | null }>;
-        };
-      };
-    };
-  };
-  const { data, error } = await loose
-    .from("portfolio_items")
-    .insert(input)
-    .select()
-    .single();
-  if (error) throw new Error(`Failed to create portfolio item: ${error.message}`);
-  return data as PortfolioItem;
+  return insertRow<PortfolioItem>(
+    client,
+    "portfolio_items",
+    input,
+    "Failed to create portfolio item",
+  );
 }
 
 /**
@@ -76,57 +63,33 @@ export async function updatePortfolioItem(
   id: string,
   patch: PortfolioPatch,
 ): Promise<PortfolioItem> {
-  const loose = client as unknown as {
-    from(t: string): {
-      update(v: unknown): {
-        eq(c: string, v: string): {
-          select(): {
-            single(): Promise<{
-              data: unknown;
-              error: { message: string } | null;
-            }>;
-          };
-        };
-      };
-    };
-  };
-  const { data, error } = await loose
-    .from("portfolio_items")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw new Error(`Failed to update portfolio item: ${error.message}`);
-  return data as PortfolioItem;
+  return updateRowById<PortfolioItem>(
+    client,
+    "portfolio_items",
+    id,
+    patch,
+    "Failed to update portfolio item",
+  );
 }
 
 /**
  * Admin portfolio delete with storage cleanup (ticket 06): removes the
  * row, then its `portfolio/` object when imageUrl parses to that bucket.
- * Storage errors are best-effort (row delete already won); row errors
- * propagate so the UI never pretends a failed delete succeeded.
+ * Row errors propagate so the UI never pretends a failed delete
+ * succeeded; a failed storage prune is reported via cleanupOk (row
+ * delete already won) so the UI can warn instead of silently orphaning.
  */
 export async function deletePortfolioItem(
   client: TypedClient,
   id: string,
   imageUrl: string | null,
-): Promise<void> {
-  const loose = client as unknown as {
-    from(t: string): {
-      delete(): {
-        eq(
-          c: string,
-          v: string,
-        ): Promise<{ error: { message: string } | null }>;
-      };
-    };
-  };
-  const { error } = await loose.from("portfolio_items").delete().eq("id", id);
-  if (error) throw new Error(`Failed to delete portfolio item: ${error.message}`);
-  try {
-    await deleteImageByUrl(client, "portfolio", imageUrl);
-  } catch {
-    // Best-effort: the row is gone; an orphaned object is harmless
-    // (public-read bucket, no PII) and can be pruned from storage.
-  }
+): Promise<DeleteWithCleanupResult> {
+  await deleteRowById(
+    client,
+    "portfolio_items",
+    id,
+    "Failed to delete portfolio item",
+  );
+  const cleanupOk = await deleteImageBestEffort(client, "portfolio", imageUrl);
+  return { cleanupOk };
 }

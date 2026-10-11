@@ -1,3 +1,5 @@
+import { assertNonNegativeInt } from "./form-number";
+
 export interface PortfolioInput {
   title: string;
   category: string;
@@ -20,8 +22,6 @@ export function validatePortfolioInput(input: PortfolioInput): PortfolioInput {
   if (!category) {
     throw new Error("Kategori portfolio tidak boleh kosong");
   }
-  if (!Number.isInteger(input.sort) || input.sort < 0) {
-    throw new Error("Urutan portfolio harus bilangan bulat >= 0");
-  }
-  return { title, category, sort: input.sort, visible: input.visible };
+  const sort = assertNonNegativeInt(input.sort, "Urutan portfolio");
+  return { title, category, sort, visible: input.visible };
 }

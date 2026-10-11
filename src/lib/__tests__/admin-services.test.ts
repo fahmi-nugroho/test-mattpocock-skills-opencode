@@ -214,4 +214,41 @@ describe("deleteService", () => {
       /rls denied/,
     );
   });
+
+  it("reports cleanupOk so the UI can warn about orphaned objects", async () => {
+    const storageOk = {
+      from: () => ({
+        delete: () => ({
+          eq: async () => rowResult(null),
+        }),
+      }),
+      storage: { from: () => ({ remove: async () => ({ data: ["a"], error: null }) }) },
+    };
+    await expect(
+      deleteService(
+        asClient(storageOk),
+        "1",
+        "https://xyz.supabase.co/storage/v1/object/public/prices/cover.jpg",
+      ),
+    ).resolves.toEqual({ cleanupOk: true });
+    const storageFail = {
+      from: () => ({
+        delete: () => ({
+          eq: async () => rowResult(null),
+        }),
+      }),
+      storage: {
+        from: () => ({
+          remove: async () => ({ data: null, error: { message: "denied" } }),
+        }),
+      },
+    };
+    await expect(
+      deleteService(
+        asClient(storageFail),
+        "1",
+        "https://xyz.supabase.co/storage/v1/object/public/prices/cover.jpg",
+      ),
+    ).resolves.toEqual({ cleanupOk: false });
+  });
 });
