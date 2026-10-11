@@ -67,8 +67,9 @@ function formatDayId(dateKey: string): string {
  * client-side because its bookings/blocks inputs would leak PII.
  *
  * Tapping a today/future day loads `get_day_schedule` for that date
- * (status + all-day flag + occupied Terisi/Tutup ranges + Sisa tersedia
- * gaps; times+kind only, no PII/hours) into the detail panel below.
+ * (status + all-day flag + occupied Terisi/Tutup ranges; times+kind only,
+ * no PII/hours) into the detail panel below. Free gaps are still fetched
+ * but intentionally not displayed — clients propose a time via WhatsApp.
  *
  * Partial-occupancy dots: the RPC intentionally hides occupancy counts,
  * so the public wiring passes no `partialDates` (all available days
@@ -353,23 +354,10 @@ export function AvailabilityCalendar({
                       </li>
                     ))}
                   </ul>
-                  {detail.free.length > 0 ? (
-                    <div className="mt-2">
-                      <p className="text-xs font-semibold text-neutral-500">
-                        Sisa tersedia
-                      </p>
-                      <ul className="mt-1 space-y-1.5">
-                        {detail.free.map((gap) => (
-                          <li
-                            key={`${gap.start}-${gap.end}`}
-                            className="rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-900"
-                          >
-                            {gap.start}–{gap.end}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                  <p className="mt-2 text-xs text-neutral-600">
+                    Di luar jam di atas masih bisa ditanyakan — tulis jam yang
+                    kamu mau via WhatsApp.
+                  </p>
                 </div>
               ) : detail.status === "fully_booked" ? (
                 <p className="mt-2 rounded-lg bg-amber-200 px-3 py-2 text-sm font-medium text-amber-900">

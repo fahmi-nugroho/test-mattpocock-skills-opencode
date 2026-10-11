@@ -7,6 +7,7 @@
 **Status:** resolved
 
 - [x] Free slot gaps render as Sisa tersedia list derived server-side with no operating-hours values exposed; empty day keeps Seharian tersedia without hours header
+- [x] Follow-up: free-gap UI removed per client request — occupied Terisi/Tutup list kept, hint added to propose time via WhatsApp; server `free` computation/validation retained (no migration)
 - [x] Keyboard-focusable days with pressed state, selected ring, detail announced politely, general + per-date chat links both work
 - [x] Loading, error+retry, empty, full, and closed states all covered; malformed payloads fail closed; full unit suite plus typecheck green with mobile-width check
 

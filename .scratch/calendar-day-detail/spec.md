@@ -8,7 +8,7 @@ As a client checking the makeup calendar, I only see a whole day coloured as ava
 
 ## Solution
 
-Keep the existing month grid exactly as-is, but let me tap a day to see that day's detail below the calendar: a list of occupied time ranges labelled as booked or blocked, plus the remaining free gaps for that day, and a chat button that already includes that date. All-day closures show as a single closed-all-day row. No personal data is ever shown.
+Keep the existing month grid exactly as-is, but let me tap a day to see that day's detail below the calendar: a list of occupied time ranges labelled as booked or blocked, and a chat button that already includes that date. Free gaps are no longer shown — clients propose a time via WhatsApp. All-day closures show as a single closed-all-day row. No personal data is ever shown.
 
 ## User Stories
 
@@ -16,7 +16,7 @@ Keep the existing month grid exactly as-is, but let me tap a day to see that day
 2. As a client, I want to see booked time ranges for the selected day with start-end times, so that I know when the artist is already taken.
 3. As a client, I want to see blocked time ranges for the selected day with start-end times, so that I know when the artist is on leave or private time.
 4. As a client, I want booked and blocked ranges visually distinguished by label and colour, so that I do not confuse the two.
-5. As a client, I want to see derived free gaps for the selected day, so that I know what to ask for in chat.
+5. (Superseded — free gaps hidden from UI) As a client, I see only booked/blocked ranges plus a hint to propose my own time via WhatsApp, so that I am not anchored to server-derived gaps.
 6. As a client, I want an all-day closure to show as a single Sehari penuh — Tutup row, so that I do not misread it as bookable slices.
 7. As a client, I want a day with no occupied ranges to show as Seharian tersedia, so that I know the whole day is open.
 8. As a client, I want past days to stay inert and muted with no detail, so that I do not try to book the past.
@@ -38,13 +38,13 @@ Keep the existing month grid exactly as-is, but let me tap a day to see that day
 ## Implementation Decisions
 
 - Modules touched: public month calendar UI (add selectable days + day-detail panel), public schedule data-access (new per-day fetch + validation), shared availability logic (merge + sort occupied), chat link builder (date-prefill variant), database public schedule function.
-- New public schedule function takes a single calendar date and returns the derived day status, an all-day-closed flag, a sorted occupied list with kind booked or blocked, and a derived free list. It reads operating hours internally from settings to clamp and gap-compute but never returns operating hours to the browser (per Q7 removal).
+- New public schedule function takes a single calendar date and returns the derived day status, an all-day-closed flag, a sorted occupied list with kind booked or blocked, and a derived free list. It reads operating hours internally from settings to clamp and gap-compute but never returns operating hours to the browser (per Q7 removal). The free list is still computed/validated server-side but intentionally not rendered in UI — clients propose a time via WhatsApp.
 - Privacy contract (extends the existing month-RPC ADR): the new function selects only start/end times plus closure flags; it never selects client names, phones, notes, or block reasons, and the client validator strips any extra keys and fails closed.
 - Occupancy rule unchanged: only confirmed bookings plus timed blocks occupy; pending and cancelled never occupy and never appear. All-day closure outranks times.
 - Occupied intervals are returned sorted; adjacent same-kind intervals merge for display; overlapping different-kind display keeps both labels in chronological order (admin guards already prevent overlap, merge is defensive).
 - Interaction: only today/future days are selectable buttons with selected ring; past days inert muted; selection toggles; month change clears selection; empty-available shows Seharian tersedia; detail state machine is idle / loading / error+retry / content.
 - Chat: keep the existing general chat link untouched; add a per-date link that prefills the selected calendar date only, reusing the existing wa.me link builder with ID copy.
-- Copy/locale: Indonesian labels Tersedia / Penuh / Tutup, Terisi for booked ranges, Tutup for blocked ranges, Sisa tersedia for free gaps, Sehari penuh — Tutup, Seharian tersedia, Memuat detail, failure retry copy consistent with month grid.
+- Copy/locale: Indonesian labels Tersedia / Penuh / Tutup, Terisi for booked ranges, Tutup for blocked ranges, Sehari penuh — Tutup, Seharian tersedia, Memuat detail, failure retry copy consistent with month grid. Occupied days show hint "Di luar jam di atas masih bisa ditanyakan — tulis jam yang kamu mau via WhatsApp." instead of the removed "Sisa tersedia" free-gap list.
 - No operating-hours header in UI for now; no hours values reach the browser.
 - No change to the existing month availability contract; month grid behaviour, colours, legend, and empty states stay as-is.
 
