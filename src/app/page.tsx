@@ -1,3 +1,4 @@
+import { AvailabilityCalendar } from "@/components/availability-calendar";
 import { PortfolioGrid } from "@/components/portfolio-grid";
 import { PriceList } from "@/components/price-list";
 import { WaFloat } from "@/components/wa-float";
@@ -88,18 +89,11 @@ export default async function Home() {
 
       <section id="jadwal" aria-label="Jadwal" className="py-8">
         <h2 className="text-xl font-bold">Jadwal</h2>
-        <p className="mt-1 text-sm text-neutral-600">
-          Kalender ketersediaan bulanan segera hadir di sini. Sementara itu,
-          tanyakan tanggal yang kamu mau langsung via WhatsApp.
+        <p className="mb-4 mt-1 text-sm text-neutral-600">
+          Cek perkiraan ketersediaan per tanggal, lalu tanyakan tanggal yang
+          kamu mau langsung via WhatsApp.
         </p>
-        <a
-          href={buildGeneralWaLink(waNumber)}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-block rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-neutral-100"
-        >
-          Tanya Jadwal via WhatsApp
-        </a>
+        <AvailabilityCalendar waNumber={waNumber} />
       </section>
 
       <WaFloat waNumber={waNumber} />
