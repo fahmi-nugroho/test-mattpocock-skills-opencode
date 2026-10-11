@@ -9,9 +9,10 @@ values ('portfolio', 'portfolio', true),
        ('prices', 'prices', true)
 on conflict (id) do update set public = true;
 
--- Public read for both buckets.
+-- Public + admin read for both buckets (admin reads via the authenticated
+-- role, which needs its own SELECT grant; anon-only would lock admin out).
 create policy storage_public_read on storage.objects
-  for select to anon
+  for select to anon, authenticated
   using (bucket_id in ('portfolio', 'prices'));
 
 -- Admin write (insert / update / delete) for both buckets.

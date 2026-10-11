@@ -47,9 +47,10 @@ export function mapMonthAvailabilityRows(rows: unknown): MonthDayStatus[] {
 }
 
 /**
- * Public month-availability fetch. Calls the `get_month_availability`
- * RPC (which returns date+status only, no bookings/PII) and validates
- * the rows on the way out.
+ * Public month-availability fetch (ticket 02: typed access for the
+ * get_month_availability RPC from 0004_seed_rpc.sql). Calls the
+ * `get_month_availability` RPC (which returns date+status only, no
+ * bookings/PII) and validates the rows on the way out.
  */
 export async function getMonthAvailability(
   client: RpcClient,
