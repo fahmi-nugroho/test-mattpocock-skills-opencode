@@ -7,6 +7,7 @@ import { summarizeBookings, type OverviewSummary } from "@/lib/admin/overview";
 import { validateSettingsInput } from "@/lib/admin/validate-settings";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { getOverviewBookings } from "@/lib/supabase/admin-overview";
+import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { getSettings, updateSettings } from "@/lib/supabase/admin-settings";
 import { PortfolioManager } from "@/components/admin/portfolio-manager";
 import { ServicesManager } from "@/components/admin/services-manager";
@@ -83,6 +84,35 @@ export default function AdminPage() {
       listener.subscription.unsubscribe();
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!authed) return;
+    // Booking/block/full-toggle saves elsewhere on this page change the
+    // same rows the overview counts derive from — refetch on the shared
+    // schedule signal so Ringkasan Booking never visibly lags a
+    // confirm/cancel until reload (same pattern as AdminCalendar).
+    let cancelled = false;
+    const onChange = () => {
+      (async () => {
+        try {
+          const today = getTodayKey();
+          const bookings = await getOverviewBookings(
+            supabaseBrowser(),
+            today,
+          );
+          if (!cancelled) setSummary(summarizeBookings(bookings, today));
+        } catch {
+          // Keep the last good summary; the mutating panel already
+          // surfaces its own error next to the failed action.
+        }
+      })();
+    };
+    window.addEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+    };
+  }, [authed]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
