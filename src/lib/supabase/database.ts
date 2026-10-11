@@ -85,6 +85,10 @@ export interface Database {
         Args: { p_year: number; p_month: number };
         Returns: MonthAvailabilityRow[];
       };
+      get_public_wa_number: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
     };
   };
 }

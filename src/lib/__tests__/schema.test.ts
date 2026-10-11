@@ -127,6 +127,22 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(lower).toMatch(/set\s+search_path/);
   });
 
+  it("0005 exposes wa_number alone (no hours, dates, or PII)", () => {
+    const sql = readMigration("0005_public_wa.sql");
+    const lower = sql.toLowerCase();
+    expect(lower).toMatch(/create or replace function get_public_wa_number/);
+    expect(lower).toContain("wa_number");
+    expect(lower).toContain("to anon");
+    expect(lower).toMatch(/set\s+search_path/);
+    const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("open_hour");
+    expect(code).not.toContain("close_hour");
+    expect(code).not.toContain("full_dates");
+    expect(code).not.toContain("client_name");
+    expect(code).not.toContain("client_phone");
+    expect(code).not.toContain("notes");
+  });
+
   it("0001 enforces single-row settings (id = 1)", () => {
     const code = codeOnly(readMigration("0001_schema.sql")).toLowerCase();
     expect(code).toMatch(/check\s*\(\s*id\s*=\s*1\s*\)/);
