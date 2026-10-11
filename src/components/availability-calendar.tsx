@@ -345,16 +345,36 @@ export function AvailabilityCalendar({
                   Sehari penuh — Tutup
                 </p>
               ) : mergedOccupied.length > 0 ? (
-                <ul className="mt-2 space-y-1.5">
-                  {mergedOccupied.map((slot) => (
-                    <li
-                      key={`${slot.kind}-${slot.start}-${slot.end}`}
-                      className={`rounded-lg px-3 py-2 text-sm font-medium ${OCCUPIED_META[slot.kind].row}`}
-                    >
-                      {OCCUPIED_META[slot.kind].label} {slot.start}–{slot.end}
-                    </li>
-                  ))}
-                </ul>
+                <div>
+                  <ul className="mt-2 space-y-1.5">
+                    {mergedOccupied.map((slot) => (
+                      <li
+                        key={`${slot.kind}-${slot.start}-${slot.end}`}
+                        className={`rounded-lg px-3 py-2 text-sm font-medium ${OCCUPIED_META[slot.kind].row}`}
+                      >
+                        {OCCUPIED_META[slot.kind].label} {slot.start}–
+                        {slot.end}
+                      </li>
+                    ))}
+                  </ul>
+                  {detail.free.length > 0 ? (
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-neutral-500">
+                        Sisa tersedia
+                      </p>
+                      <ul className="mt-1 space-y-1.5">
+                        {detail.free.map((gap) => (
+                          <li
+                            key={`${gap.start}-${gap.end}`}
+                            className="rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-900"
+                          >
+                            {gap.start}–{gap.end}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
               ) : detail.status === "fully_booked" ? (
                 <p className="mt-2 rounded-lg bg-amber-200 px-3 py-2 text-sm font-medium text-amber-900">
                   Jadwal terisi penuh.

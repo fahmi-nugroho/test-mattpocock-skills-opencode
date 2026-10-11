@@ -175,6 +175,50 @@ describe("mapDayScheduleRow", () => {
       }),
     ).toThrow(/invalid occupied time/i);
   });
+
+  it("maps free gaps to start/end only (no hours leak)", () => {
+    expect(
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [{ start: "09:00", end: "10:00", kind: "booked" }],
+        free: [
+          { start: "10:00", end: "19:00", open_hour: "09:00" },
+        ],
+      }),
+    ).toEqual({
+      date: "2026-10-16",
+      status: "available",
+      allDayBlocked: false,
+      occupied: [{ start: "09:00", end: "10:00", kind: "booked" }],
+      free: [{ start: "10:00", end: "19:00" }],
+    });
+  });
+
+  it("throws on malformed free gap time (fail closed)", () => {
+    expect(() =>
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [],
+        free: [{ start: "10:00", end: "morning" }],
+      }),
+    ).toThrow(/invalid free gap/i);
+  });
+
+  it("throws when free gap start is not before end", () => {
+    expect(() =>
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [],
+        free: [{ start: "12:00", end: "12:00" }],
+      }),
+    ).toThrow(/invalid free gap/i);
+  });
 });
 
 // Seam (adapter): RPC client wrapper with injected client. Catches wrong

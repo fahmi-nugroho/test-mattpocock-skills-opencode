@@ -266,6 +266,36 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(lower).toMatch(/set\s+search_path/);
   });
 
+  it("0009 derives free gaps server-side with no hours in output", () => {
+    const sql = readMigration("0009_day_schedule_free.sql");
+    const lower = sql.toLowerCase();
+    expect(lower).toMatch(/create or replace function get_day_schedule/);
+    // Free gaps walk the clamped occupied timeline (cursor over sorted
+    // intervals); all-day closures return empty gaps.
+    expect(lower).toContain("v_free");
+    expect(lower).toContain("v_cursor");
+    // Empty occupied days return empty gaps so the full window never
+    // ships as endpoints (empty days render as Seharian tersedia).
+    expect(lower).toMatch(/jsonb_array_length\(v_occupied\)\s*=\s*0/);
+    // No client PII may be selected anywhere in the function body.
+    const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("client_name");
+    expect(code).not.toContain("client_phone");
+    expect(code).not.toContain("notes");
+    expect(code).not.toContain("reason");
+    // The returned object carries free gaps but no operating-hours values.
+    const returns = code.match(/return json_build_object[\s\S]*?\);/) ?? [];
+    expect(returns.length).toBeGreaterThan(0);
+    for (const ret of returns) {
+      expect(ret).toContain("'free'");
+      expect(ret).not.toContain("open_hour");
+      expect(ret).not.toContain("close_hour");
+    }
+    // Public calendar callable by anon with fixed search_path.
+    expect(lower).toContain("to anon");
+    expect(lower).toMatch(/set\s+search_path/);
+  });
+
   it("0006 caps portfolio categories at six via trigger (client cap bypass-proof)", () => {
     const sql = readMigration("0006_portfolio_category_cap.sql");
     const lower = sql.toLowerCase();

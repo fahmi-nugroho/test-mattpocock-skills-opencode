@@ -7,12 +7,17 @@ export interface DayOccupied {
   kind: "booked" | "blocked";
 }
 
+export interface DayFree {
+  start: string; // "HH:MM"
+  end: string; // "HH:MM"
+}
+
 export interface DaySchedule {
   date: string; // "YYYY-MM-DD"
   status: DayStatus;
   allDayBlocked: boolean;
   occupied: DayOccupied[];
-  free: unknown[];
+  free: DayFree[];
 }
 
 const DAY_STATUSES: readonly DayStatus[] = [
@@ -24,12 +29,15 @@ const OCCUPIED_KINDS: readonly DayOccupied["kind"][] = ["booked", "blocked"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
-/** Map one occupied item, stripping extra keys (fail closed on bad shape). */
-function mapOccupiedItem(item: unknown): DayOccupied {
+/** Shared HH:MM range shape guard; label names the owner for errors. */
+function mapTimeRange(item: unknown, label: string): {
+  start: string;
+  end: string;
+} {
   if (typeof item !== "object" || item === null) {
-    throw new Error("Invalid occupied item in day schedule");
+    throw new Error(`Invalid ${label} in day schedule`);
   }
-  const { start, end, kind } = item as Record<string, unknown>;
+  const { start, end } = item as Record<string, unknown>;
   if (
     typeof start !== "string" ||
     typeof end !== "string" ||
@@ -38,9 +46,16 @@ function mapOccupiedItem(item: unknown): DayOccupied {
     !(start < end)
   ) {
     throw new Error(
-      `Invalid occupied time in day schedule: ${String(start)}-${String(end)}`,
+      `Invalid ${label} in day schedule: ${String(start)}-${String(end)}`,
     );
   }
+  return { start, end };
+}
+
+/** Map one occupied item, stripping extra keys (fail closed on bad shape). */
+function mapOccupiedItem(item: unknown): DayOccupied {
+  const { start, end } = mapTimeRange(item, "occupied time");
+  const { kind } = item as Record<string, unknown>;
   if (
     typeof kind !== "string" ||
     !(OCCUPIED_KINDS as readonly string[]).includes(kind)
@@ -48,6 +63,11 @@ function mapOccupiedItem(item: unknown): DayOccupied {
     throw new Error(`Unknown occupied kind in day schedule: ${String(kind)}`);
   }
   return { start, end, kind: kind as DayOccupied["kind"] };
+}
+
+/** Map one server-derived free gap, stripping extra keys (fail closed). */
+function mapFreeItem(item: unknown): DayFree {
+  return mapTimeRange(item, "free gap");
 }
 
 /**
@@ -113,7 +133,7 @@ export function mapDayScheduleRow(row: unknown): DaySchedule {
     status: status as DayStatus,
     allDayBlocked: all_day_blocked,
     occupied: occupied.map(mapOccupiedItem),
-    free,
+    free: free.map(mapFreeItem),
   };
 }
 
