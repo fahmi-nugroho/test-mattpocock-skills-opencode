@@ -10,6 +10,9 @@ import { getOverviewBookings } from "@/lib/supabase/admin-overview";
 import { getSettings, updateSettings } from "@/lib/supabase/admin-settings";
 import { PortfolioManager } from "@/components/admin/portfolio-manager";
 import { ServicesManager } from "@/components/admin/services-manager";
+import { BookingsManager } from "@/components/admin/bookings-manager";
+import { BlocksManager } from "@/components/admin/blocks-manager";
+import { AdminCalendar } from "@/components/admin/admin-calendar";
 
 const EMPTY_SUMMARY: OverviewSummary = {
   todayConfirmed: 0,
@@ -165,6 +168,39 @@ export default function AdminPage() {
             <p className="mt-1 text-2xl font-bold">{summary.upcomingPending}</p>
           </div>
         </div>
+      </section>
+
+      <section aria-label="Kalender booking" className="mt-8">
+        <h2 className="text-lg font-bold">Kalender Booking</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Status hari dihitung dari booking confirmed + blokir + tanda penuh
+          — sama seperti kalender publik.
+        </p>
+        {settingsReady ? (
+          <AdminCalendar openHour={openHour} closeHour={closeHour} />
+        ) : (
+          <p className="mt-3 text-sm text-neutral-600">
+            {loadError ?? "Menunggu pengaturan jam…"}
+          </p>
+        )}
+      </section>
+
+      <section aria-label="Booking" className="mt-8">
+        <h2 className="text-lg font-bold">Booking</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Catat hasil negosiasi WA — konfirmasi / batalkan untuk mengubah
+          status hari di kalender publik.
+        </p>
+        <BookingsManager />
+      </section>
+
+      <section aria-label="Blokir dan tanggal penuh" className="mt-8">
+        <h2 className="text-lg font-bold">Blokir &amp; Tanggal Penuh</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Tutup hari atau jam tertentu — bentrok dengan booking confirmed
+          ditolak dengan pesan.
+        </p>
+        <BlocksManager />
       </section>
 
       <section aria-label="Portfolio" className="mt-8">
