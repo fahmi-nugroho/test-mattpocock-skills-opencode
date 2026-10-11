@@ -16,7 +16,7 @@ import {
   getMonthAvailability,
   type RpcClient,
 } from "@/lib/month-availability";
-import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
+import { getDaySchedule, mergeOccupied, type DaySchedule } from "@/lib/day-schedule";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { buildDateWaLink, buildGeneralWaLink } from "@/lib/whatsapp";
 
@@ -44,6 +44,11 @@ const STATUS_META: Record<
 const UNKNOWN_CELL = "bg-neutral-50 text-neutral-400";
 
 const SELECTED_RING = " ring-2 ring-neutral-900 ring-offset-1";
+
+const OCCUPIED_META = {
+  booked: { label: "Terisi", row: "bg-amber-200 text-amber-900" },
+  blocked: { label: "Tutup", row: "bg-red-100 text-red-900" },
+} as const;
 
 /** Render a "YYYY-MM-DD" key as an Indonesian day label, e.g. "15 Oktober 2026". */
 function formatDayId(dateKey: string): string {
@@ -158,6 +163,13 @@ export function AvailabilityCalendar({
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
   const monthLabel = formatMonthId(monthKey);
   const empty = loaded && !error && Object.keys(statusByDate).length === 0;
+  const mergedOccupied = useMemo(
+    () =>
+      detail && detail.status !== "blocked" && !detail.allDayBlocked
+        ? mergeOccupied(detail.occupied)
+        : [],
+    [detail],
+  );
 
   function shiftMonthClearingSelection(delta: number): void {
     setSelectedDate(null);
@@ -332,6 +344,17 @@ export function AvailabilityCalendar({
                 <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-900">
                   Sehari penuh — Tutup
                 </p>
+              ) : mergedOccupied.length > 0 ? (
+                <ul className="mt-2 space-y-1.5">
+                  {mergedOccupied.map((slot) => (
+                    <li
+                      key={`${slot.kind}-${slot.start}-${slot.end}`}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium ${OCCUPIED_META[slot.kind].row}`}
+                    >
+                      {OCCUPIED_META[slot.kind].label} {slot.start}–{slot.end}
+                    </li>
+                  ))}
+                </ul>
               ) : detail.status === "fully_booked" ? (
                 <p className="mt-2 rounded-lg bg-amber-200 px-3 py-2 text-sm font-medium text-amber-900">
                   Jadwal terisi penuh.

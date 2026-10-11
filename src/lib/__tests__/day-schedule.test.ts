@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getDaySchedule, mapDayScheduleRow } from "../day-schedule";
+import {
+  getDaySchedule,
+  mapDayScheduleRow,
+  mergeOccupied,
+} from "../day-schedule";
 
 // Seam (pure): day-schedule payload -> { date, status, allDayBlocked,
 // occupied, free } with PII stripped. Catches PII leak and invalid-kind
@@ -104,6 +108,73 @@ describe("mapDayScheduleRow", () => {
       }),
     ).toThrow(/occupied\/free must be arrays/i);
   });
+
+  it("maps occupied items to start/end/kind only (no PII)", () => {
+    expect(
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [
+          {
+            start: "09:00",
+            end: "10:00",
+            kind: "booked",
+            client_name: "Secret",
+            client_phone: "08123",
+            notes: "private",
+          },
+          { start: "13:00", end: "14:00", kind: "blocked", reason: "cuti" },
+        ],
+        free: [],
+      }),
+    ).toEqual({
+      date: "2026-10-16",
+      status: "available",
+      allDayBlocked: false,
+      occupied: [
+        { start: "09:00", end: "10:00", kind: "booked" },
+        { start: "13:00", end: "14:00", kind: "blocked" },
+      ],
+      free: [],
+    });
+  });
+
+  it("throws on unknown occupied kind (fail closed)", () => {
+    expect(() =>
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [{ start: "09:00", end: "10:00", kind: "tentative" }],
+        free: [],
+      }),
+    ).toThrow(/unknown occupied kind/i);
+  });
+
+  it("throws on malformed occupied time (fail closed)", () => {
+    expect(() =>
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [{ start: "9am", end: "10:00", kind: "booked" }],
+        free: [],
+      }),
+    ).toThrow(/invalid occupied time/i);
+  });
+
+  it("throws when occupied start is not before end", () => {
+    expect(() =>
+      mapDayScheduleRow({
+        date: "2026-10-16",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [{ start: "10:00", end: "10:00", kind: "booked" }],
+        free: [],
+      }),
+    ).toThrow(/invalid occupied time/i);
+  });
 });
 
 // Seam (adapter): RPC client wrapper with injected client. Catches wrong
@@ -158,5 +229,64 @@ describe("getDaySchedule", () => {
       /YYYY-MM-DD/,
     );
     expect(called).toBe(false);
+  });
+});
+
+// Seam (pure): occupied sort + adjacent same-kind merge for display.
+// Catches out-of-order or fragmented ranges. Misses SQL ordering.
+describe("mergeOccupied", () => {
+  it("returns empty for empty input", () => {
+    expect(mergeOccupied([])).toEqual([]);
+  });
+
+  it("merges adjacent same-kind intervals", () => {
+    expect(
+      mergeOccupied([
+        { start: "09:00", end: "10:00", kind: "booked" },
+        { start: "10:00", end: "11:00", kind: "booked" },
+      ]),
+    ).toEqual([{ start: "09:00", end: "11:00", kind: "booked" }]);
+  });
+
+  it("merges overlapping same-kind intervals", () => {
+    expect(
+      mergeOccupied([
+        { start: "09:00", end: "10:30", kind: "blocked" },
+        { start: "10:00", end: "11:00", kind: "blocked" },
+      ]),
+    ).toEqual([{ start: "09:00", end: "11:00", kind: "blocked" }]);
+  });
+
+  it("keeps different-kind intervals separate in chronological order", () => {
+    expect(
+      mergeOccupied([
+        { start: "10:00", end: "11:00", kind: "blocked" },
+        { start: "09:00", end: "10:00", kind: "booked" },
+      ]),
+    ).toEqual([
+      { start: "09:00", end: "10:00", kind: "booked" },
+      { start: "10:00", end: "11:00", kind: "blocked" },
+    ]);
+  });
+
+  it("orders same-start intervals deterministically by kind", () => {
+    expect(
+      mergeOccupied([
+        { start: "09:00", end: "10:00", kind: "booked" },
+        { start: "09:00", end: "09:30", kind: "blocked" },
+      ]),
+    ).toEqual([
+      { start: "09:00", end: "09:30", kind: "blocked" },
+      { start: "09:00", end: "10:00", kind: "booked" },
+    ]);
+  });
+
+  it("sorts unsorted input before merging", () => {    expect(
+      mergeOccupied([
+        { start: "11:00", end: "12:00", kind: "booked" },
+        { start: "09:00", end: "10:00", kind: "booked" },
+        { start: "10:00", end: "11:00", kind: "booked" },
+      ]),
+    ).toEqual([{ start: "09:00", end: "12:00", kind: "booked" }]);
   });
 });
