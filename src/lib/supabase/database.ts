@@ -64,6 +64,14 @@ export interface MonthAvailabilityRow {
   status: "available" | "fully_booked" | "blocked";
 }
 
+export interface DayScheduleRow {
+  date: string; // "YYYY-MM-DD"
+  status: "available" | "fully_booked" | "blocked";
+  all_day_blocked: boolean;
+  occupied: unknown[];
+  free: unknown[];
+}
+
 interface Table<T> {
   Row: T;
   Insert: Partial<T> & Record<string, unknown>;
@@ -84,6 +92,10 @@ export interface Database {
       get_month_availability: {
         Args: { p_year: number; p_month: number };
         Returns: MonthAvailabilityRow[];
+      };
+      get_day_schedule: {
+        Args: { p_date: string };
+        Returns: DayScheduleRow;
       };
       get_public_wa_number: {
         Args: Record<string, never>;

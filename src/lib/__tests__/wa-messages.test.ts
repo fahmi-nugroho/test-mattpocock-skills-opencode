@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   GENERAL_WA_MESSAGE,
+  buildDateWaLink,
+  buildDateWaMessage,
   buildGeneralWaLink,
   buildServiceWaLink,
   buildServiceWaMessage,
@@ -27,6 +29,20 @@ describe("WA message templates (ticket 03, ID copy, no date prefill)", () => {
   it("builds a general wa.me link from the shared template", () => {
     expect(buildGeneralWaLink("6281234567890")).toBe(
       `https://wa.me/6281234567890?text=${encodeURIComponent(GENERAL_WA_MESSAGE)}`,
+    );
+  });
+
+  it("builds a per-date message with the date only (no time prefill)", () => {
+    expect(buildDateWaMessage("2026-10-15")).toBe(
+      "Halo, mau tanya jadwal makeup tanggal 2026-10-15",
+    );
+  });
+
+  it("builds a per-date wa.me link with encoded date", () => {
+    expect(buildDateWaLink("6281234567890", "2026-10-15")).toBe(
+      `https://wa.me/6281234567890?text=${encodeURIComponent(
+        "Halo, mau tanya jadwal makeup tanggal 2026-10-15",
+      )}`,
     );
   });
 });

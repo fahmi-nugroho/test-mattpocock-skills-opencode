@@ -29,3 +29,15 @@ export function buildServiceWaLink(
 export function buildGeneralWaLink(number: string): string {
   return buildWaLink(number, GENERAL_WA_MESSAGE);
 }
+
+/**
+ * Per-date chat starter (ticket 01 of calendar-day-detail): date only,
+ * no time prefill — time is still negotiated in chat.
+ */
+export function buildDateWaMessage(date: string): string {
+  return `Halo, mau tanya jadwal makeup tanggal ${date}`;
+}
+
+export function buildDateWaLink(number: string, date: string): string {
+  return buildWaLink(number, buildDateWaMessage(date));
+}

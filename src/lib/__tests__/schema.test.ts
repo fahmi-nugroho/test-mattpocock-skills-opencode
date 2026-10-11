@@ -204,6 +204,40 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(sql).toMatch(/full_dates[\s\S]{0,120}blocked/);
   });
 
+  it("0007 defines day-schedule RPC returning status + closure only (no PII/hours)", () => {
+    const sql = readMigration("0007_day_schedule.sql");
+    const lower = sql.toLowerCase();
+    expect(lower).toMatch(/create or replace function get_day_schedule/);
+    // Output shape carries date + status + closure flag with
+    // forward-compat occupied/free arrays (empty in v1).
+    for (const key of [
+      "all_day_blocked",
+      "occupied",
+      "free",
+      "status",
+    ]) {
+      expect(lower).toContain(key);
+    }
+    // No client PII may be selected anywhere in the function body.
+    const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("client_name");
+    expect(code).not.toContain("client_phone");
+    expect(code).not.toContain("notes");
+    expect(code).not.toContain("reason");
+    // Hours stay internal (read into vars for status derivation) and
+    // never appear in the returned object.
+    expect(code).toMatch(/open_hour/);
+    const returns = code.match(/json_build_object\([\s\S]*?\)/) ?? [];
+    expect(returns.length).toBeGreaterThan(0);
+    for (const ret of returns) {
+      expect(ret).not.toContain("open_hour");
+      expect(ret).not.toContain("close_hour");
+    }
+    // Public calendar callable by anon with fixed search_path.
+    expect(lower).toContain("to anon");
+    expect(lower).toMatch(/set\s+search_path/);
+  });
+
   it("0006 caps portfolio categories at six via trigger (client cap bypass-proof)", () => {
     const sql = readMigration("0006_portfolio_category_cap.sql");
     const lower = sql.toLowerCase();

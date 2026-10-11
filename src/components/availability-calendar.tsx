@@ -16,8 +16,9 @@ import {
   getMonthAvailability,
   type RpcClient,
 } from "@/lib/month-availability";
+import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { buildGeneralWaLink } from "@/lib/whatsapp";
+import { buildDateWaLink, buildGeneralWaLink } from "@/lib/whatsapp";
 
 const STATUS_META: Record<
   DayStatus,
@@ -42,11 +43,27 @@ const STATUS_META: Record<
 
 const UNKNOWN_CELL = "bg-neutral-50 text-neutral-400";
 
+const SELECTED_RING = " ring-2 ring-neutral-900 ring-offset-1";
+
+/** Render a "YYYY-MM-DD" key as an Indonesian day label, e.g. "15 Oktober 2026". */
+function formatDayId(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
+
 /**
- * Read-only public month calendar. Day colours come from the
- * `get_month_availability` RPC (date+status only, no client PII) whose
- * SQL mirrors `computeDayStatus`; the pure function itself can't run
+ * Read-only public month calendar with per-day detail. Day colours come
+ * from the `get_month_availability` RPC (date+status only, no client PII)
+ * whose SQL mirrors `computeDayStatus`; the pure function itself can't run
  * client-side because its bookings/blocks inputs would leak PII.
+ *
+ * Tapping a today/future day loads `get_day_schedule` for that date
+ * (status + all-day flag only, no PII/hours) into the detail panel below.
+ * Timed ranges arrive in tickets 02/03; v1 shows closure vs open states.
  *
  * Partial-occupancy dots: the RPC intentionally hides occupancy counts,
  * so the public wiring passes no `partialDates` (all available days
@@ -73,6 +90,11 @@ export function AvailabilityCalendar({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DaySchedule | null>(null);
+  const [detailLoaded, setDetailLoaded] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailAttempt, setDetailAttempt] = useState(0);
 
   const todayKey = useMemo(() => getTodayKey(), []);
   const partialSet = useMemo(
@@ -106,17 +128,48 @@ export function AvailabilityCalendar({
     };
   }, [monthKey, attempt]);
 
+  useEffect(() => {
+    if (selectedDate === null) return;
+    let cancelled = false;
+    setDetail(null);
+    setDetailLoaded(false);
+    setDetailError(null);
+    getDaySchedule(
+      supabaseBrowser() as unknown as RpcClient,
+      selectedDate,
+    ).then(
+      (row) => {
+        if (cancelled) return;
+        setDetail(row);
+        setDetailLoaded(true);
+      },
+      () => {
+        if (cancelled) return;
+        setDetailError("Gagal memuat detail jadwal. Coba lagi.");
+        setDetailLoaded(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, detailAttempt]);
+
   const { year, month } = parseMonthKey(monthKey);
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
   const monthLabel = formatMonthId(monthKey);
   const empty = loaded && !error && Object.keys(statusByDate).length === 0;
+
+  function shiftMonthClearingSelection(delta: number): void {
+    setSelectedDate(null);
+    setMonthKey((m) => shiftMonth(m, delta));
+  }
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <button
           type="button"
-          onClick={() => setMonthKey((m) => shiftMonth(m, -1))}
+          onClick={() => shiftMonthClearingSelection(-1)}
           aria-label="Bulan sebelumnya"
           className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
         >
@@ -127,7 +180,7 @@ export function AvailabilityCalendar({
         </p>
         <button
           type="button"
-          onClick={() => setMonthKey((m) => shiftMonth(m, 1))}
+          onClick={() => shiftMonthClearingSelection(1)}
           aria-label="Bulan berikutnya"
           className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
         >
@@ -188,21 +241,43 @@ export function AvailabilityCalendar({
               // 3-color signal survives greying.
               const cell = status ? STATUS_META[status].cell : UNKNOWN_CELL;
               const ariaLabel = `${dayNum} ${monthLabel}: ${label}${past ? " (lewat)" : ""}`;
+              const selected = selectedDate === date;
+              const dayClass = `relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium ${cell}${past ? " opacity-60 saturate-50" : ""}${selected ? SELECTED_RING : ""}`;
+              const dot = showDot ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-1 h-1 w-1 rounded-full bg-green-700"
+                />
+              ) : null;
+              // Past days stay inert so clients can't ask about the past.
+              if (past) {
+                return (
+                  <div
+                    key={date}
+                    title={ariaLabel}
+                    aria-label={ariaLabel}
+                    className={dayClass}
+                  >
+                    <span>{dayNum}</span>
+                    {dot}
+                  </div>
+                );
+              }
               return (
-                <div
+                <button
                   key={date}
+                  type="button"
                   title={ariaLabel}
                   aria-label={ariaLabel}
-                  className={`relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium ${cell}${past ? " opacity-60 saturate-50" : ""}`}
+                  aria-pressed={selected}
+                  onClick={() =>
+                    setSelectedDate((cur) => (cur === date ? null : date))
+                  }
+                  className={`${dayClass} transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1`}
                 >
                   <span>{dayNum}</span>
-                  {showDot ? (
-                    <span
-                      aria-hidden="true"
-                      className="absolute bottom-1 h-1 w-1 rounded-full bg-green-700"
-                    />
-                  ) : null}
-                </div>
+                  {dot}
+                </button>
               );
             })}
           </div>
@@ -226,6 +301,58 @@ export function AvailabilityCalendar({
           </ul>
         </div>
       )}
+
+      {selectedDate !== null ? (
+        <div
+          aria-live="polite"
+          className="mt-4 rounded-xl border border-neutral-200 bg-white p-4"
+        >
+          {!detailLoaded && !detailError ? (
+            <p className="text-sm text-neutral-600">Memuat detail…</p>
+          ) : detailError || detail === null ? (
+            <div className="text-center">
+              <p className="text-sm text-neutral-600">
+                {detailError ?? "Gagal memuat detail jadwal. Coba lagi."}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDetailAttempt((a) => a + 1)}
+                className="mt-3 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700"
+              >
+                Coba lagi
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm font-bold">
+                Jadwal {formatDayId(detail.date)} ·{" "}
+                {STATUS_META[detail.status].label}
+              </p>
+              {detail.status === "blocked" || detail.allDayBlocked ? (
+                <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-900">
+                  Sehari penuh — Tutup
+                </p>
+              ) : detail.status === "fully_booked" ? (
+                <p className="mt-2 rounded-lg bg-amber-200 px-3 py-2 text-sm font-medium text-amber-900">
+                  Jadwal terisi penuh.
+                </p>
+              ) : (
+                <p className="mt-2 rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-900">
+                  Seharian tersedia
+                </p>
+              )}
+              <a
+                href={buildDateWaLink(waNumber, detail.date)}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700"
+              >
+                Tanya tanggal ini via WhatsApp
+              </a>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <a
         href={buildGeneralWaLink(waNumber)}
