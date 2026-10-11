@@ -8,6 +8,8 @@ import { validateSettingsInput } from "@/lib/admin/validate-settings";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { getOverviewBookings } from "@/lib/supabase/admin-overview";
 import { getSettings, updateSettings } from "@/lib/supabase/admin-settings";
+import { PortfolioManager } from "@/components/admin/portfolio-manager";
+import { ServicesManager } from "@/components/admin/services-manager";
 
 const EMPTY_SUMMARY: OverviewSummary = {
   todayConfirmed: 0,
@@ -163,6 +165,24 @@ export default function AdminPage() {
             <p className="mt-1 text-2xl font-bold">{summary.upcomingPending}</p>
           </div>
         </div>
+      </section>
+
+      <section aria-label="Portfolio" className="mt-8">
+        <h2 className="text-lg font-bold">Portfolio</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Karya tampil di landing — perubahan tersimpan langsung terbaca
+          grid publik.
+        </p>
+        <PortfolioManager />
+      </section>
+
+      <section aria-label="Harga dan layanan" className="mt-8">
+        <h2 className="text-lg font-bold">Harga &amp; Layanan</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Daftar harga tampil di landing — perubahan tersimpan langsung
+          terbaca kartu harga publik.
+        </p>
+        <ServicesManager />
       </section>
 
       <section aria-label="Pengaturan operasional" className="mt-8">

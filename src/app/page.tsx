@@ -11,7 +11,9 @@ import { getPublicWaNumber } from "@/lib/supabase/public-settings";
 import { supabaseServer } from "@/lib/supabase/server";
 import { buildGeneralWaLink } from "@/lib/whatsapp";
 
-export const revalidate = 60;
+// Ticket 06: no ISR cache — admin portfolio/price edits read the same
+// tables live, so the landing reflects them on the very next load.
+export const revalidate = 0;
 
 /** Fallback contact when the WA RPC has no value yet (seed placeholder). */
 const FALLBACK_WA_NUMBER =
