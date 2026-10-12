@@ -14,7 +14,7 @@
 - Tests: raw any-hour multi-range + service/hours-leak cases added; `schema.test.ts` 0010 shape case added. `npm test` 35 files / 233 passed, `npm run typecheck` clean.
 - Code review (db5d3aa...HEAD): Standards — no hard violations (one excused SQL-internals candidate follows file prior art); Spec — all ticket criteria met, no scope creep, one non-blocking note (SQL `c.s < c.e` drops malformed DB rows before client validator).
 
-- [ ] Given a date with confirmed bookings or timed blocks at any hour, the public day result lists every occupied range with start, end, and kind only, sorted chronologically, with no clamping and no dropped ranges.
-- [ ] Given extra keys carrying personal data or hours in the raw payload, the validator strips them and fails closed on malformed shapes.
-- [ ] Pending and cancelled bookings never occupy and never appear; all-day closure still outranks times.
-- [ ] Mocked-payload unit tests cover raw multi-range days, empty days, all-day closure, malformed rows, and leak-attempt payloads.
+- [x] Given a date with confirmed bookings or timed blocks at any hour, the public day result lists every occupied range with start, end, and kind only, sorted chronologically, with no clamping and no dropped ranges.
+- [x] Given extra keys carrying personal data or hours in the raw payload, the validator strips them and fails closed on malformed shapes.
+- [x] Pending and cancelled bookings never occupy and never appear; all-day closure still outranks times.
+- [x] Mocked-payload unit tests cover raw multi-range days, empty days, all-day closure, malformed rows, and leak-attempt payloads.
