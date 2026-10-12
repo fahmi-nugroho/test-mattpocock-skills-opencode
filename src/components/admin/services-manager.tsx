@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateServiceInput } from "@/lib/admin/validate-service";
 import { checkImageFile } from "@/lib/admin/validate-image";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
@@ -49,6 +50,15 @@ export function ServicesManager() {
   const [rowError, setRowError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  // Client-side search over visible text fields only; CRUD/data flow
+  // below is unchanged.
+  const visibleItems = useMemo(
+    () =>
+      filterByQuery(items, query, (item) => [item.name, item.description]),
+    [items, query],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -359,11 +369,19 @@ export function ServicesManager() {
         </button>
       </form>
 
-      <ul className="mt-4 space-y-3">
-        {items.map((item) => (
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Cari layanan…"
+        aria-label="Cari layanan"
+        className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+      />
+      <ul className="mt-4 space-y-2">
+        {visibleItems.map((item) => (
           <li
             key={item.id}
-            className="rounded-xl border border-neutral-200 bg-white p-4"
+            className="rounded-xl border border-neutral-200 bg-white p-3"
           >
             <div className="flex items-start gap-3">
               {item.cover_image_url ? (
@@ -512,6 +530,11 @@ export function ServicesManager() {
       {items.length === 0 && !error ? (
         <p className="mt-3 text-sm text-neutral-600">
           Belum ada layanan — tambah harga pertama di atas.
+        </p>
+      ) : null}
+      {items.length > 0 && visibleItems.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-600">
+          {`Tidak ada hasil untuk "${query.trim()}".`}
         </p>
       ) : null}
     </div>
