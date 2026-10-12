@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (needs shared tokens for consistent branding).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Dashboard shows sticky tabs (Ringkasan, Kalender, Booking, Blokir, Portfolio, Harga, Pengaturan) with hash links that survive reload, in a wider desktop layout
 - [ ] Booking, block, portfolio, and service lists gain client-side search with denser rows; all CRUD, overlap guards, and RLS behavior unchanged

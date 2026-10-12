@@ -1,7 +1,8 @@
 /**
- * Client-side substring filter for admin list search (ticket 06). Pure:
- * no Supabase, no RLS — managers pass a field picker over the visible
- * text fields and render the returned subset. Empty query returns all.
+ * Filter substring sisi-klien untuk pencarian daftar admin (tiket 06).
+ * Murni: tanpa Supabase/RLS — manager mengoper pemilih field atas
+ * kolom teks yang terlihat lalu me-render subset hasilnya. Query kosong
+ * mengembalikan semua.
  */
 export function filterByQuery<T>(
   items: readonly T[],

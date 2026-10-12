@@ -1,8 +1,8 @@
 /**
- * Admin dashboard tab ids + hash mapping (ticket 06). Pure: maps
- * `window.location.hash` to a tab id with 'ringkasan' fallback. The
- * page component owns the hashchange listener and sticky bar; sections
- * carry matching ids + scroll-mt for the sticky offset.
+ * Id tab + pemetaan hash dashboard admin (tiket 06). Murni: memetakan
+ * `window.location.hash` ke id tab dengan fallback 'ringkasan'.
+ * Komponen halaman memegang listener hashchange dan bilah sticky;
+ * section membawa id + scroll-mt yang cocok untuk offset sticky.
  */
 export const ADMIN_TABS = [
   { id: "ringkasan", label: "Ringkasan" },

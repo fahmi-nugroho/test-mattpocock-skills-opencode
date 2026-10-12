@@ -194,7 +194,7 @@ export default function AdminPage() {
               <a
                 href={`#${tab.id}`}
                 onClick={() => setActiveTab(tab.id)}
-                aria-current={activeTab === tab.id ? "true" : undefined}
+                aria-current={activeTab === tab.id ? "location" : undefined}
                 className={`block whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition ${
                   activeTab === tab.id
                     ? "border-gold text-gold-deep"

@@ -5,11 +5,11 @@ export const LOGIN_NETWORK_ERROR =
   "Tidak dapat terhubung. Periksa koneksi lalu coba lagi.";
 
 /**
- * Maps a Supabase sign-in failure to Indonesian error copy. Network
- * failures (fetch aborts/timeouts) get the connectivity message;
- * everything else falls back to the invalid-credentials message so no
- * account detail leaks. Pure — empty fields are already handled by the
- * form's native `required` validation before this runs.
+ * Memetakan kegagalan sign-in Supabase ke salinan error Bahasa
+ * Indonesia. Kegagalan jaringan (fetch abort/timeout) memakai pesan
+ * konektivitas; sisanya fallback ke pesan kredensial salah agar tidak
+ * membocorkan detail akun. Murni — field kosong sudah ditangani
+ * validasi `required` bawaan form sebelum ini berjalan.
  */
 export function mapSignInError(error: unknown): string {
   const message =
