@@ -392,14 +392,20 @@ export function AvailabilityCalendar({
         </div>
       ) : null}
 
-      <a
-        href={buildGeneralWaLink(waNumber)}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-block rounded-full border border-stone-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-stone-100"
-      >
-        Tanya Jadwal via WhatsApp
-      </a>
+      {/* Single-CTA consolidation (ticket 05): exactly one WA action is
+          visible at a time. With a day selected the detail panel above
+          carries the single primary date-prefill CTA; otherwise this
+          general starter keeps one conversion path. */}
+      {selectedDate === null ? (
+        <a
+          href={buildGeneralWaLink(waNumber)}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-block rounded-full border border-stone-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-stone-100"
+        >
+          Tanya Jadwal via WhatsApp
+        </a>
+      ) : null}
     </div>
   );
 }
