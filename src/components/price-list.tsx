@@ -32,16 +32,14 @@ export function PriceList({
 
   return (
     <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-6">
-      {services.map((service) => (
+      {services.map((service) => {
+        const isFeatured = service.id === featuredId;
+        return (
         <li
           key={service.id}
-          className={
-            service.id === featuredId
-              ? "relative flex flex-col overflow-hidden rounded-2xl border border-gold-deep/40 bg-white shadow-md ring-2 ring-gold"
-              : "relative flex flex-col overflow-hidden rounded-2xl border border-stone-200/70 bg-white shadow-sm"
-          }
+          className="relative flex flex-col overflow-hidden rounded-2xl border border-stone-200/70 bg-white shadow-sm"
         >
-          {service.id === featuredId ? (
+          {isFeatured ? (
             <span className="absolute left-2 top-2 z-10 rounded-full bg-gold-soft px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold-deep shadow-sm sm:text-xs">
               {FEATURED_BADGE_LABEL}
             </span>
@@ -87,7 +85,8 @@ export function PriceList({
             </a>
           </div>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
