@@ -62,7 +62,7 @@ export default async function Home() {
         <p className="mb-4 mt-1 text-sm text-stone-600">
           Filter berdasarkan kategori untuk melihat gaya riasan.
         </p>
-        <PortfolioGrid items={portfolio} />
+        <PortfolioGrid items={portfolio} waNumber={waNumber} />
       </section>
 
       <section

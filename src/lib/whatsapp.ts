@@ -41,3 +41,20 @@ export function buildDateWaMessage(date: string): string {
 export function buildDateWaLink(number: string, date: string): string {
   return buildWaLink(number, buildDateWaMessage(date));
 }
+
+/**
+ * Per-style chat starter for the portfolio lightbox CTA
+ * (ticket 03 of ui-ux-polish): title + category prefill so the
+ * client can ask about a look in one tap.
+ */
+export function buildStyleWaMessage(title: string, category: string): string {
+  return `Halo, mau tanya gaya ${title} (${category})`;
+}
+
+export function buildStyleWaLink(
+  number: string,
+  title: string,
+  category: string,
+): string {
+  return buildWaLink(number, buildStyleWaMessage(title, category));
+}
