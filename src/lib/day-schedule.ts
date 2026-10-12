@@ -103,9 +103,12 @@ export function mergeOccupied(items: DayOccupied[]): DayOccupied[] {
 
 /**
  * Map a raw `get_day_schedule` RPC payload to the public day-detail
- * shape. Strips any extra keys so client PII (names, phones, notes,
- * block reasons) and operating hours can never leak to the browser,
- * and fails closed on unknown status / malformed date, times, or kinds.
+ * shape. The server returns occupied intervals raw and unclamped at
+ * any hour of the day (no operating window, no coverage derivation,
+ * free always [] window-free). Strips any extra keys so client PII
+ * (names, phones, notes, block reasons, service names) and operating
+ * hours can never leak to the browser, and fails closed on unknown
+ * status / malformed date, times, or kinds.
  */
 export function mapDayScheduleRow(row: unknown): DaySchedule {
   if (typeof row !== "object" || row === null) {
@@ -139,8 +142,8 @@ export function mapDayScheduleRow(row: unknown): DaySchedule {
 
 /**
  * Public day-schedule fetch for the `get_day_schedule` RPC.
- * Calls the RPC (which returns times+kind only, no PII/hours) and
- * validates the row on the way out.
+ * Calls the RPC (which returns raw unclamped times+kind only, no
+ * PII/hours, free always []) and validates the row on the way out.
  */
 export async function getDaySchedule(
   client: RpcClient,
