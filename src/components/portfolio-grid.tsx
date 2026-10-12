@@ -28,53 +28,71 @@ export function PortfolioGrid({
     () => filterPortfolioItems(items, active),
     [items, active],
   );
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   // Trigger element to return focus to on close.
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
-  const close = useCallback(() => setSelected(null), []);
+  const close = useCallback(() => setSelectedIndex(null), []);
 
-  const goPrev = useCallback(() => {
-    setSelected((prev) =>
-      prev === null || visible.length === 0
-        ? prev
-        : (prev - 1 + visible.length) % visible.length,
-    );
-  }, [visible.length]);
+  const step = useCallback(
+    (delta: number) => {
+      setSelectedIndex((prev) =>
+        prev === null || visible.length === 0
+          ? prev
+          : (prev + delta + visible.length) % visible.length,
+      );
+    },
+    [visible.length],
+  );
 
-  const goNext = useCallback(() => {
-    setSelected((prev) =>
-      prev === null || visible.length === 0
-        ? prev
-        : (prev + 1) % visible.length,
-    );
-  }, [visible.length]);
+  const goPrev = useCallback(() => step(-1), [step]);
 
-  // ESC / arrow-key handling + body scroll lock + initial focus.
+  const goNext = useCallback(() => step(1), [step]);
+
+  const isOpen = selectedIndex !== null;
+
+  // ESC / arrow-key handling. Depends on the open flag (not the index)
+  // so Prev/Next navigation doesn't tear down and re-add the listener.
   useEffect(() => {
-    if (selected === null) return;
+    if (!isOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
       if (event.key === "ArrowLeft") goPrev();
       if (event.key === "ArrowRight") goNext();
     };
     document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isOpen, close, goPrev, goNext]);
+
+  // Body scroll lock + initial focus + return focus. Runs only on the
+  // real open → close transition (isOpen boolean), not on index change.
+  useEffect(() => {
+    if (!isOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
       triggerRef.current?.focus();
     };
-  }, [selected, close, goPrev, goNext]);
+  }, [isOpen]);
+
+  // Normalise an out-of-bounds open index (e.g. the filtered list shrank
+  // under an open lightbox) back to null so close-path cleanup always runs.
+  useEffect(() => {
+    if (selectedIndex !== null && selectedIndex >= visible.length) {
+      setSelectedIndex(null);
+    }
+  }, [selectedIndex, visible.length]);
 
   // Guard against the filtered list shrinking under an open lightbox.
-  const current =
-    selected !== null && selected < visible.length
-      ? visible[selected]
+  const selectedItem =
+    selectedIndex !== null && selectedIndex < visible.length
+      ? visible[selectedIndex]
       : null;
 
   if (items.length === 0) {
@@ -97,7 +115,7 @@ export function PortfolioGrid({
             aria-selected={category === active}
             onClick={() => {
               setActive(category);
-              setSelected(null);
+              setSelectedIndex(null);
             }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
               category === active
@@ -124,7 +142,7 @@ export function PortfolioGrid({
                 type="button"
                 onClick={(event) => {
                   triggerRef.current = event.currentTarget;
-                  setSelected(index);
+                  setSelectedIndex(index);
                 }}
                 aria-haspopup="dialog"
                 aria-label={`Lihat ${item.title} lebih besar`}
@@ -149,11 +167,11 @@ export function PortfolioGrid({
         </ul>
       )}
 
-      {current ? (
+      {selectedItem ? (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${current.title} (${current.category})`}
+          aria-label={`${selectedItem.title} (${selectedItem.category})`}
           onClick={close}
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/70 p-4"
         >
@@ -163,8 +181,8 @@ export function PortfolioGrid({
           >
             <div className="relative aspect-[3/4] max-h-[60vh] w-full bg-stone-100">
               <Image
-                src={current.image_url}
-                alt={current.title}
+                src={selectedItem.image_url}
+                alt={selectedItem.title}
                 fill
                 sizes="(max-width: 640px) 100vw, 512px"
                 className="object-cover"
@@ -182,10 +200,10 @@ export function PortfolioGrid({
             </div>
             <div className="p-4 sm:p-5">
               <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-                {current.category}
+                {selectedItem.category}
               </p>
               <h3 className="mt-1 font-display text-xl font-bold text-stone-900">
-                {current.title}
+                {selectedItem.title}
               </h3>
               <div className="mt-3 flex items-center justify-between gap-2">
                 <button
@@ -197,7 +215,7 @@ export function PortfolioGrid({
                   ← Prev
                 </button>
                 <p className="text-xs text-stone-500" aria-live="polite">
-                  {selected !== null ? selected + 1 : 0} / {visible.length}
+                  {selectedIndex !== null ? selectedIndex + 1 : 0} / {visible.length}
                 </p>
                 <button
                   type="button"
@@ -211,12 +229,12 @@ export function PortfolioGrid({
               <a
                 href={buildStyleWaLink(
                   waNumber,
-                  current.title,
-                  current.category,
+                  selectedItem.title,
+                  selectedItem.category,
                 )}
                 target="_blank"
                 rel="noreferrer"
-                aria-label={`Tanya gaya ${current.title} via WhatsApp`}
+                aria-label={`Tanya gaya ${selectedItem.title} via WhatsApp`}
                 className="mt-4 block rounded-full bg-green-600 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-green-700"
               >
                 Tanya gaya ini via WA
