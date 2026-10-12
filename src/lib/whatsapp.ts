@@ -43,6 +43,29 @@ export function buildDateWaLink(number: string, date: string): string {
 }
 
 /**
+ * Per-date-plus-time chat starter (ticket 03 of calendar-popup-inquiry):
+ * the date message with the client-chosen start-end range appended, so
+ * the admin sees exactly what slot is proposed. The date-only builders
+ * above stay byte-identical for the secondary time-less action.
+ */
+export function buildDateTimeWaMessage(
+  date: string,
+  start: string,
+  end: string,
+): string {
+  return `${buildDateWaMessage(date)} jam ${start}-${end}`;
+}
+
+export function buildDateTimeWaLink(
+  number: string,
+  date: string,
+  start: string,
+  end: string,
+): string {
+  return buildWaLink(number, buildDateTimeWaMessage(date, start, end));
+}
+
+/**
  * Per-style chat starter for the portfolio lightbox CTA
  * (ticket 03 of ui-ux-polish): title + category prefill so the
  * client can ask about a look in one tap.

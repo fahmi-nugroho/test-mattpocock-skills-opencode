@@ -18,7 +18,12 @@ import {
 } from "@/lib/month-availability";
 import { getDaySchedule, mergeOccupied, type DaySchedule } from "@/lib/day-schedule";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { buildDateWaLink, buildGeneralWaLink } from "@/lib/whatsapp";
+import { validatePickerRange } from "@/lib/time-picker";
+import {
+  buildDateTimeWaLink,
+  buildDateWaLink,
+  buildGeneralWaLink,
+} from "@/lib/whatsapp";
 
 const STATUS_META: Record<
   DayStatus,
@@ -81,7 +86,8 @@ function formatDayId(dateKey: string): string {
  * showing `get_day_schedule` for that date (status + all-day flag +
  * occupied Terisi/Tutup ranges; times+kind only, no PII/hours).
  * Free gaps are still fetched but intentionally not displayed — clients
- * propose a time via WhatsApp (ticket 03 adds the picker).
+ * propose a time via the popup's time picker, validated live against
+ * the shown occupied ranges and prefilled into the WhatsApp message.
  *
  * Partial-occupancy dots: the RPC intentionally hides occupancy counts,
  * so the public wiring passes no `partialDates` (all available days
@@ -113,6 +119,11 @@ export function AvailabilityCalendar({
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailAttempt, setDetailAttempt] = useState(0);
+  // Time-picker proposal for the date+time chat action. Empty means no
+  // selection yet (hint state); cleared whenever the popup closes or a
+  // new date is tapped so no stale proposal lingers.
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   // Invoking date button for focus return after the popup closes.
   const invokerRef = useRef<string | null>(null);
 
@@ -181,6 +192,8 @@ export function AvailabilityCalendar({
     setDetail(null);
     setDetailLoaded(false);
     setDetailError(null);
+    setStartTime("");
+    setEndTime("");
   }
 
   // Popup chrome: Escape dismisses, background scrolling locks, and
@@ -220,6 +233,17 @@ export function AvailabilityCalendar({
     () => (isClosedDetail ? [] : mergeOccupied(detail?.occupied ?? [])),
     [detail],
   );
+  // Picker verdict against the shown ranges (half-open: touching edges
+  // allowed). Only meaningful on bookable days; full and closed-all-day
+  // popups render no picker and no date chat action at all.
+  const pickerVerdict = useMemo(
+    () => validatePickerRange(startTime, endTime, mergedOccupied),
+    [startTime, endTime, mergedOccupied],
+  );
+  const isBookableDetail =
+    detail !== null &&
+    !isClosedDetail &&
+    detail.status !== "fully_booked";
 
   function shiftMonthClearingSelection(delta: number): void {
     closePopup();
@@ -236,6 +260,8 @@ export function AvailabilityCalendar({
     setDetail(null);
     setDetailLoaded(false);
     setDetailError(null);
+    setStartTime("");
+    setEndTime("");
     setSelectedDate(date);
   }
 
@@ -440,8 +466,8 @@ export function AvailabilityCalendar({
                       ))}
                     </ul>
                     <p className="mt-2 text-xs text-stone-600">
-                      Di luar jam di atas masih bisa ditanyakan — tulis jam yang
-                      kamu mau via WhatsApp.
+                      Di luar jam di atas masih bisa ditanyakan — pilih jam
+                      yang kamu mau di bawah, lalu tanyakan via WhatsApp.
                     </p>
                   </div>
                 ) : detail.status === "fully_booked" ? (
@@ -453,14 +479,79 @@ export function AvailabilityCalendar({
                     Seharian tersedia
                   </p>
                 )}
-                <a
-                  href={buildDateWaLink(waNumber, detail.date)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-block rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
-                >
-                  Tanya tanggal ini via WhatsApp
-                </a>
+                {isBookableDetail ? (
+                  <div className="mt-3 border-t border-stone-200 pt-3">
+                    <p className="text-sm font-semibold">Mau jam berapa?</p>
+                    <div className="mt-2 flex gap-2">
+                      <label className="flex-1 text-xs font-medium text-stone-600">
+                        Jam mulai
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(event) =>
+                            setStartTime(event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900"
+                        />
+                      </label>
+                      <label className="flex-1 text-xs font-medium text-stone-600">
+                        Jam selesai
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(event) => setEndTime(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900"
+                        />
+                      </label>
+                    </div>
+                    {pickerVerdict === "hint" ? (
+                      <p className="mt-2 text-xs text-stone-600">
+                        Pilih jam mulai dan jam selesai dulu.
+                      </p>
+                    ) : pickerVerdict === "order" ? (
+                      <p role="alert" className="mt-2 text-xs font-medium text-red-700">
+                        Jam selesai harus setelah jam mulai.
+                      </p>
+                    ) : pickerVerdict === "overlap" ? (
+                      <p role="alert" className="mt-2 text-xs font-medium text-red-700">
+                        Jam yang dipilih bentrok dengan jadwal yang sudah
+                        terisi — pilih jam lain.
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {pickerVerdict === "valid" ? (
+                        <a
+                          href={buildDateTimeWaLink(
+                            waNumber,
+                            detail.date,
+                            startTime,
+                            endTime,
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
+                        >
+                          Tanya jam ini via WhatsApp
+                        </a>
+                      ) : (
+                        <span
+                          aria-disabled="true"
+                          className="inline-block cursor-not-allowed rounded-full bg-stone-300 px-6 py-2.5 text-sm font-semibold text-stone-500"
+                        >
+                          Tanya jam ini via WhatsApp
+                        </span>
+                      )}
+                      <a
+                        href={buildDateWaLink(waNumber, detail.date)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block rounded-full border border-stone-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-stone-100"
+                      >
+                        Tanya tanggal ini via WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

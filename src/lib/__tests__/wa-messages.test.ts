@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   GENERAL_WA_MESSAGE,
+  buildDateTimeWaLink,
+  buildDateTimeWaMessage,
   buildDateWaLink,
   buildDateWaMessage,
   buildGeneralWaLink,
@@ -42,6 +44,39 @@ describe("WA message templates (ticket 03, ID copy, no date prefill)", () => {
     expect(buildDateWaLink("6281234567890", "2026-10-15")).toBe(
       `https://wa.me/6281234567890?text=${encodeURIComponent(
         "Halo, mau tanya jadwal makeup tanggal 2026-10-15",
+      )}`,
+    );
+  });
+});
+
+describe("date-plus-time WA message (ticket 03, picker prefill)", () => {
+  it("appends the chosen start-end range to the date message", () => {
+    expect(buildDateTimeWaMessage("2026-10-15", "10:00", "12:00")).toBe(
+      "Halo, mau tanya jadwal makeup tanggal 2026-10-15 jam 10:00-12:00",
+    );
+  });
+
+  it("keeps the date-only message byte-identical as its prefix", () => {
+    const withTime = buildDateTimeWaMessage("2026-10-15", "10:00", "12:00");
+    expect(withTime.startsWith(buildDateWaMessage("2026-10-15"))).toBe(true);
+  });
+
+  it("builds a wa.me link with the encoded date-plus-time message", () => {
+    expect(
+      buildDateTimeWaLink("6281234567890", "2026-10-15", "10:00", "12:00"),
+    ).toBe(
+      `https://wa.me/6281234567890?text=${encodeURIComponent(
+        "Halo, mau tanya jadwal makeup tanggal 2026-10-15 jam 10:00-12:00",
+      )}`,
+    );
+  });
+
+  it("normalises the number to digits only", () => {
+    expect(
+      buildDateTimeWaLink("+62 812-3456-7890", "2026-10-15", "10:00", "12:00"),
+    ).toBe(
+      `https://wa.me/6281234567890?text=${encodeURIComponent(
+        "Halo, mau tanya jadwal makeup tanggal 2026-10-15 jam 10:00-12:00",
       )}`,
     );
   });
