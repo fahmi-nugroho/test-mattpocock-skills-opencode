@@ -24,20 +24,25 @@ const STATUS_META: Record<
   DayStatus,
   { label: string; swatch: string; cell: string }
 > = {
+  // Warm-tinted shades within the green/amber/red families: lime-100 and
+  // orange-100 lean warm (yellow/earth undertone) while the deep
+  // green/amber/red text keeps the Tersedia/Penuh/Tutup signal readable.
+  // The stone inset ring adds a warm tinge and lifts cells off the cream
+  // page. Labels, derivation, and RPC contracts are untouched.
   available: {
     label: "Tersedia",
-    swatch: "bg-green-500",
-    cell: "bg-green-100 text-green-900",
+    swatch: "bg-lime-600",
+    cell: "bg-lime-100 text-green-900 ring-1 ring-inset ring-stone-900/5",
   },
   fully_booked: {
     label: "Penuh",
-    swatch: "bg-amber-500",
-    cell: "bg-amber-200 text-amber-900",
+    swatch: "bg-amber-600",
+    cell: "bg-amber-100 text-amber-900 ring-1 ring-inset ring-stone-900/5",
   },
   blocked: {
     label: "Tutup",
-    swatch: "bg-red-400",
-    cell: "bg-red-100 text-red-900",
+    swatch: "bg-red-500",
+    cell: "bg-orange-100 text-red-900 ring-1 ring-inset ring-stone-900/5",
   },
 };
 
@@ -46,8 +51,14 @@ const UNKNOWN_CELL = "bg-stone-50 text-stone-400";
 const SELECTED_RING = " ring-2 ring-gold-deep ring-offset-2 ring-offset-cream";
 
 const OCCUPIED_META = {
-  booked: { label: "Terisi", row: "bg-amber-200 text-amber-900" },
-  blocked: { label: "Tutup", row: "bg-red-100 text-red-900" },
+  booked: {
+    label: "Terisi",
+    row: "bg-amber-100 text-amber-900 ring-1 ring-inset ring-stone-900/5",
+  },
+  blocked: {
+    label: "Tutup",
+    row: "bg-orange-100 text-red-900 ring-1 ring-inset ring-stone-900/5",
+  },
 } as const;
 
 /** Render a "YYYY-MM-DD" key as an Indonesian day label, e.g. "15 Oktober 2026". */
@@ -258,7 +269,7 @@ export function AvailabilityCalendar({
               const dot = showDot ? (
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-1 h-1 w-1 rounded-full bg-green-700"
+                  className="absolute bottom-1 h-1 w-1 rounded-full bg-lime-700"
                 />
               ) : null;
               // Past days stay inert so clients can't ask about the past.
@@ -338,7 +349,7 @@ export function AvailabilityCalendar({
                 {STATUS_META[detail.status].label}
               </p>
               {isClosedDetail ? (
-                <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-900">
+                <p className="mt-2 rounded-lg bg-orange-100 px-3 py-2 text-sm font-medium text-red-900 ring-1 ring-inset ring-stone-900/5">
                   Sehari penuh — Tutup
                 </p>
               ) : mergedOccupied.length > 0 ? (
@@ -360,11 +371,11 @@ export function AvailabilityCalendar({
                   </p>
                 </div>
               ) : detail.status === "fully_booked" ? (
-                <p className="mt-2 rounded-lg bg-amber-200 px-3 py-2 text-sm font-medium text-amber-900">
+                <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 ring-1 ring-inset ring-stone-900/5">
                   Jadwal terisi penuh.
                 </p>
               ) : (
-                <p className="mt-2 rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-900">
+                <p className="mt-2 rounded-lg bg-lime-100 px-3 py-2 text-sm font-medium text-green-900 ring-1 ring-inset ring-stone-900/5">
                   Seharian tersedia
                 </p>
               )}

@@ -11,8 +11,9 @@ module.exports = {
       },
       colors: {
         // Warm elegant foundation: warm neutral page, deep espresso text,
-        // restrained gold accent. Day-status green/amber/red hues stay
-        // untouched (see availability-calendar.tsx).
+        // restrained gold accent. Day-status green/amber/red semantics keep
+        // their hue families and labels, warm-tinted (see
+        // availability-calendar.tsx).
         cream: "#FDF9F4",
         espresso: "#2E2620",
         gold: {

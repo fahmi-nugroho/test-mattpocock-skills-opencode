@@ -7,5 +7,6 @@ html {
 }
 
 ::selection {
-  background: #f7ead3;
+  /* Single-sourced from the tailwind gold.soft token — no hex here. */
+  background: theme("colors.gold.soft");
 }
