@@ -1,6 +1,7 @@
 import { AvailabilityCalendar } from "@/components/availability-calendar";
 import { PortfolioGrid } from "@/components/portfolio-grid";
 import { PriceList } from "@/components/price-list";
+import { HeroTrust } from "@/components/hero-trust";
 import { WaFloat } from "@/components/wa-float";
 import type {
   PortfolioItem,
@@ -9,7 +10,6 @@ import type {
 import { getVisiblePortfolioItems, getActiveServices } from "@/lib/supabase/queries";
 import { getPublicWaNumber } from "@/lib/supabase/public-settings";
 import { supabaseServer } from "@/lib/supabase/server";
-import { buildGeneralWaLink } from "@/lib/whatsapp";
 
 // Ticket 06: no ISR cache — admin portfolio/price edits read the same
 // tables live, so the landing reflects them on the very next load.
@@ -47,55 +47,45 @@ export default async function Home() {
   const { services, portfolio, waNumber } = await getLandingData();
 
   return (
-    <main className="mx-auto max-w-3xl px-4 pb-24">
-      <section className="py-14 text-center sm:py-20">
-        <p className="text-sm font-medium uppercase tracking-widest text-neutral-500">
-          Makeup Artist
-        </p>
-        <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
-          Tampil memukau di hari spesialmu
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-neutral-600">
-          Lihat portfolio, pilih layanan, lalu diskusikan tanggal dan waktu
-          langsung via WhatsApp — tanpa daftar akun.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <a
-            href={buildGeneralWaLink(waNumber)}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-green-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
-          >
-            Chat WhatsApp
-          </a>
-          <a
-            href="#harga"
-            className="rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700"
-          >
-            Lihat Harga
-          </a>
-        </div>
-      </section>
+    <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
+      {/* Hero trust block (ticket 02): 2-col copy + portrait, stacked mobile. */}
+      <HeroTrust portfolio={portfolio} waNumber={waNumber} />
 
-      <section id="portfolio" aria-label="Portfolio" className="py-8">
-        <h2 className="text-xl font-bold">Portfolio</h2>
-        <p className="mb-4 mt-1 text-sm text-neutral-600">
+      <section
+        id="portfolio"
+        aria-label="Portfolio"
+        className="scroll-mt-6 py-8"
+      >
+        <h2 className="font-display text-2xl font-bold sm:text-3xl">
+          Portfolio
+        </h2>
+        <p className="mb-4 mt-1 text-sm text-stone-600">
           Filter berdasarkan kategori untuk melihat gaya riasan.
         </p>
-        <PortfolioGrid items={portfolio} />
+        <PortfolioGrid items={portfolio} waNumber={waNumber} />
       </section>
 
-      <section id="harga" aria-label="Harga dan layanan" className="py-8">
-        <h2 className="text-xl font-bold">Harga &amp; Layanan</h2>
-        <p className="mb-4 mt-1 text-sm text-neutral-600">
+      <section
+        id="harga"
+        aria-label="Harga dan layanan"
+        className="mx-auto max-w-5xl scroll-mt-6 py-8"
+      >
+        <h2 className="font-display text-2xl font-bold sm:text-3xl">
+          Harga &amp; Layanan
+        </h2>
+        <p className="mb-4 mt-1 text-sm text-stone-600">
           Ketuk tombol WhatsApp pada layanan untuk bertanya langsung.
         </p>
         <PriceList services={services} waNumber={waNumber} />
       </section>
 
-      <section id="jadwal" aria-label="Jadwal" className="py-8">
-        <h2 className="text-xl font-bold">Jadwal</h2>
-        <p className="mb-4 mt-1 text-sm text-neutral-600">
+      <section
+        id="jadwal"
+        aria-label="Jadwal"
+        className="mx-auto max-w-3xl scroll-mt-6 py-8"
+      >
+        <h2 className="font-display text-2xl font-bold sm:text-3xl">Jadwal</h2>
+        <p className="mb-4 mt-1 text-sm text-stone-600">
           Cek perkiraan ketersediaan per tanggal, lalu tanyakan tanggal yang
           kamu mau langsung via WhatsApp.
         </p>

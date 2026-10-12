@@ -16,8 +16,6 @@ describe("getSettings", () => {
     const row = {
       id: 1,
       wa_number: "6281234567890",
-      open_hour: "09:00",
-      close_hour: "19:00",
       full_dates: [],
     };
     const client = {
@@ -69,7 +67,7 @@ describe("getSettings", () => {
 });
 
 describe("updateSettings", () => {
-  it("updates wa_number and hours on row id = 1", async () => {
+  it("updates wa_number only on row id = 1 (hours removed)", async () => {
     const calls: Array<[string, ...unknown[]]> = [];
     const client = {
       from: (table: string) => {
@@ -90,15 +88,10 @@ describe("updateSettings", () => {
     await expect(
       updateSettings(asClient(client), {
         wa_number: "6281234567890",
-        open_hour: "09:00",
-        close_hour: "19:00",
       }),
     ).resolves.toBeUndefined();
     expect(calls).toContainEqual(["from", "settings"]);
-    expect(calls).toContainEqual([
-      "update",
-      { wa_number: "6281234567890", open_hour: "09:00", close_hour: "19:00" },
-    ]);
+    expect(calls).toContainEqual(["update", { wa_number: "6281234567890" }]);
     expect(calls).toContainEqual(["eq", "id", 1]);
   });
 
@@ -113,8 +106,6 @@ describe("updateSettings", () => {
     await expect(
       updateSettings(asClient(client), {
         wa_number: "6281234567890",
-        open_hour: "09:00",
-        close_hour: "19:00",
       }),
     ).rejects.toThrow(/rls denied/);
   });

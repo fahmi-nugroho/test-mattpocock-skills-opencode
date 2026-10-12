@@ -23,7 +23,7 @@ Guarded by Supabase Auth browser session — unauthenticated visits redirect to 
 - **Blokir & Tanggal Penuh** — all-day or time-range blocks + manual full-date toggles, with conflict rejection vs confirmed bookings
 - **Portfolio manager** — CRUD + visibility toggle, Supabase Storage uploads with validation
 - **Services manager** — CRUD + active toggle, price / duration validation
-- **Pengaturan Operasional** — `wa_number`, `open_hour`, `close_hour` (single-row `settings id=1`, read live by public RPCs)
+- **Pengaturan Operasional** — `wa_number` (single-row `settings id=1`, read live by public RPCs)
 
 ## Tech Stack
 
@@ -138,7 +138,7 @@ Day columns stay `date + "HH:MM"` text (no timestamptz) — the shared seam betw
 2. Negotiation happens in WhatsApp (outside the app).
 3. Admin records the outcome in `/admin` → **Booking** (pending → confirmed / cancelled).
 4. Public calendar updates on next load (no realtime subscription in v1).
-5. Use **Blokir** for time off and **Tanggal Penuh** for manually full days; **Pengaturan** for WA number + open/close hours.
+5. Use **Blokir** for time off and **Tanggal Penuh** for manually full days; **Pengaturan** for WA number.
 
 ## Testing
 

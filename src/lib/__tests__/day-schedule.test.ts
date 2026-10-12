@@ -46,6 +46,9 @@ describe("mapDayScheduleRow", () => {
   });
 
   it("strips extra keys so client PII can never leak", () => {
+    // Intentional adversarial case: open_hour/close_hour are legacy
+    // settings keys (dropped in 0012) that must never leak into the
+    // public payload — do not "clean" them out of this fixture.
     expect(
       mapDayScheduleRow({
         date: "2026-10-15",
@@ -176,7 +179,63 @@ describe("mapDayScheduleRow", () => {
     ).toThrow(/invalid occupied time/i);
   });
 
+  it("maps a raw multi-range day at any hour in full, unclamped", () => {
+    // Server returns occupied sorted chronologically (order by s, kind)
+    // with raw unclamped times; the mapper must pass every range through.
+    const occupied = [
+      { start: "00:15", end: "01:00", kind: "booked" },
+      { start: "06:30", end: "07:30", kind: "booked" },
+      { start: "21:00", end: "23:00", kind: "blocked" },
+    ];
+    expect(
+      mapDayScheduleRow({
+        date: "2026-10-17",
+        status: "available",
+        all_day_blocked: false,
+        occupied,
+        free: [],
+      }),
+    ).toEqual({
+      date: "2026-10-17",
+      status: "available",
+      allDayBlocked: false,
+      occupied,
+      free: [],
+    });
+  });
+
+  it("strips service names and hours from occupied/free items", () => {
+    // Intentional adversarial case: open_hour/close_hour below prove
+    // legacy hours keys are stripped from nested items too — keep them.
+    expect(
+      mapDayScheduleRow({
+        date: "2026-10-17",
+        status: "available",
+        all_day_blocked: false,
+        occupied: [
+          {
+            start: "06:30",
+            end: "07:30",
+            kind: "booked",
+            service: "Akad",
+            service_id: "uuid-1",
+            open_hour: "09:00",
+            close_hour: "19:00",
+          },
+        ],
+        free: [{ start: "07:30", end: "08:00", open_hour: "09:00" }],
+      }),
+    ).toEqual({
+      date: "2026-10-17",
+      status: "available",
+      allDayBlocked: false,
+      occupied: [{ start: "06:30", end: "07:30", kind: "booked" }],
+      free: [{ start: "07:30", end: "08:00" }],
+    });
+  });
+
   it("maps free gaps to start/end only (no hours leak)", () => {
+    // Same adversarial strip-case as above (legacy open_hour key) — keep.
     expect(
       mapDayScheduleRow({
         date: "2026-10-16",

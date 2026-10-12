@@ -33,9 +33,10 @@ export async function getSettings(client: TypedClient): Promise<Settings> {
 }
 
 /**
- * Admin settings write (ticket 05). Persists wa_number + operating hours
- * on row id = 1; the public month RPC reads the same row live, so the
- * calendar derivation reflects the edit without extra wiring. Caller
+ * Admin settings write (hours-removal contract). Persists wa_number only
+ * on row id = 1. The operating-hours columns were dropped (see migration
+ * 0012); the public month/day RPCs read full_dates live, so the calendar
+ * derivation reflects full-toggle edits without extra wiring. Caller
  * validates via validateSettingsInput first.
  */
 export async function updateSettings(
@@ -53,8 +54,6 @@ export async function updateSettings(
     .from("settings")
     .update({
       wa_number: input.wa_number,
-      open_hour: input.open_hour,
-      close_hour: input.close_hour,
     })
     .eq("id", 1);
   if (error) throw new Error(`Failed to save settings: ${error.message}`);

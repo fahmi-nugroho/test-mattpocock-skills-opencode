@@ -54,8 +54,6 @@ export interface Block {
 export interface Settings {
   id: number; // always 1 (single-row table)
   wa_number: string;
-  open_hour: string; // "HH:MM"
-  close_hour: string; // "HH:MM"
   full_dates: string[]; // "YYYY-MM-DD" manual full-toggle dates
 }
 

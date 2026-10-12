@@ -24,6 +24,10 @@ import type { Block, Booking } from "@/lib/supabase/database";
 
 const STATUS_META: Record<DayStatus, { label: string; cell: string }> = {
   available: { label: "Tersedia", cell: "bg-green-100 text-green-900" },
+  // DEAD CODE (hours-removal contract): fully_booked is unreachable —
+  // with no operating window, coverage derivation was removed and nothing
+  // resolves to this status. Kept so the legend/metadata can be revived
+  // with the status itself (see docs/adr/0001-hours-removal.md).
   fully_booked: { label: "Penuh", cell: "bg-amber-200 text-amber-900" },
   blocked: { label: "Tutup", cell: "bg-red-100 text-red-900" },
 };
@@ -39,13 +43,7 @@ const STATUS_META: Record<DayStatus, { label: string; cell: string }> = {
  * keeps both implementations on one rule. Selecting a day lists its bookings/blocks (list view)
  * with a per-date full-toggle button.
  */
-export function AdminCalendar({
-  openHour,
-  closeHour,
-}: {
-  openHour: string;
-  closeHour: string;
-}) {
+export function AdminCalendar() {
   const [monthKey, setMonthKey] = useState(() => {
     const now = new Date();
     return toMonthKey(now.getFullYear(), now.getMonth() + 1);
@@ -111,17 +109,10 @@ export function AdminCalendar({
           start_time: b.start_time ?? undefined,
           end_time: b.end_time ?? undefined,
         }));
-      map[date] = computeDayStatus(
-        date,
-        dayBookings,
-        dayBlocks,
-        fullDates,
-        openHour,
-        closeHour,
-      );
+      map[date] = computeDayStatus(date, dayBookings, dayBlocks, fullDates);
     }
     return map;
-  }, [bookings, blocks, fullDates, openHour, closeHour, cells]);
+  }, [bookings, blocks, fullDates, cells]);
 
   const selectedBookings = bookings.filter((b) => b.date === selected);
   const selectedBlocks = blocks.filter((b) => b.date === selected);
