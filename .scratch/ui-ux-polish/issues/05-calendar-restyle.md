@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (needs tokens and width foundation).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Day colors keep existing semantics with legend intact, restyled to warm tints with stronger selected-day ring and muted past days
 - [ ] Day detail panel consolidates to a single primary WA CTA with correct date prefill; occupied ranges still listed without client PII
