@@ -1,6 +1,7 @@
 import { AvailabilityCalendar } from "@/components/availability-calendar";
 import { PortfolioGrid } from "@/components/portfolio-grid";
 import { PriceList } from "@/components/price-list";
+import { HeroTrust } from "@/components/hero-trust";
 import { WaFloat } from "@/components/wa-float";
 import type {
   PortfolioItem,
@@ -9,7 +10,6 @@ import type {
 import { getVisiblePortfolioItems, getActiveServices } from "@/lib/supabase/queries";
 import { getPublicWaNumber } from "@/lib/supabase/public-settings";
 import { supabaseServer } from "@/lib/supabase/server";
-import { buildGeneralWaLink } from "@/lib/whatsapp";
 
 // Ticket 06: no ISR cache — admin portfolio/price edits read the same
 // tables live, so the landing reflects them on the very next load.
@@ -48,38 +48,8 @@ export default async function Home() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-      {/* Hero: centered copy + both CTAs. Stays single-column in this
-          ticket — the 2-column copy+portrait layout lands in ticket 02
-          (hero-trust) with the owner portrait, trust stats, and
-          testimonials. */}
-      <section className="mx-auto max-w-2xl py-14 text-center sm:py-20">
-        <p className="text-sm font-medium uppercase tracking-widest text-gold">
-          Makeup Artist
-        </p>
-        <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-          Tampil memukau di hari spesialmu
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-stone-600">
-          Lihat portfolio, pilih layanan, lalu diskusikan tanggal dan waktu
-          langsung via WhatsApp — tanpa daftar akun.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <a
-            href={buildGeneralWaLink(waNumber)}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-green-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
-          >
-            Chat WhatsApp
-          </a>
-          <a
-            href="#harga"
-            className="rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
-          >
-            Lihat Harga
-          </a>
-        </div>
-      </section>
+      {/* Hero trust block (ticket 02): 2-col copy + portrait, stacked mobile. */}
+      <HeroTrust portfolio={portfolio} waNumber={waNumber} />
 
       <section
         id="portfolio"
