@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (needs the window-free day shape).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Given a tap on a today or future date, a modal popup opens with loading, error-with-retry, times list, closed-all-day, and available-all-day states; the popup header shows the full date plus the day status label.
 - [ ] Given the popup open, close button, backdrop tap, and Escape all dismiss it, background scrolling locks while open, and focus returns to the invoking date on close.

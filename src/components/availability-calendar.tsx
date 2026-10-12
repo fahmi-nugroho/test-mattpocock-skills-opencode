@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DayStatus } from "@/lib/availability";
 import {
   WEEKDAY_HEADERS_ID,
@@ -77,10 +77,11 @@ function formatDayId(dateKey: string): string {
  * whose SQL mirrors `computeDayStatus`; the pure function itself can't run
  * client-side because its bookings/blocks inputs would leak PII.
  *
- * Tapping a today/future day loads `get_day_schedule` for that date
- * (status + all-day flag + occupied Terisi/Tutup ranges; times+kind only,
- * no PII/hours) into the detail panel below. Free gaps are still fetched
- * but intentionally not displayed — clients propose a time via WhatsApp.
+ * Tapping a today/future day opens a modal popup over the calendar
+ * showing `get_day_schedule` for that date (status + all-day flag +
+ * occupied Terisi/Tutup ranges; times+kind only, no PII/hours).
+ * Free gaps are still fetched but intentionally not displayed — clients
+ * propose a time via WhatsApp (ticket 03 adds the picker).
  *
  * Partial-occupancy dots: the RPC intentionally hides occupancy counts,
  * so the public wiring passes no `partialDates` (all available days
@@ -112,6 +113,8 @@ export function AvailabilityCalendar({
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailAttempt, setDetailAttempt] = useState(0);
+  // Invoking date button for focus return after the popup closes.
+  const invokerRef = useRef<string | null>(null);
 
   const todayKey = useMemo(() => getTodayKey(), []);
   const partialSet = useMemo(
@@ -171,9 +174,45 @@ export function AvailabilityCalendar({
     };
   }, [selectedDate, detailAttempt]);
 
+  const popupOpen = selectedDate !== null;
+
+  function closePopup(): void {
+    setSelectedDate(null);
+    setDetail(null);
+    setDetailLoaded(false);
+    setDetailError(null);
+  }
+
+  // Popup chrome: Escape dismisses, background scrolling locks, and
+  // focus returns to the invoking date button on close.
+  useEffect(() => {
+    if (!popupOpen) return;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") closePopup();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      document.removeEventListener("keydown", onKeyDown);
+      const invoker = invokerRef.current;
+      if (invoker) {
+        invokerRef.current = null;
+        requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLElement>(`[data-date="${invoker}"]`)
+            ?.focus();
+        });
+      }
+    };
+  }, [popupOpen]);
+
   const { year, month } = parseMonthKey(monthKey);
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
   const monthLabel = formatMonthId(monthKey);
+  const headerStatus: DayStatus | undefined =
+    detail?.status ??
+    (selectedDate !== null ? statusByDate[selectedDate] : undefined);
   const empty = loaded && !error && Object.keys(statusByDate).length === 0;
   const isClosedDetail =
     detail !== null && (detail.status === "blocked" || detail.allDayBlocked);
@@ -183,8 +222,21 @@ export function AvailabilityCalendar({
   );
 
   function shiftMonthClearingSelection(delta: number): void {
-    setSelectedDate(null);
+    closePopup();
     setMonthKey((m) => shiftMonth(m, delta));
+  }
+
+  function handleDateTap(date: string): void {
+    if (selectedDate === date) {
+      closePopup();
+      return;
+    }
+    invokerRef.current = date;
+    // Fresh state per tap so no stale day detail lingers.
+    setDetail(null);
+    setDetailLoaded(false);
+    setDetailError(null);
+    setSelectedDate(date);
   }
 
   return (
@@ -287,12 +339,11 @@ export function AvailabilityCalendar({
                 <button
                   key={date}
                   type="button"
+                  data-date={date}
                   title={ariaLabel}
                   aria-label={ariaLabel}
                   aria-pressed={selected}
-                  onClick={() =>
-                    setSelectedDate((cur) => (cur === date ? null : date))
-                  }
+                  onClick={() => handleDateTap(date)}
                   className={`${dayClass} transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-1`}
                 >
                   <span>{dayNum}</span>
@@ -322,81 +373,105 @@ export function AvailabilityCalendar({
         </div>
       )}
 
-      {selectedDate !== null ? (
-        <div
-          aria-live="polite"
-          className="mt-4 rounded-xl border border-stone-200 bg-white p-4"
-        >
-          {!detailLoaded && !detailError ? (
-            <p className="text-sm text-stone-600">Memuat detail…</p>
-          ) : detailError || detail === null ? (
-            <div className="text-center">
-              <p className="text-sm text-stone-600">
-                {detailError ?? "Gagal memuat detail jadwal. Coba lagi."}
+      {popupOpen && selectedDate !== null ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <div
+            aria-hidden="true"
+            onClick={closePopup}
+            className="absolute inset-0 bg-stone-900/50"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Jadwal ${formatDayId(selectedDate)}`}
+            aria-live="polite"
+            className="relative max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-stone-200 bg-white p-4 shadow-xl sm:rounded-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-bold">
+                Jadwal {formatDayId(selectedDate)}
+                {headerStatus ? ` · ${STATUS_META[headerStatus].label}` : ""}
               </p>
               <button
+                // biome-ignore lint/a11y/noAutofocus: move focus into the
+                // modal on open so keyboard and screen-reader users land
+                // inside the popup; focus returns to the date on close.
+                autoFocus
                 type="button"
-                onClick={() => setDetailAttempt((a) => a + 1)}
-                className="mt-3 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
+                onClick={closePopup}
+                aria-label="Tutup"
+                className="rounded-full border border-stone-300 px-3 py-1 text-sm font-semibold transition hover:bg-stone-100"
               >
-                Coba lagi
+                ✕
               </button>
             </div>
-          ) : (
-            <div>
-              <p className="text-sm font-bold">
-                Jadwal {formatDayId(detail.date)} ·{" "}
-                {STATUS_META[detail.status].label}
-              </p>
-              {isClosedDetail ? (
-                <p className="mt-2 rounded-lg bg-orange-100 px-3 py-2 text-sm font-medium text-red-900 ring-1 ring-inset ring-stone-900/5">
-                  Sehari penuh — Tutup
+            {!detailLoaded && !detailError ? (
+              <p className="mt-2 text-sm text-stone-600">Memuat detail…</p>
+            ) : detailError || detail === null ? (
+              <div className="mt-2 text-center">
+                <p className="text-sm text-stone-600">
+                  {detailError ?? "Gagal memuat detail jadwal. Coba lagi."}
                 </p>
-              ) : mergedOccupied.length > 0 ? (
-                <div>
-                  <ul className="mt-2 space-y-1.5">
-                    {mergedOccupied.map((slot) => (
-                      <li
-                        key={`${slot.kind}-${slot.start}-${slot.end}`}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium ${OCCUPIED_META[slot.kind].row}`}
-                      >
-                        {OCCUPIED_META[slot.kind].label} {slot.start}–
-                        {slot.end}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-xs text-stone-600">
-                    Di luar jam di atas masih bisa ditanyakan — tulis jam yang
-                    kamu mau via WhatsApp.
+                <button
+                  type="button"
+                  onClick={() => setDetailAttempt((a) => a + 1)}
+                  className="mt-3 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
+                >
+                  Coba lagi
+                </button>
+              </div>
+            ) : (
+              <div>
+                {isClosedDetail ? (
+                  <p className="mt-2 rounded-lg bg-orange-100 px-3 py-2 text-sm font-medium text-red-900 ring-1 ring-inset ring-stone-900/5">
+                    Sehari penuh — Tutup
                   </p>
-                </div>
-              ) : detail.status === "fully_booked" ? (
-                <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 ring-1 ring-inset ring-stone-900/5">
-                  Jadwal terisi penuh.
-                </p>
-              ) : (
-                <p className="mt-2 rounded-lg bg-lime-100 px-3 py-2 text-sm font-medium text-green-900 ring-1 ring-inset ring-stone-900/5">
-                  Seharian tersedia
-                </p>
-              )}
-              <a
-                href={buildDateWaLink(waNumber, detail.date)}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-block rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
-              >
-                Tanya tanggal ini via WhatsApp
-              </a>
-            </div>
-          )}
+                ) : mergedOccupied.length > 0 ? (
+                  <div>
+                    <ul className="mt-2 space-y-1.5">
+                      {mergedOccupied.map((slot) => (
+                        <li
+                          key={`${slot.kind}-${slot.start}-${slot.end}`}
+                          className={`rounded-lg px-3 py-2 text-sm font-medium ${OCCUPIED_META[slot.kind].row}`}
+                        >
+                          {OCCUPIED_META[slot.kind].label} {slot.start}–
+                          {slot.end}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-stone-600">
+                      Di luar jam di atas masih bisa ditanyakan — tulis jam yang
+                      kamu mau via WhatsApp.
+                    </p>
+                  </div>
+                ) : detail.status === "fully_booked" ? (
+                  <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 ring-1 ring-inset ring-stone-900/5">
+                    Jadwal terisi penuh.
+                  </p>
+                ) : (
+                  <p className="mt-2 rounded-lg bg-lime-100 px-3 py-2 text-sm font-medium text-green-900 ring-1 ring-inset ring-stone-900/5">
+                    Seharian tersedia
+                  </p>
+                )}
+                <a
+                  href={buildDateWaLink(waNumber, detail.date)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-block rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
+                >
+                  Tanya tanggal ini via WhatsApp
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 
-      {/* Single-CTA consolidation (ticket 05): exactly one WA action is
-          visible at a time. Once the detail panel has its date-prefill
-          CTA it carries the inquiry; until then (no selection, loading,
-          or error) this general starter keeps one conversion path. */}
-      {selectedDate === null || detail === null ? (
+      {/* Single-action rule: the popup's date chat action carries the
+          inquiry while open; the general starter shows only when no
+          popup is open. While the popup loads or errors there is no
+          CTA until the date action is ready. */}
+      {!popupOpen ? (
         <a
           href={buildGeneralWaLink(waNumber)}
           target="_blank"
