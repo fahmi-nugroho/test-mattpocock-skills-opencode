@@ -393,10 +393,10 @@ export function AvailabilityCalendar({
       ) : null}
 
       {/* Single-CTA consolidation (ticket 05): exactly one WA action is
-          visible at a time. With a day selected the detail panel above
-          carries the single primary date-prefill CTA; otherwise this
-          general starter keeps one conversion path. */}
-      {selectedDate === null ? (
+          visible at a time. Once the detail panel has its date-prefill
+          CTA it carries the inquiry; until then (no selection, loading,
+          or error) this general starter keeps one conversion path. */}
+      {selectedDate === null || detail === null ? (
         <a
           href={buildGeneralWaLink(waNumber)}
           target="_blank"
