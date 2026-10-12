@@ -46,6 +46,9 @@ describe("mapDayScheduleRow", () => {
   });
 
   it("strips extra keys so client PII can never leak", () => {
+    // Intentional adversarial case: open_hour/close_hour are legacy
+    // settings keys (dropped in 0012) that must never leak into the
+    // public payload — do not "clean" them out of this fixture.
     expect(
       mapDayScheduleRow({
         date: "2026-10-15",
@@ -202,6 +205,8 @@ describe("mapDayScheduleRow", () => {
   });
 
   it("strips service names and hours from occupied/free items", () => {
+    // Intentional adversarial case: open_hour/close_hour below prove
+    // legacy hours keys are stripped from nested items too — keep them.
     expect(
       mapDayScheduleRow({
         date: "2026-10-17",
@@ -230,6 +235,7 @@ describe("mapDayScheduleRow", () => {
   });
 
   it("maps free gaps to start/end only (no hours leak)", () => {
+    // Same adversarial strip-case as above (legacy open_hour key) — keep.
     expect(
       mapDayScheduleRow({
         date: "2026-10-16",

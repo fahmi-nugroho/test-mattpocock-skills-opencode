@@ -35,7 +35,7 @@ export async function getSettings(client: TypedClient): Promise<Settings> {
 /**
  * Admin settings write (hours-removal contract). Persists wa_number only
  * on row id = 1. The operating-hours columns were dropped (see migration
- * 0011); the public month/day RPCs read full_dates live, so the calendar
+ * 0012); the public month/day RPCs read full_dates live, so the calendar
  * derivation reflects full-toggle edits without extra wiring. Caller
  * validates via validateSettingsInput first.
  */
