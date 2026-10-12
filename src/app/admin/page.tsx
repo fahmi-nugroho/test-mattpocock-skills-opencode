@@ -27,16 +27,13 @@ const EMPTY_SUMMARY: OverviewSummary = {
  * Guarded admin dashboard (ticket 05): browser-session guard redirects
  * to /admin/login without a session; authenticated reads use the same
  * browser client so the `authenticated` RLS policies apply. Shows
- * today/upcoming booking counts plus the operating-settings form whose
- * saves are read live by the public month RPC (calendar derivation).
+ * today/upcoming booking counts plus the WA-number settings form.
  */
 export default function AdminPage() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [summary, setSummary] = useState<OverviewSummary>(EMPTY_SUMMARY);
   const [waNumber, setWaNumber] = useState("");
-  const [openHour, setOpenHour] = useState("09:00");
-  const [closeHour, setCloseHour] = useState("19:00");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -73,8 +70,6 @@ export default function AdminPage() {
         if (cancelled) return;
         setSummary(summarizeBookings(bookings, today));
         setWaNumber(settings.wa_number);
-        setOpenHour(settings.open_hour);
-        setCloseHour(settings.close_hour);
         setSettingsReady(true);
       } catch {
         if (!cancelled) setLoadError("Gagal memuat data admin. Coba lagi.");
@@ -137,8 +132,6 @@ export default function AdminPage() {
     try {
       validated = validateSettingsInput({
         wa_number: waNumber,
-        open_hour: openHour,
-        close_hour: closeHour,
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Input tidak valid");
@@ -245,10 +238,10 @@ export default function AdminPage() {
           — sama seperti kalender publik.
         </p>
         {settingsReady ? (
-          <AdminCalendar openHour={openHour} closeHour={closeHour} />
+          <AdminCalendar />
         ) : (
           <p className="mt-3 text-sm text-neutral-600">
-            {loadError ?? "Menunggu pengaturan jam…"}
+            {loadError ?? "Menunggu pengaturan…"}
           </p>
         )}
       </section>
@@ -292,7 +285,8 @@ export default function AdminPage() {
       <section id="pengaturan" aria-label="Pengaturan operasional" className="mt-8 scroll-mt-24">
         <h2 className="font-display text-lg font-bold">Pengaturan Operasional</h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Nomor WA dan jam dipakai link WhatsApp dan kalender publik.
+          Nomor WA dipakai link WhatsApp. Kalender publik membaca jadwal
+          langsung tanpa batasan jam operasional.
         </p>
         <form onSubmit={onSave} className="mt-4 space-y-4">
           <label className="block">
@@ -307,30 +301,6 @@ export default function AdminPage() {
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-medium">Jam buka</span>
-              <input
-                type="time"
-                required
-                disabled={!settingsReady}
-                value={openHour}
-                onChange={(e) => setOpenHour(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium">Jam tutup</span>
-              <input
-                type="time"
-                required
-                disabled={!settingsReady}
-                value={closeHour}
-                onChange={(e) => setCloseHour(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              />
-            </label>
-          </div>
           {formError ? (
             <p role="alert" className="text-sm text-red-600">
               {formError}

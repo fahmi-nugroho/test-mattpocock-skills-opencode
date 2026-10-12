@@ -341,6 +341,52 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(lower).toMatch(/set\s+search_path/);
   });
 
+  it("0011 redefines month RPC window-free: closed or available only, no PII/hours", () => {
+    const sql = readMigration("0011_month_window_free.sql");
+    const lower = sql.toLowerCase();
+    expect(lower).toMatch(/create or replace function get_month_availability/);
+    // Return shape unchanged: one (date, status) row per calendar date.
+    expect(lower).toMatch(/returns table\s*\(\s*date date,\s*status text\s*\)/);
+    // Reads ONLY full_dates from settings (like the 0010 day pattern).
+    expect(lower).toMatch(/full_dates/);
+    // Blocked for full-toggle or all-day blocks, available otherwise.
+    expect(lower).toMatch(/v_status\s*:=\s*'blocked'/);
+    expect(lower).toMatch(/v_status\s*:=\s*'available'/);
+    // Window-free: no hours reads, no clamp helpers, no coverage walk.
+    const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("open_hour");
+    expect(code).not.toContain("close_hour");
+    expect(code).not.toContain("hhmm_to_min");
+    expect(code).not.toContain("generate_series");
+    expect(code).not.toContain("greatest");
+    expect(code).not.toContain("least");
+    // No client PII may be selected anywhere in the function body.
+    expect(code).not.toContain("client_name");
+    expect(code).not.toContain("client_phone");
+    expect(code).not.toContain("notes");
+    expect(code).not.toContain("reason");
+    // Public calendar callable by anon with fixed search_path.
+    expect(lower).toContain("to anon");
+    expect(lower).toMatch(/set\s+search_path/);
+  });
+
+  it("0012 drops settings hours with a restore note and no other data loss", () => {
+    const sql = readMigration("0012_settings_drop_hours.sql");
+    const code = codeOnly(sql).toLowerCase();
+    expect(code).toMatch(/alter table\s+settings\s+drop column\s+open_hour/);
+    expect(code).toMatch(/alter table\s+settings\s+drop column\s+close_hour/);
+    // wa_number and full_dates are untouched: no destructive op names them.
+    expect(code).not.toMatch(/drop column\s+wa_number/);
+    expect(code).not.toMatch(/drop column\s+full_dates/);
+    expect(code).not.toContain("drop table");
+    // Restore note: header documents how to re-add the columns.
+    const header = sql.toLowerCase();
+    expect(header).toMatch(/restore/);
+    expect(header).toContain("add column open_hour");
+    expect(header).toContain("add column close_hour");
+    expect(header).toMatch(/open_hour\s*<\s*close_hour/);
+  });
+
   it("0006 caps portfolio categories at six via trigger (client cap bypass-proof)", () => {
     const sql = readMigration("0006_portfolio_category_cap.sql");
     const lower = sql.toLowerCase();

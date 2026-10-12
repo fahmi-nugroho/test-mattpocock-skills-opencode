@@ -39,6 +39,10 @@ const STATUS_META: Record<
     swatch: "bg-lime-600",
     cell: "bg-lime-100 text-green-900 ring-1 ring-inset ring-stone-900/5",
   },
+  // DEAD CODE (hours-removal contract): fully_booked is unreachable —
+  // coverage derivation was removed with the operating window, so no
+  // RPC or derivation resolves to this status. Kept so the legend can
+  // be revived with the status itself (see docs/adr/0001-hours-removal.md).
   fully_booked: {
     label: "Penuh",
     swatch: "bg-amber-600",
