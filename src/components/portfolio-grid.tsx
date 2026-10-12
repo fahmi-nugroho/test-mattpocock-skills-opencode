@@ -19,7 +19,7 @@ export function PortfolioGrid({ items }: { items: PortfolioItem[] }) {
 
   if (items.length === 0) {
     return (
-      <p className="text-neutral-600">
+      <p className="text-stone-600">
         Portfolio segera hadir — silakan chat WhatsApp untuk contoh hasil
         terbaru.
       </p>
@@ -38,8 +38,8 @@ export function PortfolioGrid({ items }: { items: PortfolioItem[] }) {
             onClick={() => setActive(category)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
               category === active
-                ? "bg-neutral-900 text-white"
-                : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                ? "bg-stone-900 text-amber-50"
+                : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
             }`}
           >
             {category}
@@ -47,15 +47,15 @@ export function PortfolioGrid({ items }: { items: PortfolioItem[] }) {
         ))}
       </div>
       {visible.length === 0 ? (
-        <p className="mt-6 text-neutral-600">
+        <p className="mt-6 text-stone-600">
           Belum ada karya untuk kategori ini.
         </p>
       ) : (
-        <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <ul className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 lg:gap-6">
           {visible.map((item) => (
             <li
               key={item.id}
-              className="overflow-hidden rounded-xl bg-neutral-100"
+              className="overflow-hidden rounded-xl border border-stone-200/70 bg-white shadow-sm"
             >
               <div className="relative aspect-[3/4]">
                 <Image

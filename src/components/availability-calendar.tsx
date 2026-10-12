@@ -41,9 +41,9 @@ const STATUS_META: Record<
   },
 };
 
-const UNKNOWN_CELL = "bg-neutral-50 text-neutral-400";
+const UNKNOWN_CELL = "bg-stone-50 text-stone-400";
 
-const SELECTED_RING = " ring-2 ring-neutral-900 ring-offset-1";
+const SELECTED_RING = " ring-2 ring-gold-deep ring-offset-2 ring-offset-cream";
 
 const OCCUPIED_META = {
   booked: { label: "Terisi", row: "bg-amber-200 text-amber-900" },
@@ -183,7 +183,7 @@ export function AvailabilityCalendar({
           type="button"
           onClick={() => shiftMonthClearingSelection(-1)}
           aria-label="Bulan sebelumnya"
-          className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-stone-100"
         >
           ‹
         </button>
@@ -194,7 +194,7 @@ export function AvailabilityCalendar({
           type="button"
           onClick={() => shiftMonthClearingSelection(1)}
           aria-label="Bulan berikutnya"
-          className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-stone-100"
         >
           ›
         </button>
@@ -202,36 +202,36 @@ export function AvailabilityCalendar({
 
       {!loaded && !error ? (
         <div aria-busy="true" className="mt-4">
-          <p className="text-sm text-neutral-600">Memuat jadwal…</p>
+          <p className="text-sm text-stone-600">Memuat jadwal…</p>
           <div className="mt-2 grid grid-cols-7 gap-1" aria-hidden="true">
             {cells.map((cell, i) => (
               <div
                 key={cell ?? `blank-${i}`}
-                className="aspect-square animate-pulse rounded-lg bg-neutral-100"
+                className="aspect-square animate-pulse rounded-lg bg-stone-100"
               />
             ))}
           </div>
         </div>
       ) : error ? (
-        <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-center">
-          <p className="text-sm text-neutral-600">{error}</p>
+        <div className="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-center">
+          <p className="text-sm text-stone-600">{error}</p>
           <button
             type="button"
             onClick={() => setAttempt((a) => a + 1)}
-            className="mt-3 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700"
+            className="mt-3 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
           >
             Coba lagi
           </button>
         </div>
       ) : empty ? (
-        <p className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-center text-sm text-neutral-600">
+        <p className="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-center text-sm text-stone-600">
           Jadwal bulan ini belum tersedia — tanyakan langsung via WhatsApp
           untuk info terbaru.
         </p>
       ) : (
         <div className="mt-4">
           <div
-            className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-neutral-500"
+            className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-stone-500"
             aria-hidden="true"
           >
             {WEEKDAY_HEADERS_ID.map((day) => (
@@ -282,7 +282,7 @@ export function AvailabilityCalendar({
                   onClick={() =>
                     setSelectedDate((cur) => (cur === date ? null : date))
                   }
-                  className={`${dayClass} transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1`}
+                  className={`${dayClass} transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-1`}
                 >
                   <span>{dayNum}</span>
                   {dot}
@@ -290,7 +290,7 @@ export function AvailabilityCalendar({
               );
             })}
           </div>
-          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-600">
             {(Object.keys(STATUS_META) as DayStatus[]).map((status) => (
               <li key={status} className="flex items-center gap-1.5">
                 <span
@@ -303,7 +303,7 @@ export function AvailabilityCalendar({
             <li className="flex items-center gap-1.5">
               <span
                 aria-hidden="true"
-                className="h-3 w-3 rounded bg-neutral-200"
+                className="h-3 w-3 rounded bg-stone-200"
               />
               Tanggal lalu
             </li>
@@ -314,19 +314,19 @@ export function AvailabilityCalendar({
       {selectedDate !== null ? (
         <div
           aria-live="polite"
-          className="mt-4 rounded-xl border border-neutral-200 bg-white p-4"
+          className="mt-4 rounded-xl border border-stone-200 bg-white p-4"
         >
           {!detailLoaded && !detailError ? (
-            <p className="text-sm text-neutral-600">Memuat detail…</p>
+            <p className="text-sm text-stone-600">Memuat detail…</p>
           ) : detailError || detail === null ? (
             <div className="text-center">
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-stone-600">
                 {detailError ?? "Gagal memuat detail jadwal. Coba lagi."}
               </p>
               <button
                 type="button"
                 onClick={() => setDetailAttempt((a) => a + 1)}
-                className="mt-3 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700"
+                className="mt-3 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
               >
                 Coba lagi
               </button>
@@ -354,7 +354,7 @@ export function AvailabilityCalendar({
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 text-xs text-neutral-600">
+                  <p className="mt-2 text-xs text-stone-600">
                     Di luar jam di atas masih bisa ditanyakan — tulis jam yang
                     kamu mau via WhatsApp.
                   </p>
@@ -372,7 +372,7 @@ export function AvailabilityCalendar({
                 href={buildDateWaLink(waNumber, detail.date)}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-3 inline-block rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700"
+                className="mt-3 inline-block rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
               >
                 Tanya tanggal ini via WhatsApp
               </a>
@@ -385,7 +385,7 @@ export function AvailabilityCalendar({
         href={buildGeneralWaLink(waNumber)}
         target="_blank"
         rel="noreferrer"
-        className="mt-4 inline-block rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-neutral-100"
+        className="mt-4 inline-block rounded-full border border-stone-300 px-6 py-2.5 text-sm font-semibold transition hover:bg-stone-100"
       >
         Tanya Jadwal via WhatsApp
       </a>

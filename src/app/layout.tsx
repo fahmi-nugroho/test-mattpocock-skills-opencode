@@ -1,5 +1,19 @@
 import type { Metadata } from "next";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
+
+// Serif display for H1/H2 only; body copy stays sans.
+const display = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const sans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Makeup Artist",
@@ -13,7 +27,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body
+        className={`${sans.variable} ${display.variable} bg-cream font-sans text-espresso antialiased`}
+      >
+        {children}
+      </body>
     </html>
   );
 }
