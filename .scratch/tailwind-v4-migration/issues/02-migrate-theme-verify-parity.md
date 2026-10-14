@@ -51,3 +51,21 @@
 - `npm run test` still fails at startup (`Cannot find package 'vite'` —
   pre-existing broken test-runner install, out of scope per spec, same
   before/after). No new Vitest seams added.
+
+## Code review (integration branch vs main, two axes)
+
+Standards: 1 judgement call (borderline Divergent Change — `package.json`
+mixes the pre-existing Next 14→16 / Vitest 2→5 bump with the Tailwind
+migration). Dismissed: the framework/test-runner bump predates this spec
+(it is the audit-force accident the spec responds to), not something this
+change introduced; splitting it out is out of scope per spec
+("test-runner major bump ride along unchanged"). No other smells;
+`@theme`/`@theme inline` split and the self-named font vars considered
+and cleared (distinct directives; comment names both sides).
+
+Spec: no missing/partial requirements, nothing implemented-but-wrong.
+1 scope-creep flag (semantic `tsconfig.json` changes — `jsx:
+react-jsx`, `target: ES2017` — beyond pure formatting drift).
+Dismissed: `tsconfig.json` is Next-managed (rewritten by dev/build);
+reverting fights the framework and the Next 16 upgrade requires it.
+Drift rides along per spec. No fix applied.
