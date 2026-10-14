@@ -1,12 +1,31 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Warm elegant foundation, moved from tailwind.config.js (left in
+     place unmodified for rollback comparison; removal is a follow-up).
+     These names preserve every existing utility class (bg-cream,
+     text-espresso, text-gold, bg-gold-soft, text-gold-deep, ...). */
+  --color-cream: #fdf9f4;
+  --color-espresso: #2e2620;
+  --color-gold: #b45309;
+  --color-gold-deep: #92400e;
+  --color-gold-soft: #f7ead3;
+}
+
+@theme inline {
+  /* Serif display for H1/H2 only; body copy stays sans. `inline` keeps
+     the runtime next/font variables (set on <body> in layout.tsx) as
+     the resolved value with the same Georgia / system-ui fallbacks the
+     legacy JS theme declared — no :root emission, so no self-reference. */
+  --font-display: var(--font-display), Georgia, serif;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
 
 html {
   scroll-behavior: smooth;
 }
 
 ::selection {
-  /* Single-sourced from the tailwind gold.soft token — no hex here. */
-  background: theme("colors.gold.soft");
+  /* Single-sourced from the CSS-first gold.soft token — no hex here. */
+  background: var(--color-gold-soft);
 }
