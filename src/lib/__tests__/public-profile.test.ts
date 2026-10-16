@@ -60,4 +60,37 @@ describe("getPublicProfile", () => {
       /db down/,
     );
   });
+
+  it("accepts the RETURNS TABLE array shape (supabase-js returns rows)", async () => {
+    const row = {
+      headline: "Tampil memukau di hari spesialmu",
+      subcopy: "Lihat portfolio lalu chat WhatsApp.",
+      portrait_url: "https://example.com/p.jpg",
+    };
+    const fakeClient = {
+      rpc: async () => ({ data: [row], error: null }),
+    };
+    await expect(getPublicProfile(asClient(fakeClient))).resolves.toEqual(row);
+  });
+
+  it("throws on an empty array (missing settings row)", async () => {
+    const fakeClient = {
+      rpc: async () => ({ data: [], error: null }),
+    };
+    await expect(getPublicProfile(asClient(fakeClient))).rejects.toThrow(
+      /profile/i,
+    );
+  });
+
+  it("throws on an array row with blank headline", async () => {
+    const fakeClient = {
+      rpc: async () => ({
+        data: [{ headline: "   ", subcopy: "S", portrait_url: null }],
+        error: null,
+      }),
+    };
+    await expect(getPublicProfile(asClient(fakeClient))).rejects.toThrow(
+      /profile/i,
+    );
+  });
 });

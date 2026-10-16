@@ -12,8 +12,9 @@
 -- Stats/testimoni stay on direct anon SELECT (visible-only RLS from
 -- 0013) since they carry no sensitive columns.
 --
--- FALLBACK: returns null row when settings id = 1 is missing; the
--- landing's getLandingData catches RPC errors and renders the hardcoded
+-- FALLBACK: returns zero rows when settings id = 1 is missing; the
+-- landing's getPublicProfile throws "Public profile is missing" on the
+-- empty array and getLandingData renders the hardcoded
 -- FALLBACK_HEADLINE/SUBCOPY + portfolio-cover portrait instead.
 
 create or replace function get_public_profile()

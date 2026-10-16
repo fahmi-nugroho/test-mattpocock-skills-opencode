@@ -106,4 +106,14 @@ describe("validateProfileInput", () => {
       }),
     ).toThrow(/https|portrait/i);
   });
+
+  it("rejects a portrait URL containing whitespace", () => {
+    expect(() =>
+      validateProfileInput({
+        headline: "Halo",
+        subcopy: "Deskripsi",
+        portrait_url: "https://example.com/a b.jpg",
+      }),
+    ).toThrow(/portrait/i);
+  });
 });

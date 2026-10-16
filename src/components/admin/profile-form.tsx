@@ -84,15 +84,17 @@ export function ProfileForm() {
     setFormError(null);
     setNotice(null);
     setSaved(false);
-    // Validate text + manual URL first (when no new file is picked) so
-    // a typo never triggers a storage upload.
+    // With a new file picked, the upload replaces the manual URL, so
+    // pre-validate only text (portrait_url: null) plus the file itself —
+    // a stale typo in the manual field must not block a valid upload.
+    // The uploaded URL is validated after the upload (see below).
     if (file) {
       try {
         checkImageFile(file);
         validateProfileInput({
           headline,
           subcopy,
-          portrait_url: manualUrl,
+          portrait_url: null,
         });
       } catch (err) {
         setFormError(err instanceof Error ? err.message : "Input tidak valid");
