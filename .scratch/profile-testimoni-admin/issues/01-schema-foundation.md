@@ -21,9 +21,9 @@ holds on empty tables). Verified: 38 test files / 261 tests pass,
 prefix per spec #44. Deferred to tickets 02/03: display caps, landing
 loader, admin validators, settings public-read helper.
 
-- [ ] Settings single row gains headline, subcopy, portrait URL columns with sensible defaults and length checks
-- [ ] New testimonials collection (quote, client name, sort order, visible flag) with sort and visibility indexes
-- [ ] New profile stats collection (value, label, sort order, visible flag) with sort and visibility indexes
-- [ ] Anonymous role can only read visible testimonials and stats; authenticated admin role has full CRUD on both plus settings update
-- [ ] Portrait image storage is publicly readable and writable only by authenticated admin (reuse existing public bucket pattern or add a profile bucket consistently)
-- [ ] Migration applies cleanly on a fresh database and landing still renders via existing hardcoded fallback when new tables are empty
+- [x] Settings single row gains headline, subcopy, portrait URL columns with sensible defaults and length checks
+- [x] New testimonials collection (quote, client name, sort order, visible flag) with sort and visibility indexes
+- [x] New profile stats collection (value, label, sort order, visible flag) with sort and visibility indexes
+- [x] Anonymous role can only read visible testimonials and stats; authenticated admin role has full CRUD on both plus settings update
+- [x] Portrait image storage is publicly readable and writable only by authenticated admin (reuse existing public bucket pattern or add a profile bucket consistently)
+- [x] Migration applies cleanly on a fresh database and landing still renders via existing hardcoded fallback when new tables are empty
