@@ -3,7 +3,7 @@ import type { Database } from "./database";
 
 type TypedClient = SupabaseClient<Database>;
 
-export type AdminImageBucket = "portfolio" | "prices";
+export type AdminImageBucket = "portfolio" | "prices" | "profile";
 
 interface StorageBucketApi {
   upload(
@@ -47,8 +47,9 @@ function extensionFor(file: Blob, fallbackExt: string): string {
 }
 
 /**
- * Admin image upload (ticket 06). Uploads to `portfolio/` or `prices/`
- * (public-read, authenticated-write per 0003_storage.sql) and returns
+ * Admin image upload (ticket 06). Uploads to `portfolio/`, `prices/`, or
+ * `profile/` (public-read, authenticated-write per 0003_storage.sql +
+ * 0013 portrait bucket) and returns
  * the public URL to store on the row. Call with an authenticated
  * browser client so the `storage_admin_insert` policy applies.
  */

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Database,
   PortfolioItem,
+  ProfileStatRow,
   Service,
+  TestimonialRow,
 } from "./database";
 
 type TypedClient = SupabaseClient<Database>;
@@ -73,5 +75,39 @@ export async function getVisiblePortfolioItems(
     "portfolio_items",
     "visible",
     "Failed to load portfolio items",
+  );
+}
+
+/**
+ * Public reads (anon-safe by RLS): visible testimonials ordered by sort.
+ * Mirrors the testimonials_public_read policy (visible = true).
+ * Empty arrays pass through so the landing keeps its hardcoded
+ * TESTIMONIALS fallback when the table is empty.
+ */
+export async function getVisibleTestimonials(
+  client: TypedClient,
+): Promise<TestimonialRow[]> {
+  return queryOrderedPublicList<TestimonialRow>(
+    client,
+    "testimonials",
+    "visible",
+    "Failed to load testimonials",
+  );
+}
+
+/**
+ * Public reads (anon-safe by RLS): visible profile stats ordered by sort.
+ * Mirrors the profile_stats_public_read policy (visible = true).
+ * Empty arrays pass through so the landing keeps its hardcoded
+ * HERO_STATS fallback when the table is empty.
+ */
+export async function getVisibleProfileStats(
+  client: TypedClient,
+): Promise<ProfileStatRow[]> {
+  return queryOrderedPublicList<ProfileStatRow>(
+    client,
+    "profile_stats",
+    "visible",
+    "Failed to load profile stats",
   );
 }

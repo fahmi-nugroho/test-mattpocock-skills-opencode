@@ -12,6 +12,9 @@ import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { getSettings, updateSettings } from "@/lib/supabase/admin-settings";
 import { PortfolioManager } from "@/components/admin/portfolio-manager";
 import { ServicesManager } from "@/components/admin/services-manager";
+import { ProfileForm } from "@/components/admin/profile-form";
+import { StatsManager } from "@/components/admin/stats-manager";
+import { TestimonialsManager } from "@/components/admin/testimonials-manager";
 import { BookingsManager } from "@/components/admin/bookings-manager";
 import { BlocksManager } from "@/components/admin/blocks-manager";
 import { AdminCalendar } from "@/components/admin/admin-calendar";
@@ -280,6 +283,22 @@ export default function AdminPage() {
           terbaca kartu harga publik.
         </p>
         <ServicesManager />
+      </section>
+
+      <section id="profil-testimoni" aria-label="Profil dan testimoni" className="mt-8 scroll-mt-24">
+        <h2 className="font-display text-lg font-bold">Profil &amp; Testimoni</h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Profil dan review klien tampil di landing — perubahan tersimpan
+          langsung terbaca blok hero publik.
+        </p>
+        <h3 className="mt-4 text-sm font-bold text-neutral-800">Profil</h3>
+        <ProfileForm />
+        <h3 className="mt-6 text-sm font-bold text-neutral-800">
+          Stat pencapaian (maks 4 tampil di landing)
+        </h3>
+        <StatsManager />
+        <h3 className="mt-6 text-sm font-bold text-neutral-800">Testimoni</h3>
+        <TestimonialsManager />
       </section>
 
       <section id="pengaturan" aria-label="Pengaturan operasional" className="mt-8 scroll-mt-24">

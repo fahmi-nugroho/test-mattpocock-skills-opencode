@@ -5,10 +5,21 @@ import { HeroTrust } from "@/components/hero-trust";
 import { WaFloat } from "@/components/wa-float";
 import type {
   PortfolioItem,
+  ProfileStatRow,
   Service,
+  TestimonialRow,
 } from "@/lib/supabase/database";
-import { getVisiblePortfolioItems, getActiveServices } from "@/lib/supabase/queries";
+import {
+  getVisiblePortfolioItems,
+  getActiveServices,
+  getVisibleProfileStats,
+  getVisibleTestimonials,
+} from "@/lib/supabase/queries";
 import { getPublicWaNumber } from "@/lib/supabase/public-settings";
+import {
+  getPublicProfile,
+  type PublicProfile,
+} from "@/lib/supabase/public-profile";
 import { supabaseServer } from "@/lib/supabase/server";
 
 // Ticket 06: no ISR cache — admin portfolio/price edits read the same
@@ -23,33 +34,71 @@ export const revalidate = 0;
 const FALLBACK_WA_NUMBER =
   process.env.NEXT_PUBLIC_WA_NUMBER ?? "6280000000000";
 
+/** Unwrap a Promise.allSettled result, falling back on rejection. */
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
 async function getLandingData(): Promise<{
   services: Service[];
   portfolio: PortfolioItem[];
+  testimonials: TestimonialRow[];
+  stats: ProfileStatRow[];
+  profile: PublicProfile | null;
   waNumber: string;
 }> {
   try {
     const supabase = supabaseServer();
-    const [services, portfolio, waNumber] = await Promise.all([
-      getActiveServices(supabase),
-      getVisiblePortfolioItems(supabase),
-      getPublicWaNumber(supabase),
-    ]);
-    return { services, portfolio, waNumber };
+    const [services, portfolio, testimonials, stats, profileResult, waNumber] =
+      await Promise.allSettled([
+        getActiveServices(supabase),
+        getVisiblePortfolioItems(supabase),
+        getVisibleTestimonials(supabase),
+        getVisibleProfileStats(supabase),
+        getPublicProfile(supabase),
+        getPublicWaNumber(supabase),
+      ]);
+    // Profil/stats/testimoni fall back to hardcoded landing content when
+    // their reads fail; services/portfolio fall back to empty sections.
+    // WA keeps its env fallback. The landing never 500s on backend
+    // failure (ticket 03: empty settings/stats → hardcoded fallback).
+    if (waNumber.status === "rejected") throw waNumber.reason;
+    return {
+      services: settledValue(services, []),
+      portfolio: settledValue(portfolio, []),
+      testimonials: settledValue(testimonials, []),
+      stats: settledValue(stats, []),
+      profile: settledValue(profileResult, null),
+      waNumber: waNumber.value,
+    };
   } catch {
     // Landing stays readable when the backend is unreachable: empty
     // sections with WA fallback instead of a 500.
-    return { services: [], portfolio: [], waNumber: FALLBACK_WA_NUMBER };
+    return {
+      services: [],
+      portfolio: [],
+      testimonials: [],
+      stats: [],
+      profile: null,
+      waNumber: FALLBACK_WA_NUMBER,
+    };
   }
 }
 
 export default async function Home() {
-  const { services, portfolio, waNumber } = await getLandingData();
+  const { services, portfolio, testimonials, stats, profile, waNumber } =
+    await getLandingData();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-      {/* Hero trust block (ticket 02): 2-col copy + portrait, stacked mobile. */}
-      <HeroTrust portfolio={portfolio} waNumber={waNumber} />
+      {/* Hero trust block (ticket 03): live profil + stats, hardcoded fallback. */}
+      <HeroTrust
+        portfolio={portfolio}
+        testimonials={testimonials}
+        stats={stats}
+        profile={profile}
+        waNumber={waNumber}
+      />
 
       <section
         id="portfolio"
