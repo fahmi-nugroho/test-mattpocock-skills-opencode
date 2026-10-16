@@ -55,6 +55,25 @@ export interface Settings {
   id: number; // always 1 (single-row table)
   wa_number: string;
   full_dates: string[]; // "YYYY-MM-DD" manual full-toggle dates
+  headline: string; // max 120 chars (see 0013 migration)
+  subcopy: string; // max 300 chars (see 0013 migration)
+  portrait_url: string | null; // admin portrait, null falls back to portfolio cover
+}
+
+export interface TestimonialRow {
+  id: string;
+  quote: string; // 1-300 chars
+  client_name: string;
+  sort: number;
+  visible: boolean;
+}
+
+export interface ProfileStatRow {
+  id: string;
+  value: string; // 1-40 chars
+  label: string; // 1-40 chars
+  sort: number;
+  visible: boolean;
 }
 
 export interface MonthAvailabilityRow {
@@ -85,6 +104,8 @@ export interface Database {
       bookings: Table<Booking>;
       blocks: Table<Block>;
       settings: Table<Settings>;
+      testimonials: Table<TestimonialRow>;
+      profile_stats: Table<ProfileStatRow>;
     };
     Functions: {
       get_month_availability: {
