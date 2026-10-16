@@ -11,6 +11,7 @@ describe("parseAdminTab", () => {
     expect(parseAdminTab("#blokir")).toBe("blokir");
     expect(parseAdminTab("#portfolio")).toBe("portfolio");
     expect(parseAdminTab("#harga")).toBe("harga");
+    expect(parseAdminTab("#profil-testimoni")).toBe("profil-testimoni");
     expect(parseAdminTab("#pengaturan")).toBe("pengaturan");
   });
 
@@ -20,7 +21,7 @@ describe("parseAdminTab", () => {
     expect(parseAdminTab("#BOOKING")).toBe("ringkasan");
   });
 
-  it("exposes seven tabs in bar order", () => {
+  it("exposes eight tabs in bar order", () => {
     expect(ADMIN_TABS.map((t) => t.id)).toEqual([
       "ringkasan",
       "kalender",
@@ -28,6 +29,7 @@ describe("parseAdminTab", () => {
       "blokir",
       "portfolio",
       "harga",
+      "profil-testimoni",
       "pengaturan",
     ]);
   });

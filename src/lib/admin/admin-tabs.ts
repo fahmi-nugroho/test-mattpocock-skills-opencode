@@ -11,6 +11,7 @@ export const ADMIN_TABS = [
   { id: "blokir", label: "Blokir" },
   { id: "portfolio", label: "Portfolio" },
   { id: "harga", label: "Harga" },
+  { id: "profil-testimoni", label: "Profil & Testimoni" },
   { id: "pengaturan", label: "Pengaturan" },
 ] as const;
 
