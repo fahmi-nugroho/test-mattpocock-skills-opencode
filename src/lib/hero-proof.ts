@@ -75,6 +75,30 @@ export interface DbProfileStat {
   visible: boolean;
 }
 
+/**
+ * Shared visible → ordered → sliced resolver (ticket 03 review). Both
+ * testimonial and stat lists filter visible=true, defensive-sort by `sort`
+ * ascending (rows without `sort` sort last), and slice to their max. The
+ * public query already filters visible + orders by sort; this is
+ * defense-in-depth so a hidden row can never leak into the landing.
+ */
+function resolveVisibleOrdered<
+  T extends { sort?: number; visible: boolean },
+>(dbRows: readonly T[] | null | undefined, max: number): T[] {
+  return [...(dbRows ?? []).filter((row) => row.visible)]
+    .sort(
+      (a, b) =>
+        (a.sort ?? Number.MAX_SAFE_INTEGER) -
+        (b.sort ?? Number.MAX_SAFE_INTEGER),
+    )
+    .slice(0, max);
+}
+
+// DbTestimonial/DbProfileStat intentionally stay local (not `import type`
+// from database Row types): the landing seam only needs this subset, and
+// the sort field is optional here (rows without sort sort last) while the
+// DB Row requires it. Reuse is noted as deferred, not done.
+
 export interface HeroProfile {
   headline: string;
   subcopy: string;
@@ -84,60 +108,37 @@ export interface HeroProfile {
 /**
  * DB rows → landing testimonial list (ticket 02 end-to-end). Empty or
  * all-hidden DB input falls back to the hardcoded TESTIMONIALS so the
- * section never appears blank; otherwise visible rows sort by `sort`
- * ascending (defense-in-depth: the public query already orders by sort),
- * map (client_name → name, id preserved for stable React keys), and slice
- * to MAX_VISIBLE_TESTIMONIALS. Rows without `sort` sort last, keeping
- * relative order. The public query already filters visible=true +
- * orders by sort; the filter/sort here is defense-in-depth so a hidden
- * row can never leak into the landing.
+ * section never appears blank; otherwise resolveVisibleOrdered orders +
+ * slices, then map (client_name → name, id preserved for stable keys).
  */
 export function resolveDisplayedTestimonials(
   dbRows: readonly DbTestimonial[] | null | undefined,
 ): Testimonial[] {
-  const visible = (dbRows ?? []).filter((row) => row.visible);
+  const visible = resolveVisibleOrdered(dbRows, MAX_VISIBLE_TESTIMONIALS);
   if (visible.length === 0) return TESTIMONIALS;
-  return [...visible]
-    .sort(
-      (a, b) =>
-        (a.sort ?? Number.MAX_SAFE_INTEGER) -
-        (b.sort ?? Number.MAX_SAFE_INTEGER),
-    )
-    .slice(0, MAX_VISIBLE_TESTIMONIALS)
-    .map((row) => ({
-      ...(row.id !== undefined ? { id: row.id } : {}),
-      quote: row.quote,
-      name: row.client_name,
-    }));
+  return visible.map((row) => ({
+    ...(row.id !== undefined ? { id: row.id } : {}),
+    quote: row.quote,
+    name: row.client_name,
+  }));
 }
 
 /**
  * DB rows → landing stat list (ticket 03 end-to-end). Empty or all-hidden
  * DB input falls back to the hardcoded HERO_STATS so the section never
- * appears blank; otherwise visible rows sort by `sort` ascending
- * (defense-in-depth: the public query already orders by sort), map
- * (id preserved for stable React keys), and slice to MAX_VISIBLE_STATS.
- * Rows without `sort` sort last. The public query already filters
- * visible=true + orders by sort; the filter/sort here is defense-in-depth
- * so a hidden row can never leak into the landing.
+ * appears blank; otherwise resolveVisibleOrdered orders + slices, then
+ * map (id preserved for stable React keys).
  */
 export function resolveDisplayedStats(
   dbRows: readonly DbProfileStat[] | null | undefined,
 ): HeroStat[] {
-  const visible = (dbRows ?? []).filter((row) => row.visible);
+  const visible = resolveVisibleOrdered(dbRows, MAX_VISIBLE_STATS);
   if (visible.length === 0) return HERO_STATS;
-  return [...visible]
-    .sort(
-      (a, b) =>
-        (a.sort ?? Number.MAX_SAFE_INTEGER) -
-        (b.sort ?? Number.MAX_SAFE_INTEGER),
-    )
-    .slice(0, MAX_VISIBLE_STATS)
-    .map((row) => ({
-      ...(row.id !== undefined ? { id: row.id } : {}),
-      value: row.value,
-      label: row.label,
-    }));
+  return visible.map((row) => ({
+    ...(row.id !== undefined ? { id: row.id } : {}),
+    value: row.value,
+    label: row.label,
+  }));
 }
 
 /**

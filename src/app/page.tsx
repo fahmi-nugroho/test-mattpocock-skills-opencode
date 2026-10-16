@@ -34,6 +34,11 @@ export const revalidate = 0;
 const FALLBACK_WA_NUMBER =
   process.env.NEXT_PUBLIC_WA_NUMBER ?? "6280000000000";
 
+/** Unwrap a Promise.allSettled result, falling back on rejection. */
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
 async function getLandingData(): Promise<{
   services: Service[];
   portfolio: PortfolioItem[];
@@ -59,15 +64,11 @@ async function getLandingData(): Promise<{
     // failure (ticket 03: empty settings/stats → hardcoded fallback).
     if (waNumber.status === "rejected") throw waNumber.reason;
     return {
-      services:
-        services.status === "fulfilled" ? services.value : [],
-      portfolio:
-        portfolio.status === "fulfilled" ? portfolio.value : [],
-      testimonials:
-        testimonials.status === "fulfilled" ? testimonials.value : [],
-      stats: stats.status === "fulfilled" ? stats.value : [],
-      profile:
-        profileResult.status === "fulfilled" ? profileResult.value : null,
+      services: settledValue(services, []),
+      portfolio: settledValue(portfolio, []),
+      testimonials: settledValue(testimonials, []),
+      stats: settledValue(stats, []),
+      profile: settledValue(profileResult, null),
       waNumber: waNumber.value,
     };
   } catch {

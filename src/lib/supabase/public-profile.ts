@@ -29,26 +29,31 @@ export async function getPublicProfile(
   };
   const { data, error } = await loose.rpc("get_public_profile", {});
   if (error) throw new Error(`Public profile RPC failed: ${error.message}`);
-  if (data === null || typeof data !== "object") {
+  // RETURNS TABLE: supabase-js returns an ARRAY of rows (zero rows when
+  // settings id = 1 is missing), not a single object. Accept both shapes:
+  // array (live) and single object (backward compat for existing tests).
+  const row: unknown = Array.isArray(data) ? data[0] : data;
+  if (row === null || row === undefined || typeof row !== "object") {
     throw new Error("Public profile is missing");
   }
-  const row = data as {
+  const profileRow = row as {
     headline?: unknown;
     subcopy?: unknown;
     portrait_url?: unknown;
   };
-  if (typeof row.headline !== "string" || !row.headline.trim()) {
+  if (typeof profileRow.headline !== "string" || !profileRow.headline.trim()) {
     throw new Error("Public profile is missing");
   }
-  if (typeof row.subcopy !== "string" || !row.subcopy.trim()) {
+  if (typeof profileRow.subcopy !== "string" || !profileRow.subcopy.trim()) {
     throw new Error("Public profile is missing");
   }
   return {
-    headline: row.headline,
-    subcopy: row.subcopy,
+    headline: profileRow.headline,
+    subcopy: profileRow.subcopy,
     portrait_url:
-      typeof row.portrait_url === "string" && row.portrait_url.trim()
-        ? row.portrait_url
+      typeof profileRow.portrait_url === "string" &&
+      profileRow.portrait_url.trim()
+        ? profileRow.portrait_url
         : null,
   };
 }

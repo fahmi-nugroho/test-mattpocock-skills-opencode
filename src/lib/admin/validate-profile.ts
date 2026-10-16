@@ -8,7 +8,11 @@ export interface ProfileInput {
  * Validate the admin profil form (ticket 03). Trims headline/subcopy so
  * the hero stays clean; headline mirrors the `<= 120 char` DB CHECK,
  * subcopy mirrors `<= 300 char`, portrait mirrors the HTTPS URL rule
- * (empty stays null so the portfolio-cover fallback applies).
+ * (empty stays null so the portfolio-cover fallback applies). Portrait
+ * accepts any https:// URL ≤2048 chars but rejects embedded whitespace.
+ * Content-type/extension checking is intentionally deferred: uploads go
+ * through checkImageFile, and manual URLs cannot be HEAD-checked
+ * client-side without CORS.
  */
 export function validateProfileInput(input: {
   headline: string;
@@ -33,7 +37,11 @@ export function validateProfileInput(input: {
   if (!rawPortrait) {
     return { headline, subcopy, portrait_url: null };
   }
-  if (!rawPortrait.startsWith("https://") || rawPortrait.length > 2048) {
+  if (
+    !rawPortrait.startsWith("https://") ||
+    rawPortrait.length > 2048 ||
+    /\s/.test(rawPortrait)
+  ) {
     throw new Error("Portrait harus berupa URL gambar HTTPS");
   }
   return { headline, subcopy, portrait_url: rawPortrait };
