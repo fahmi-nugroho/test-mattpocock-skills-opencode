@@ -1,10 +1,10 @@
 import Image from "next/image";
-import type { PortfolioItem } from "@/lib/supabase/database";
+import type { PortfolioItem, TestimonialRow } from "@/lib/supabase/database";
 import { buildGeneralWaLink } from "@/lib/whatsapp";
 import {
   HERO_STATS,
-  TESTIMONIALS,
   getHeroPortraitUrl,
+  resolveDisplayedTestimonials,
 } from "@/lib/hero-proof";
 
 /** Owner-supplied portrait; empty until the owner provides one. */
@@ -17,12 +17,17 @@ const OWNER_PORTRAIT_URL = process.env.NEXT_PUBLIC_HERO_PORTRAIT ?? "";
  */
 export function HeroTrust({
   portfolio,
+  testimonials,
   waNumber,
 }: {
   portfolio: PortfolioItem[];
+  testimonials?: TestimonialRow[];
   waNumber: string;
 }) {
   const portraitUrl = OWNER_PORTRAIT_URL || getHeroPortraitUrl(portfolio);
+  // DB-curated testimonials when present, hardcoded TESTIMONIALS
+  // fallback when empty — the section never renders blank.
+  const displayedTestimonials = resolveDisplayedTestimonials(testimonials);
 
   return (
     <section
@@ -53,7 +58,7 @@ export function HeroTrust({
           ))}
         </dl>
         <ul aria-label="Testimoni klien" className="mt-6 space-y-3 text-left">
-          {TESTIMONIALS.map((t) => (
+          {displayedTestimonials.map((t) => (
             <li
               key={t.name}
               className="rounded-xl border border-stone-200/70 bg-white px-4 py-3 shadow-sm"

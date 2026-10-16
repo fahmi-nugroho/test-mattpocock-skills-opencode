@@ -45,3 +45,30 @@ export function getHeroPortraitUrl(
 ): string | null {
   return items[0]?.image_url ?? null;
 }
+
+/** At most this many testimonials render on the public landing. */
+export const MAX_VISIBLE_TESTIMONIALS = 6;
+
+export interface DbTestimonial {
+  quote: string;
+  client_name: string;
+  visible: boolean;
+}
+
+/**
+ * DB rows → landing testimonial list (ticket 02 end-to-end). Empty or
+ * all-hidden DB input falls back to the hardcoded TESTIMONIALS so the
+ * section never appears blank; otherwise visible rows map
+ * (client_name → name) and slice to MAX_VISIBLE_TESTIMONIALS. The public
+ * query already filters visible=true + orders by sort; the filter here is
+ * defense-in-depth so a hidden row can never leak into the landing.
+ */
+export function resolveDisplayedTestimonials(
+  dbRows: readonly DbTestimonial[] | null | undefined,
+): Testimonial[] {
+  const visible = (dbRows ?? []).filter((row) => row.visible);
+  if (visible.length === 0) return TESTIMONIALS;
+  return visible
+    .slice(0, MAX_VISIBLE_TESTIMONIALS)
+    .map((row) => ({ quote: row.quote, name: row.client_name }));
+}

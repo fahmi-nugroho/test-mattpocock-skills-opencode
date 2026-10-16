@@ -6,8 +6,13 @@ import { WaFloat } from "@/components/wa-float";
 import type {
   PortfolioItem,
   Service,
+  TestimonialRow,
 } from "@/lib/supabase/database";
-import { getVisiblePortfolioItems, getActiveServices } from "@/lib/supabase/queries";
+import {
+  getVisiblePortfolioItems,
+  getActiveServices,
+  getVisibleTestimonials,
+} from "@/lib/supabase/queries";
 import { getPublicWaNumber } from "@/lib/supabase/public-settings";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -26,30 +31,32 @@ const FALLBACK_WA_NUMBER =
 async function getLandingData(): Promise<{
   services: Service[];
   portfolio: PortfolioItem[];
+  testimonials: TestimonialRow[];
   waNumber: string;
 }> {
   try {
     const supabase = supabaseServer();
-    const [services, portfolio, waNumber] = await Promise.all([
+    const [services, portfolio, testimonials, waNumber] = await Promise.all([
       getActiveServices(supabase),
       getVisiblePortfolioItems(supabase),
+      getVisibleTestimonials(supabase),
       getPublicWaNumber(supabase),
     ]);
-    return { services, portfolio, waNumber };
+    return { services, portfolio, testimonials, waNumber };
   } catch {
     // Landing stays readable when the backend is unreachable: empty
     // sections with WA fallback instead of a 500.
-    return { services: [], portfolio: [], waNumber: FALLBACK_WA_NUMBER };
+    return { services: [], portfolio: [], testimonials: [], waNumber: FALLBACK_WA_NUMBER };
   }
 }
 
 export default async function Home() {
-  const { services, portfolio, waNumber } = await getLandingData();
+  const { services, portfolio, testimonials, waNumber } = await getLandingData();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
       {/* Hero trust block (ticket 02): 2-col copy + portrait, stacked mobile. */}
-      <HeroTrust portfolio={portfolio} waNumber={waNumber} />
+      <HeroTrust portfolio={portfolio} testimonials={testimonials} waNumber={waNumber} />
 
       <section
         id="portfolio"
