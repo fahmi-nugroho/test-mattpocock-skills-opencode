@@ -17,6 +17,7 @@ export const HERO_STATS: HeroStat[] = [
 ];
 
 export interface Testimonial {
+  id?: string | number;
   quote: string;
   name: string;
 }
@@ -50,25 +51,39 @@ export function getHeroPortraitUrl(
 export const MAX_VISIBLE_TESTIMONIALS = 6;
 
 export interface DbTestimonial {
+  id?: string | number;
   quote: string;
   client_name: string;
+  sort?: number;
   visible: boolean;
 }
 
 /**
  * DB rows → landing testimonial list (ticket 02 end-to-end). Empty or
  * all-hidden DB input falls back to the hardcoded TESTIMONIALS so the
- * section never appears blank; otherwise visible rows map
- * (client_name → name) and slice to MAX_VISIBLE_TESTIMONIALS. The public
- * query already filters visible=true + orders by sort; the filter here is
- * defense-in-depth so a hidden row can never leak into the landing.
+ * section never appears blank; otherwise visible rows sort by `sort`
+ * ascending (defense-in-depth: the public query already orders by sort),
+ * map (client_name → name, id preserved for stable React keys), and slice
+ * to MAX_VISIBLE_TESTIMONIALS. Rows without `sort` sort last, keeping
+ * relative order. The public query already filters visible=true +
+ * orders by sort; the filter/sort here is defense-in-depth so a hidden
+ * row can never leak into the landing.
  */
 export function resolveDisplayedTestimonials(
   dbRows: readonly DbTestimonial[] | null | undefined,
 ): Testimonial[] {
   const visible = (dbRows ?? []).filter((row) => row.visible);
   if (visible.length === 0) return TESTIMONIALS;
-  return visible
+  return [...visible]
+    .sort(
+      (a, b) =>
+        (a.sort ?? Number.MAX_SAFE_INTEGER) -
+        (b.sort ?? Number.MAX_SAFE_INTEGER),
+    )
     .slice(0, MAX_VISIBLE_TESTIMONIALS)
-    .map((row) => ({ quote: row.quote, name: row.client_name }));
+    .map((row) => ({
+      ...(row.id !== undefined ? { id: row.id } : {}),
+      quote: row.quote,
+      name: row.client_name,
+    }));
 }

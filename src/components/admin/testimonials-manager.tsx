@@ -37,13 +37,12 @@ export function TestimonialsManager() {
   const [editSort, setEditSort] = useState("0");
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   // Client-side search over visible text fields only; CRUD/data flow
   // below is unchanged.
-  const visibleItems = useMemo(
+  const filteredItems = useMemo(
     () =>
       filterByQuery(items, query, (item) => [item.quote, item.client_name]),
     [items, query],
@@ -157,7 +156,6 @@ export function TestimonialsManager() {
     }
     if (rowBusy) return;
     setRowError(null);
-    setNotice(null);
     setRowBusy(item.id);
     try {
       await deleteTestimonial(supabaseBrowser(), item.id);
@@ -185,11 +183,6 @@ export function TestimonialsManager() {
       {rowError ? (
         <p role="alert" className="mt-2 text-sm text-red-600">
           {rowError}
-        </p>
-      ) : null}
-      {notice ? (
-        <p role="status" className="mt-2 text-sm text-amber-700">
-          {notice}
         </p>
       ) : null}
 
@@ -264,7 +257,7 @@ export function TestimonialsManager() {
         className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
       />
       <ul className="mt-4 space-y-2">
-        {visibleItems.map((item) => (
+        {filteredItems.map((item) => (
           <li
             key={item.id}
             className="rounded-xl border border-neutral-200 bg-white p-3"
@@ -368,7 +361,7 @@ export function TestimonialsManager() {
           Belum ada testimoni — tambah review pertama di atas.
         </p>
       ) : null}
-      {items.length > 0 && visibleItems.length === 0 ? (
+      {items.length > 0 && filteredItems.length === 0 ? (
         <p className="mt-3 text-sm text-neutral-600">
           {`Tidak ada hasil untuk "${query.trim()}".`}
         </p>
