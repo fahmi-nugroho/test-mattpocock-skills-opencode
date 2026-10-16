@@ -34,6 +34,8 @@ describe("0013 profile/testimoni schema (local SQL verify, no live DB)", () => {
     expect(code).toMatch(/char_length\s*\(\s*headline\s*\)\s*<=\s*120/);
     expect(code).toMatch(/char_length\s*\(\s*subcopy\s*\)\s*<=\s*300/);
     expect(code).toMatch(/char_length\s*\(\s*portrait_url\s*\)\s*<=\s*2048/);
+    // Spec #44: portrait must be an HTTPS image URL or upload result.
+    expect(code).toMatch(/portrait_url\s+like\s+'https:\/\/\%'/);
     // id=1 single-row constraint intact: 0013 must not drop it.
     expect(code).not.toMatch(/drop.*id/);
   });
