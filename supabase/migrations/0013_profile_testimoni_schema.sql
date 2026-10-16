@@ -9,7 +9,8 @@
 -- DEFAULTS RATIONALE: headline/subcopy defaults mirror the current
 -- hardcoded hero copy so a fresh database renders identically to the
 -- existing landing before the admin edits anything. portrait_url stays
--- nullable with no default — an empty portrait falls back to the first
+-- nullable with no default and must be an HTTPS URL when set (spec #44) —
+-- an empty portrait falls back to the first
 -- visible portfolio cover (see getHeroPortraitUrl).
 --
 -- FALLBACK BEHAVIOR: the landing keeps its hardcoded HERO_STATS and
@@ -40,7 +41,7 @@ alter table settings
 
 alter table settings
   add column portrait_url text
-    check (portrait_url is null or char_length(portrait_url) <= 2048);
+    check (portrait_url is null or (char_length(portrait_url) <= 2048 and portrait_url like 'https://%'));
 
 -- Testimonials collection (public: only visible rows readable).
 create table testimonials (
