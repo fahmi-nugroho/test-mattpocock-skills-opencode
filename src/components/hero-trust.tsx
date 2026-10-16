@@ -1,33 +1,56 @@
 import Image from "next/image";
-import type { PortfolioItem, TestimonialRow } from "@/lib/supabase/database";
+import type {
+  PortfolioItem,
+  ProfileStatRow,
+  TestimonialRow,
+} from "@/lib/supabase/database";
 import { buildGeneralWaLink } from "@/lib/whatsapp";
 import {
-  HERO_STATS,
-  getHeroPortraitUrl,
+  resolveDisplayedStats,
   resolveDisplayedTestimonials,
+  resolveHeroCopy,
+  resolveHeroPortraitUrl,
 } from "@/lib/hero-proof";
+import type { PublicProfile } from "@/lib/supabase/public-profile";
 
 /** Owner-supplied portrait; empty until the owner provides one. */
 const OWNER_PORTRAIT_URL = process.env.NEXT_PUBLIC_HERO_PORTRAIT ?? "";
 
 /**
- * Hero trust block (ticket 02): 2-column copy + portrait on desktop,
+ * Hero trust block (ticket 03): 2-column copy + portrait on desktop,
  * stacked on mobile. Trust stats and testimonials sit above the existing
  * WA CTAs; WA links and copy intent are unchanged from ticket 01.
+ * Live profil (headline/subcopy/portrait) + stats render from the DB
+ * when present, falling back to the hardcoded HERO_STATS / copy /
+ * portfolio-cover portrait when the tables are empty.
  */
 export function HeroTrust({
   portfolio,
   testimonials,
+  stats,
+  profile,
   waNumber,
 }: {
   portfolio: PortfolioItem[];
   testimonials?: TestimonialRow[];
+  stats?: ProfileStatRow[];
+  profile?: PublicProfile | null;
   waNumber: string;
 }) {
-  const portraitUrl = OWNER_PORTRAIT_URL || getHeroPortraitUrl(portfolio);
-  // DB-curated testimonials when present, hardcoded TESTIMONIALS
-  // fallback when empty — the section never renders blank.
+  // DB portrait wins; env portrait second; portfolio cover last; null
+  // renders the placeholder state (empty portrait falls back to the
+  // first portfolio cover, then to the existing placeholder).
+  const portraitUrl = resolveHeroPortraitUrl(
+    profile?.portrait_url || OWNER_PORTRAIT_URL || null,
+    portfolio,
+  );
+  const { headline, subcopy } = resolveHeroCopy(
+    profile ? { headline: profile.headline, subcopy: profile.subcopy } : null,
+  );
+  // DB-curated testimonials/stats when present, hardcoded fallbacks
+  // when empty — the sections never render blank.
   const displayedTestimonials = resolveDisplayedTestimonials(testimonials);
+  const displayedStats = resolveDisplayedStats(stats);
 
   return (
     <section
@@ -39,15 +62,19 @@ export function HeroTrust({
           Makeup Artist
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-          Tampil memukau di hari spesialmu
+          {headline}
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-stone-600 lg:mx-0">
-          Lihat portfolio, pilih layanan, lalu diskusikan tanggal dan waktu
-          langsung via WhatsApp — tanpa daftar akun.
+          {subcopy}
         </p>
         <dl className="mt-6 flex items-start justify-center gap-6 sm:gap-8 lg:justify-start">
-          {HERO_STATS.map((stat) => (
-            <div key={stat.label} className="flex min-w-0 flex-col">
+          {displayedStats.map((stat, i) => (
+            <div
+              key={
+                stat.id !== undefined ? String(stat.id) : `${stat.label}-${i}`
+              }
+              className="flex min-w-0 flex-col"
+            >
               <dt className="order-2 mt-1 text-xs text-stone-600 sm:text-sm">
                 {stat.label}
               </dt>

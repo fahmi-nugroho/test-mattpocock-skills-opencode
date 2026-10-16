@@ -120,6 +120,14 @@ export interface Database {
         Args: Record<string, never>;
         Returns: string;
       };
+      get_public_profile: {
+        Args: Record<string, never>;
+        Returns: {
+          headline: string;
+          subcopy: string;
+          portrait_url: string | null;
+        };
+      };
     };
   };
 }
