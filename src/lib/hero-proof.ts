@@ -6,6 +6,7 @@
  */
 
 export interface HeroStat {
+  id?: string | number;
   value: string;
   label: string;
 }
@@ -15,6 +16,11 @@ export const HERO_STATS: HeroStat[] = [
   { value: "500+", label: "Klien" },
   { value: "4.9★", label: "Rating" },
 ];
+
+/** Hardcoded hero copy fallback (mirrors the 0013 settings defaults). */
+export const FALLBACK_HEADLINE = "Tampil memukau di hari spesialmu";
+export const FALLBACK_SUBCOPY =
+  "Lihat portfolio, pilih layanan, lalu diskusikan tanggal dan waktu langsung via WhatsApp — tanpa daftar akun.";
 
 export interface Testimonial {
   id?: string | number;
@@ -50,12 +56,29 @@ export function getHeroPortraitUrl(
 /** At most this many testimonials render on the public landing. */
 export const MAX_VISIBLE_TESTIMONIALS = 6;
 
+/** At most this many stats render on the public landing. */
+export const MAX_VISIBLE_STATS = 4;
+
 export interface DbTestimonial {
   id?: string | number;
   quote: string;
   client_name: string;
   sort?: number;
   visible: boolean;
+}
+
+export interface DbProfileStat {
+  id?: string | number;
+  value: string;
+  label: string;
+  sort?: number;
+  visible: boolean;
+}
+
+export interface HeroProfile {
+  headline: string;
+  subcopy: string;
+  portrait_url?: string | null;
 }
 
 /**
@@ -86,4 +109,63 @@ export function resolveDisplayedTestimonials(
       quote: row.quote,
       name: row.client_name,
     }));
+}
+
+/**
+ * DB rows → landing stat list (ticket 03 end-to-end). Empty or all-hidden
+ * DB input falls back to the hardcoded HERO_STATS so the section never
+ * appears blank; otherwise visible rows sort by `sort` ascending
+ * (defense-in-depth: the public query already orders by sort), map
+ * (id preserved for stable React keys), and slice to MAX_VISIBLE_STATS.
+ * Rows without `sort` sort last. The public query already filters
+ * visible=true + orders by sort; the filter/sort here is defense-in-depth
+ * so a hidden row can never leak into the landing.
+ */
+export function resolveDisplayedStats(
+  dbRows: readonly DbProfileStat[] | null | undefined,
+): HeroStat[] {
+  const visible = (dbRows ?? []).filter((row) => row.visible);
+  if (visible.length === 0) return HERO_STATS;
+  return [...visible]
+    .sort(
+      (a, b) =>
+        (a.sort ?? Number.MAX_SAFE_INTEGER) -
+        (b.sort ?? Number.MAX_SAFE_INTEGER),
+    )
+    .slice(0, MAX_VISIBLE_STATS)
+    .map((row) => ({
+      ...(row.id !== undefined ? { id: row.id } : {}),
+      value: row.value,
+      label: row.label,
+    }));
+}
+
+/**
+ * Portrait fallback (ticket 03): admin portrait URL wins; blank/null
+ * falls back to the first visible portfolio cover; null when neither
+ * exists so the hero renders its placeholder state.
+ */
+export function resolveHeroPortraitUrl(
+  portraitUrl: string | null | undefined,
+  items: Array<{ image_url: string }>,
+): string | null {
+  const trimmed = (portraitUrl ?? "").trim();
+  if (trimmed) return trimmed;
+  return getHeroPortraitUrl(items);
+}
+
+/**
+ * Hero copy fallback (ticket 03): live headline/subcopy when the public
+ * profile row has non-blank text; hardcoded FALLBACK_HEADLINE/SUBCOPY
+ * otherwise so the hero never renders blank on an empty database.
+ */
+export function resolveHeroCopy(
+  profile: { headline: string; subcopy: string } | null | undefined,
+): { headline: string; subcopy: string } {
+  const headline = (profile?.headline ?? "").trim();
+  const subcopy = (profile?.subcopy ?? "").trim();
+  return {
+    headline: headline || FALLBACK_HEADLINE,
+    subcopy: subcopy || FALLBACK_SUBCOPY,
+  };
 }
