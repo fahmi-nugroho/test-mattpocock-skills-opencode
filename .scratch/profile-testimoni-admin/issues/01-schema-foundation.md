@@ -6,6 +6,21 @@
 
 **Status:** ready-for-agent
 
+## Comments
+
+2026-10-16 — Implemented and merged on integration branch
+`feat/profile-testimoni-admin-spec` (merge `bf0000a`, feat `f8440cd`,
+review fix `96c2baf`). Migration `0013_profile_testimoni_schema.sql`
+(settings headline/subcopy/portrait_url with https+length checks,
+`testimonials` + `profile_stats` with sort/visible + indexes, anon
+visible-only / authenticated full CRUD RLS, public `profile` bucket);
+`database.ts` types + `getVisibleTestimonials`/`getVisibleProfileStats`
+via ordered-public-list seam; landing untouched (hardcoded fallback
+holds on empty tables). Verified: 38 test files / 261 tests pass,
+`tsc --noEmit` clean. Review fix: portrait_url now requires `https://`
+prefix per spec #44. Deferred to tickets 02/03: display caps, landing
+loader, admin validators, settings public-read helper.
+
 - [ ] Settings single row gains headline, subcopy, portrait URL columns with sensible defaults and length checks
 - [ ] New testimonials collection (quote, client name, sort order, visible flag) with sort and visibility indexes
 - [ ] New profile stats collection (value, label, sort order, visible flag) with sort and visibility indexes
