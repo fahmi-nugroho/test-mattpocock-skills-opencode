@@ -37,6 +37,28 @@ describe("resolveDisplayedTestimonials", () => {
     expect(shown[0]).toEqual({ quote: "Quote 0", name: "Klien 0" });
   });
 
+  it("sorts unsorted visible rows by sort ascending before slicing", () => {
+    const shown = resolveDisplayedTestimonials([
+      { quote: "C", client_name: "C", visible: true, sort: 30 },
+      { quote: "A", client_name: "A", visible: true, sort: 10 },
+      { quote: "B", client_name: "B", visible: true, sort: 20 },
+    ]);
+    expect(shown.map((t) => t.quote)).toEqual(["A", "B", "C"]);
+  });
+
+  it("preserves ids so duplicate client names stay distinct", () => {
+    const shown = resolveDisplayedTestimonials([
+      { id: "id-1", quote: "Satu", client_name: "Sama", visible: true, sort: 0 },
+      { id: "id-2", quote: "Dua", client_name: "Sama", visible: true, sort: 1 },
+    ]);
+    expect(shown).toEqual([
+      { id: "id-1", quote: "Satu", name: "Sama" },
+      { id: "id-2", quote: "Dua", name: "Sama" },
+    ]);
+    const keys = shown.map((t) => t.id ?? t.name);
+    expect(new Set(keys).size).toBe(shown.length);
+  });
+
   it("never renders hidden rows", () => {
     expect(
       resolveDisplayedTestimonials([

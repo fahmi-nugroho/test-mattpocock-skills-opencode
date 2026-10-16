@@ -58,9 +58,9 @@ export function HeroTrust({
           ))}
         </dl>
         <ul aria-label="Testimoni klien" className="mt-6 space-y-3 text-left">
-          {displayedTestimonials.map((t) => (
+          {displayedTestimonials.map((t, i) => (
             <li
-              key={t.name}
+              key={t.id ?? `${t.name}-${i}`}
               className="rounded-xl border border-stone-200/70 bg-white px-4 py-3 shadow-sm"
             >
               <p className="text-sm text-stone-700">“{t.quote}”</p>
