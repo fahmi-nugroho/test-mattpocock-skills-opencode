@@ -401,4 +401,150 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     // Same hardening as other backend functions: fixed search_path.
     expect(lower).toMatch(/set\s+search_path/);
   });
+
+  it("0015 creates booking_requests with a uuid primary key", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(/create table\s+booking_requests\b/);
+    expect(code).toMatch(/id\s+uuid\s+primary key\s+default\s+gen_random_uuid\(\)/);
+  });
+
+  it("0015 adds the six booking scalar columns with defaults and checks", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    // event_type / venue / hairdo: non-null text defaulting to ''.
+    for (const col of ["event_type", "venue", "hairdo"]) {
+      expect(code).toMatch(
+        new RegExp(
+          `alter table\\s+bookings\\s+add column\\s+${col}\\s+text\\s+not null\\s+default\\s+''`,
+        ),
+      );
+    }
+    // headcount: non-null integer default 1, check >= 1.
+    expect(code).toMatch(
+      /alter table\s+bookings\s+add column\s+headcount\s+integer\s+not null\s+default\s+1/,
+    );
+    expect(code).toMatch(/check\s*\(\s*headcount\s*>=\s*1\s*\)/);
+    // total_price: nullable integer, check null-or->= 0.
+    expect(code).toMatch(
+      /alter table\s+bookings\s+add column\s+total_price\s+integer/,
+    );
+    expect(code).not.toMatch(/add column\s+total_price\s+integer\s+not null/);
+    expect(code).toMatch(
+      /check\s*\(\s*total_price\s+is null\s+or\s+total_price\s*>=\s*0\s*\)/,
+    );
+    // dp_amount: non-null integer default 0, check >= 0.
+    expect(code).toMatch(
+      /alter table\s+bookings\s+add column\s+dp_amount\s+integer\s+not null\s+default\s+0/,
+    );
+    expect(code).toMatch(/check\s*\(\s*dp_amount\s*>=\s*0\s*\)/);
+  });
+
+  it("0015 gives booking_requests a 128-bit random token distinct from the row id", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(/token\s+text\s+not null\s+unique/);
+    // Database-generated 128-bit value: pgcrypto gen_random_bytes(16).
+    expect(code).toMatch(
+      /default\s+encode\s*\(\s*gen_random_bytes\s*\(\s*16\s*\)\s*,\s*'hex'\s*\)/,
+    );
+    // pgcrypto supplies gen_random_bytes; its creation is explicit + documented.
+    expect(code).toMatch(/create extension if not exists pgcrypto/);
+    // The token default never reuses the enumerable row id generator.
+    const tokenCol = code.match(/token\s+text[^;]*?encode\(gen_random_bytes\(16\)/);
+    expect(tokenCol).not.toBeNull();
+    expect(tokenCol![0]).not.toContain("gen_random_uuid");
+  });
+
+  it("0015 tracks the three bookkeeping timestamps and leaves submitted_at nullable", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(/created_at\s+timestamptz\s+not null\s+default\s+now\(\)/);
+    expect(code).toMatch(/expires_at\s+timestamptz\s+not null/);
+    expect(code).toMatch(/expires_at[\s\S]{0,80}?interval\s*'7 days'/);
+    // submitted_at is set only when the client submits, so it stays nullable.
+    expect(code).toMatch(/submitted_at\s+timestamptz\b/);
+    expect(code).not.toMatch(/submitted_at\s+timestamptz\s+not null/);
+  });
+
+  it("0015 links accepted_booking_id to bookings, unique and null on delete", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(
+      /accepted_booking_id\s+uuid\s+unique\s+references\s+bookings\s*\(\s*id\s*\)/,
+    );
+    expect(code).toMatch(/on delete set null/);
+  });
+
+  it("0015 stores the client-owned fields with safe non-null defaults", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    for (const col of ["client_name", "client_phone", "venue", "hairdo", "notes"]) {
+      expect(code).toMatch(new RegExp(`${col}\\s+text\\s+not null\\s+default\\s+''`));
+    }
+    expect(code).toMatch(/event_type\s+text\s+not null\s+default\s+''/);
+    expect(code).toMatch(/headcount\s+integer\s+not null\s+default\s+1/);
+    expect(code).toMatch(/check\s*\(\s*headcount\s*>=\s*1\s*\)/);
+  });
+
+  it("0015 keeps the requested slot nullable with HH:MM checks and a start<end guard", () => {
+    const code = codeOnly(readMigration("0015_booking_requests_schema.sql"));
+    const lower = code.toLowerCase();
+    // The requested slot stays date + "HH:MM" text, all nullable (admin may
+    // generate the link before date/times are agreed).
+    expect(lower).toMatch(/\bdate\s+date\b/);
+    expect(lower).toMatch(/start_time\s+text\b/);
+    expect(lower).not.toMatch(/start_time\s+text\s+not null/);
+    expect(lower).toMatch(/end_time\s+text\b/);
+    expect(lower).not.toMatch(/end_time\s+text\s+not null/);
+    // Strict 00-23 HH:MM regex on both text columns.
+    const regexChecks = code.match(/~\s*'[^']*'/g) ?? [];
+    expect(regexChecks.length).toBeGreaterThanOrEqual(2);
+    for (const check of regexChecks) {
+      expect(check).toContain("([01][0-9]|2[0-3])");
+    }
+    // start < end only applies when both times are present.
+    expect(lower).toMatch(
+      /check\s*\(\s*start_time\s+is null\s+or\s+end_time\s+is null\s+or\s+start_time\s*<\s*end_time\s*\)/,
+    );
+    // Never a timestamptz slot window.
+    expect(lower).not.toMatch(/start_time\s+timestamptz/);
+    expect(lower).not.toMatch(/end_time\s+timestamptz/);
+  });
+
+  it("0015 enables RLS on booking_requests: authenticated full CRUD, never anon", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(
+      /alter table\s+booking_requests\s+enable row level security/,
+    );
+    expect(code).toMatch(
+      /create policy\s+booking_requests_admin_all\s+on\s+booking_requests\s+for all\s+to authenticated\s+using\s*\(\s*true\s*\)\s*with check\s*\(\s*true\s*\)/,
+    );
+    // The public never touches the table directly: no anon policy/select may
+    // name booking_requests (public access is via future security-definer RPCs).
+    const anonSelects =
+      code.match(/create policy[^;]*for select[^;]*to anon[^;]*;/g) ?? [];
+    for (const policy of anonSelects) {
+      expect(policy).not.toContain("booking_requests");
+    }
+    expect(code).not.toMatch(/create policy[^;]*booking_requests[^;]*to anon/);
+    expect(code).not.toMatch(/grant[^;]*booking_requests[^;]*to anon/);
+  });
+
+  it("0015 leaves the calendar seam untouched (no day/month RPC redefinition)", () => {
+    const code = codeOnly(
+      readMigration("0015_booking_requests_schema.sql"),
+    ).toLowerCase();
+    expect(code).not.toContain("get_day_schedule");
+    expect(code).not.toContain("get_month_availability");
+    expect(code).not.toContain("create or replace function");
+  });
 });
