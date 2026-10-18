@@ -160,6 +160,14 @@ export interface Database {
           portrait_url: string | null;
         };
       };
+      get_booking_request: {
+        Args: { p_token: string };
+        Returns: unknown;
+      };
+      submit_booking_request: {
+        Args: { p_token: string; p_payload: Record<string, unknown> };
+        Returns: unknown;
+      };
     };
   };
 }

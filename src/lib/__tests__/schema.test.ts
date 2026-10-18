@@ -547,4 +547,165 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(code).not.toContain("get_month_availability");
     expect(code).not.toContain("create or replace function");
   });
+
+  it("0016 defines both request RPCs as security definer with fixed search_path", () => {
+    const code = codeOnly(
+      readMigration("0016_booking_request_rpcs.sql"),
+    ).toLowerCase();
+    expect(code).toMatch(
+      /create or replace function\s+get_booking_request\s*\(\s*p_token text\s*\)/,
+    );
+    expect(code).toMatch(
+      /create or replace function\s+submit_booking_request\s*\(\s*p_token text\s*,\s*p_payload jsonb\s*\)/,
+    );
+    for (const name of ["get_booking_request", "submit_booking_request"]) {
+      const fn = code.match(
+        new RegExp(`create or replace function\\s+${name}[\\s\\S]*?\\$\\$;`),
+      );
+      expect(fn).not.toBeNull();
+      expect(fn![0]).toMatch(/security definer/);
+      expect(fn![0]).toMatch(/set search_path\s*=\s*public/);
+    }
+    // The read function is a stable lookup; the submit function writes, so it
+    // stays volatile (default, no explicit marker).
+    const read =
+      code.match(/create or replace function\s+get_booking_request[\s\S]*?\$\$;/)?.[0] ??
+      "";
+    expect(read).toMatch(/\bstable\b/);
+    expect(read).not.toMatch(/\bvolatile\b/);
+    // Execute granted to anon for both.
+    expect(code).toMatch(
+      /grant execute on function get_booking_request\(text\) to anon,\s*authenticated/,
+    );
+    expect(code).toMatch(
+      /grant execute on function submit_booking_request\(text,\s*jsonb\) to anon,\s*authenticated/,
+    );
+  });
+
+  it("0016 read returns only state + admin-typed context, never PII or price", () => {
+    const code = codeOnly(readMigration("0016_booking_request_rpcs.sql"));
+    const read =
+      code.match(/create or replace function\s+get_booking_request[\s\S]*?\$\$;/)?.[0] ??
+      "";
+    expect(read).not.toBe("");
+    // All four derived states, submitted outranks expired.
+    for (const state of ["'open'", "'submitted'", "'expired'", "'missing'"]) {
+      expect(read).toContain(state);
+    }
+    expect(read).toMatch(/submitted_at\s+is not null/);
+    expect(read).toMatch(/expires_at\s*<=\s*now\(\)/);
+    // The output date is a YYYY-MM-DD string.
+    expect(read).toMatch(/to_char\([^)]*,\s*'YYYY-MM-DD'\)/);
+    // Context keys only.
+    for (const key of [
+      "'state'",
+      "'client_name'",
+      "'date'",
+      "'start_time'",
+      "'end_time'",
+    ]) {
+      expect(read).toContain(key);
+    }
+    // Negative sweep: the read body never selects or returns the client's
+    // phone/notes, an admin price, status, or the accepted link.
+    for (const forbidden of [
+      "client_phone",
+      "notes",
+      "total_price",
+      "dp_amount",
+      "status",
+      "accepted_booking_id",
+    ]) {
+      expect(read.toLowerCase()).not.toContain(forbidden);
+    }
+  });
+
+  it("0016 submit writes only client-owned columns plus submitted_at, guarded and race-safe", () => {
+    const code = codeOnly(readMigration("0016_booking_request_rpcs.sql"));
+    const submit =
+      code.match(
+        /create or replace function\s+submit_booking_request[\s\S]*?\$\$;/,
+      )?.[0] ?? "";
+    expect(submit).not.toBe("");
+    // Reports all four refusals.
+    for (const reason of [
+      "not_found",
+      "expired",
+      "already_submitted",
+      "invalid_payload",
+    ]) {
+      expect(submit).toContain(reason);
+    }
+    expect(submit).toMatch(/update\s+booking_requests/);
+    expect(submit).toMatch(/submitted_at\s*=\s*now\(\)/);
+    // The SET clause carries the ten client-owned columns and submitted_at
+    // only — never the token, price, status, accepted link, or other stamps.
+    const setClause =
+      submit.match(
+        /update\s+booking_requests\s+set([\s\S]*?)where\s+token\s*=\s*p_token/,
+      )?.[1] ?? "";
+    expect(setClause).not.toBe("");
+    for (const col of [
+      "client_name",
+      "client_phone",
+      "event_type",
+      "headcount",
+      "venue",
+      "hairdo",
+      "notes",
+      "date",
+      "start_time",
+      "end_time",
+      "submitted_at",
+    ]) {
+      expect(setClause).toContain(col);
+    }
+    for (const forbidden of [
+      "token",
+      "total_price",
+      "dp_amount",
+      "status",
+      "accepted_booking_id",
+      "created_at",
+      "expires_at",
+    ]) {
+      expect(setClause.toLowerCase()).not.toContain(forbidden);
+    }
+    // Race-safe guard: only an unsubmitted, unexpired token updates.
+    expect(submit).toMatch(
+      /where\s+token\s*=\s*p_token[\s\S]*submitted_at\s+is null[\s\S]*expires_at\s*>\s*now\(\)/,
+    );
+  });
+
+  it("0016 validates the payload fail-closed with the exact caps", () => {
+    const code = codeOnly(readMigration("0016_booking_request_rpcs.sql"));
+    const submit =
+      code.match(
+        /create or replace function\s+submit_booking_request[\s\S]*?\$\$;/,
+      )?.[0] ?? "";
+    expect(submit).toMatch(
+      /jsonb_typeof\s*\(\s*p_payload\s*\)\s*<>\s*'object'/,
+    );
+    // Strict slot validation: YYYY-MM-DD, HH:MM 00-23, start < end.
+    expect(submit).toContain("\\d{4}-\\d{2}-\\d{2}");
+    expect(submit).toContain("^([01][0-9]|2[0-3]):[0-5][0-9]$");
+    expect(submit).toMatch(/v_start_text\s*<\s*v_end_text/);
+    // Length/digit caps mirrored from the client validator.
+    for (const cap of ["120", "32", "200", "1000", "100"]) {
+      expect(submit).toContain(cap);
+    }
+    expect(submit).toMatch(/>=\s*9|<\s*9/);
+    expect(submit).toMatch(/v_headcount\s*<\s*1/);
+    expect(submit).toMatch(/v_headcount\s*>\s*100/);
+  });
+
+  it("0016 never grants the anon role table access to booking_requests", () => {
+    const code = codeOnly(
+      readMigration("0016_booking_request_rpcs.sql"),
+    ).toLowerCase();
+    // No grant or policy may name booking_requests at all for anon.
+    expect(code).not.toMatch(/grant[^;]*booking_requests/);
+    expect(code).not.toMatch(/create policy[^;]*booking_requests/);
+    expect(code).not.toMatch(/on\s+booking_requests\s+to\s+anon/);
+  });
 });
