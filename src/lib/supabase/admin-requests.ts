@@ -18,26 +18,17 @@ import type { BookingRequest, Database } from "./database";
 import { insertRow } from "./admin-crud";
 import {
   deriveBookingRequestState,
-  type BookingRequestStatus,
+  refusalMessage,
 } from "../admin/booking-request";
+import { validateRequestSlot } from "../admin/validate-booking-request";
 
 type TypedClient = SupabaseClient<Database>;
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 export interface BookingRequestCreateInput {
   client_name?: string;
   date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
-}
-
-/** "" / null / undefined are absent; any other non-string is malformed. */
-function normalizeSlot(value: string | null | undefined): string | null {
-  if (value === undefined || value === null) return null;
-  const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
 }
 
 /**
@@ -70,33 +61,17 @@ export async function listBookingRequestsAdmin(
  * Create a Format Booking request (ticket 04). Writes only the four
  * admin-supplied fields — token, timestamps, submitted_at, and the accepted
  * link are all database-generated. The optional client name is trimmed; the
- * requested slot is optional but all-or-nothing (date + start + end), with
- * the same YYYY-MM-DD / strict HH:MM / start < end rules as the public form,
- * rejected with an Indonesian message before any write.
+ * requested slot is per-field optional (each of date/start/end may be set
+ * alone), with the same YYYY-MM-DD / strict HH:MM / start < end (only when
+ * both times are present) rules as the public form, rejected with an
+ * Indonesian message before any write.
  */
 export async function createBookingRequest(
   client: TypedClient,
   input: BookingRequestCreateInput,
 ): Promise<BookingRequest> {
   const client_name = (input.client_name ?? "").trim();
-  const date = normalizeSlot(input.date);
-  const start_time = normalizeSlot(input.start_time);
-  const end_time = normalizeSlot(input.end_time);
-
-  if (date !== null || start_time !== null || end_time !== null) {
-    if (date === null || start_time === null || end_time === null) {
-      throw new Error("Tanggal dan jam permintaan harus diisi lengkap");
-    }
-    if (!DATE_RE.test(date)) {
-      throw new Error("Tanggal permintaan harus format YYYY-MM-DD");
-    }
-    if (!HHMM_RE.test(start_time) || !HHMM_RE.test(end_time)) {
-      throw new Error("Jam permintaan harus format HH:MM (00:00–23:59)");
-    }
-    if (!(start_time < end_time)) {
-      throw new Error("Jam mulai harus sebelum jam selesai");
-    }
-  }
+  const { date, start_time, end_time } = validateRequestSlot(input);
 
   return insertRow<BookingRequest>(
     client,
@@ -104,21 +79,6 @@ export async function createBookingRequest(
     { client_name, date, start_time, end_time },
     "Gagal membuat permintaan",
   );
-}
-
-function refusalMessage(status: BookingRequestStatus): string {
-  switch (status) {
-    case "accepted":
-      return "Permintaan ini sudah diterima — tidak bisa diterima dua kali.";
-    case "expired":
-      return "Link permintaan sudah kedaluwarsa — tidak bisa diterima lagi.";
-    case "submitted":
-      // The guarded update already matched the accept-able state, so an
-      // empty result here is a lost race, not a real refusal.
-      return "Permintaan tidak bisa diterima saat ini — coba muat ulang.";
-    default:
-      return "Permintaan belum dikirim oleh klien — belum bisa dijadikan booking.";
-  }
 }
 
 /**

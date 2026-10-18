@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
+  refusalMessage,
   remainingBalance,
   requestToBookingDraft,
   suggestTotal,
@@ -57,6 +60,19 @@ describe("deriveBookingRequestState", () => {
     ).toBe("expired");
   });
 
+  it("reads expired for a submitted request whose link has since expired", () => {
+    expect(
+      deriveBookingRequestState(
+        {
+          ...REQUEST,
+          submitted_at: "2026-10-17T09:00:00.000Z",
+          expires_at: "2026-10-18T11:59:59.000Z",
+        },
+        NOW,
+      ),
+    ).toBe("expired");
+  });
+
   it("treats the exact expiry instant as expired", () => {
     expect(
       deriveBookingRequestState(
@@ -81,6 +97,30 @@ describe("deriveBookingRequestState", () => {
   });
 });
 
+describe("status copy (single home)", () => {
+  it("labels every derived state in Indonesian", () => {
+    expect(BOOKING_REQUEST_STATUS_LABEL).toEqual({
+      open: "Terbuka",
+      submitted: "Terkirim",
+      accepted: "Diterima",
+      expired: "Kedaluwarsa",
+    });
+  });
+
+  it("hints why a non-submitted request cannot be accepted, in Indonesian", () => {
+    expect(bookingRequestRefusalHint("open")).toMatch(/menunggu klien/i);
+    expect(bookingRequestRefusalHint("expired")).toMatch(/kedaluwarsa/i);
+    expect(bookingRequestRefusalHint("accepted")).toMatch(/sudah diterima/i);
+  });
+
+  it("explains an accept refusal for each state, in Indonesian", () => {
+    expect(refusalMessage("accepted")).toMatch(/sudah diterima/i);
+    expect(refusalMessage("expired")).toMatch(/kedaluwarsa/i);
+    expect(refusalMessage("submitted")).toMatch(/muat ulang|tidak bisa diterima/i);
+    expect(refusalMessage("open")).toMatch(/belum dikirim/i);
+  });
+});
+
 describe("buildFormatBookingLink", () => {
   it("joins the base URL and token as /request/<token>", () => {
     expect(buildFormatBookingLink("https://mua.example.com", "abc123")).toBe(
@@ -96,7 +136,7 @@ describe("buildFormatBookingLink", () => {
 });
 
 describe("requestToBookingDraft", () => {
-  it("maps the client/event fields and leaves service, notes, price, DP, status to the admin", () => {
+  it("carries only the fields the booking form consumes", () => {
     const draft = requestToBookingDraft({
       ...REQUEST,
       client_name: "Sinta",
@@ -120,12 +160,14 @@ describe("requestToBookingDraft", () => {
       date: "2026-11-01",
       start_time: "09:00",
       end_time: "11:00",
-      service_id: null,
-      notes: "",
-      total_price: null,
-      dp_amount: 0,
-      status: "pending",
     });
+    // Money, status, service, and notes stay with the admin: the draft must
+    // never carry them, so the form's own defaults stand.
+    expect(draft).not.toHaveProperty("service_id");
+    expect(draft).not.toHaveProperty("notes");
+    expect(draft).not.toHaveProperty("total_price");
+    expect(draft).not.toHaveProperty("dp_amount");
+    expect(draft).not.toHaveProperty("status");
   });
 
   it("maps an absent requested slot to empty strings so the form defaults stand", () => {

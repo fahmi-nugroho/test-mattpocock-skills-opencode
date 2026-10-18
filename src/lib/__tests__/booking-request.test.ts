@@ -261,21 +261,33 @@ describe("validateBookingRequestPayload", () => {
     ).toThrow(/mulai|start/i);
   });
 
-  it("rejects a partial slot (all-or-nothing)", () => {
-    for (const partial of [
-      { date: "2026-11-01" },
-      { start_time: "09:00" },
-      { end_time: "12:00" },
-      { date: "2026-11-01", start_time: "09:00" },
-    ]) {
-      const { date, start_time, end_time, ...rest } = VALID_PAYLOAD;
-      void date;
-      void start_time;
-      void end_time;
-      expect(() => validateBookingRequestPayload({ ...rest, ...partial })).toThrow(
-        /lengkap|slot|tanggal/i,
-      );
-    }
+  it("accepts a partial slot (each field is optional, absent -> null)", () => {
+    const { date, start_time, end_time, ...rest } = VALID_PAYLOAD;
+    void date;
+    void start_time;
+    void end_time;
+    expect(
+      validateBookingRequestPayload({ ...rest, date: "2026-11-01" }),
+    ).toEqual({ ...rest, date: "2026-11-01", start_time: null, end_time: null });
+    expect(
+      validateBookingRequestPayload({ ...rest, start_time: "09:00" }),
+    ).toEqual({ ...rest, date: null, start_time: "09:00", end_time: null });
+    expect(
+      validateBookingRequestPayload({ ...rest, end_time: "12:00" }),
+    ).toEqual({ ...rest, date: null, start_time: null, end_time: "12:00" });
+  });
+
+  it("rejects a malformed lone slot field", () => {
+    const { date, start_time, end_time, ...rest } = VALID_PAYLOAD;
+    void date;
+    void start_time;
+    void end_time;
+    expect(() =>
+      validateBookingRequestPayload({ ...rest, date: "01-11-2026" }),
+    ).toThrow(/tanggal|date/i);
+    expect(() =>
+      validateBookingRequestPayload({ ...rest, start_time: "9:00" }),
+    ).toThrow(/jam|waktu|time/i);
   });
 
   it("rejects oversized event_type/venue/hairdo/notes", () => {

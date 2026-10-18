@@ -171,13 +171,32 @@ describe("createBookingRequest", () => {
     ]);
   });
 
-  it("rejects a partial slot with an Indonesian message and no write", async () => {
+  it("inserts a partial slot as-is, leaving absent fields null", async () => {
     const calls: Array<[string, ...unknown[]]> = [];
     const { client } = requestClient({ calls });
-    await expect(
-      createBookingRequest(client, { date: "2026-11-01", start_time: "09:00" }),
-    ).rejects.toThrow(/lengkap/i);
-    expect(calls).not.toContainEqual(["insert", expect.anything()]);
+    await createBookingRequest(client, {
+      client_name: "Sinta",
+      date: "2026-11-01",
+    });
+    expect(calls).toContainEqual([
+      "insert",
+      {
+        client_name: "Sinta",
+        date: "2026-11-01",
+        start_time: null,
+        end_time: null,
+      },
+    ]);
+  });
+
+  it("accepts a lone start or end time", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const { client } = requestClient({ calls });
+    await createBookingRequest(client, { start_time: "09:00" });
+    expect(calls).toContainEqual([
+      "insert",
+      { client_name: "", date: null, start_time: "09:00", end_time: null },
+    ]);
   });
 
   it("rejects a malformed date, a malformed time, and an inverted range", async () => {

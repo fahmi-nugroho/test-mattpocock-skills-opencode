@@ -312,7 +312,7 @@ export function RequestForm({ token }: { token: string }) {
       </label>
 
       <label htmlFor="req-venue" className="block">
-        <span className="text-sm font-medium">Lokasi / Venue</span>
+        <span className="text-sm font-medium">Lokasi acara</span>
         <input
           id="req-venue"
           type="text"
@@ -323,7 +323,7 @@ export function RequestForm({ token }: { token: string }) {
       </label>
 
       <label htmlFor="req-hairdo" className="block">
-        <span className="text-sm font-medium">Model rambut / Hairdo</span>
+        <span className="text-sm font-medium">Model rambut</span>
         <input
           id="req-hairdo"
           type="text"

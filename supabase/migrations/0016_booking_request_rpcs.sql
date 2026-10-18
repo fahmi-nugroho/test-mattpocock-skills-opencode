@@ -29,11 +29,12 @@
 -- object; client_name is trimmed non-empty and <= 120 chars; client_phone
 -- has >= 9 digits and <= 32 chars; headcount is an integer 1..100;
 -- event_type/venue/hairdo/notes are <= 100/200/100/1000 chars; the slot is
--- all-or-nothing (a partial date/start/end is rejected, not ignored) with a
--- YYYY-MM-DD date, strict HH:MM times, and start < end. Values are extracted
--- as text and validated with regexes BEFORE any cast, so a malformed payload
--- cannot raise a hard cast exception. The same rules are re-enforced
--- client-side in src/lib/booking-request.ts before the RPC is called.
+-- per-field optional (each of date/start/end may be present alone) with a
+-- YYYY-MM-DD date, strict HH:MM times, and start < end only when both times
+-- are present. Values are extracted as text and validated with regexes BEFORE
+-- any cast, so a malformed payload cannot raise a hard cast exception. The
+-- same rules are re-enforced client-side in src/lib/booking-request.ts before
+-- the RPC is called.
 --
 -- RACE SAFETY: the guarded update (where token = p_token and submitted_at
 -- is null and expires_at > now()) decides the outcome; a lost race returns
@@ -203,26 +204,15 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
   end if;
 
-  -- Requested slot is all-or-nothing: a partial slot is rejected rather
-  -- than silently ignored.
+  -- Requested slot is per-field optional: each of date/start/end may be
+  -- present alone. A present value must be well-formed, and start < end is
+  -- required only when both times are present.
   v_date_text := nullif(btrim(p_payload ->> 'date'), '');
   v_start_text := nullif(btrim(p_payload ->> 'start_time'), '');
   v_end_text := nullif(btrim(p_payload ->> 'end_time'), '');
 
-  if v_date_text is not null
-     or v_start_text is not null
-     or v_end_text is not null then
-    if v_date_text is null or v_start_text is null or v_end_text is null then
-      return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
-    end if;
+  if v_date_text is not null then
     if v_date_text !~ '^\d{4}-\d{2}-\d{2}$' then
-      return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
-    end if;
-    if v_start_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-       or v_end_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
-      return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
-    end if;
-    if not (v_start_text < v_end_text) then
       return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
     end if;
     -- Cast only after the regex, so an out-of-range value cannot raise.
@@ -231,8 +221,25 @@ begin
     exception when others then
       return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
     end;
+  end if;
+
+  if v_start_text is not null then
+    if v_start_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+      return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
+    end if;
     v_start_time := v_start_text;
+  end if;
+
+  if v_end_text is not null then
+    if v_end_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+      return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
+    end if;
     v_end_time := v_end_text;
+  end if;
+
+  if v_start_text is not null and v_end_text is not null
+     and not (v_start_text < v_end_text) then
+    return jsonb_build_object('ok', false, 'reason', 'invalid_payload');
   end if;
 
   -- Guarded write decides the outcome; a lost race writes nothing.
