@@ -15,7 +15,7 @@ import {
 import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
 import type { RpcClient } from "@/lib/month-availability";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { STYLE_VALUES, type Style } from "@/lib/style-reference";
+import { STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,14 +25,6 @@ const INPUT_CLASS =
 // Shown next to the slot in every non-blank state: a submitted request never
 // reserves the day, so the client must not read the form as a confirmed slot.
 const NOT_LOCKED_COPY = "Slot belum terkunci sampai DP diterima.";
-
-// The two Styles, rendered as a required choice. The values are driven by the
-// one two-value set the pure validator uses (src/lib/style-reference.ts); the
-// Record makes adding a Style a compile error until its copy is written.
-const STYLE_COPY: Record<Style, { label: string; description: string }> = {
-  hijabdo: { label: "Hijabdo", description: "Ditata di atas hijab" },
-  hairdo: { label: "Hairdo", description: "Ditata di rambut terbuka" },
-};
 
 // Photos are never uploaded here; the client sends them in the WhatsApp thread
 // they are already in, so this line stops them hunting for an upload button.

@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin/booking-request";
 import { notifyAcceptRequest } from "@/lib/admin/request-events";
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
+import { isStyle, STYLE_COPY } from "@/lib/style-reference";
 import { buildFormatBookingWaLink } from "@/lib/whatsapp";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
@@ -41,7 +42,9 @@ interface RequestsManagerProps {
  *
  * No realtime or push: the list refreshes on mount and whenever the shared
  * schedule event fires (e.g. a booking created/deleted elsewhere), so a
- * linked or released request updates its badge without a reload.
+ * linked or released request updates its badge without a reload. Each row also
+ * shows the request's Style and Reference (booking-request-style-and-reference
+ * ticket 04), an empty one shown as absent.
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -282,6 +285,11 @@ export function RequestsManager({
       <ul className="mt-3 space-y-2">
         {items.map((item) => {
           const status = deriveBookingRequestState(item, new Date());
+          // The Style shows its label for one of the two values and the legacy
+          // free text as stored otherwise; "" means "not known" and is hidden.
+          const styleText = isStyle(item.hairdo)
+            ? STYLE_COPY[item.hairdo].label
+            : item.hairdo;
           return (
             <li
               key={item.id}
@@ -302,8 +310,15 @@ export function RequestsManager({
               </div>
               <p className="mt-1 text-xs text-neutral-600">
                 {item.event_type || "—"} · {item.headcount} orang ·{" "}
-                {item.hairdo || "—"} · {item.venue || "—"}
+                {item.venue || "—"}
               </p>
+              {styleText || item.reference ? (
+                <p className="mt-0.5 text-xs text-neutral-600">
+                  {styleText ? `Gaya: ${styleText}` : ""}
+                  {styleText && item.reference ? " · " : ""}
+                  {item.reference ? `Referensi: ${item.reference}` : ""}
+                </p>
+              ) : null}
               <p className="mt-0.5 text-xs text-neutral-600">
                 Diminta:{" "}
                 {item.date

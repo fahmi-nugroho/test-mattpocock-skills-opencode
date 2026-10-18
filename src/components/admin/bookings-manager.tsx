@@ -12,6 +12,7 @@ import {
   type AcceptRequestDetail,
 } from "@/lib/admin/request-events";
 import { formatIDR } from "@/lib/format";
+import { isStyle, STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createBooking,
@@ -47,10 +48,14 @@ function parseIntField(value: string, fallback: number | null): number | null {
 
 /**
  * Booking CRUD manager for the admin dashboard (ticket 07, extended ticket
- * 04). Date + start-end + service + client name/phone + notes and the ticket
- * 04 logistics/money fields (event, headcount, venue, hairdo, total, DP),
- * status pending → confirmed / cancelled, reschedule via Ubah (same overlap
- * guard as create). Confirming/cancelling writes the bookings rows the
+ * 04, and booking-request-style-and-reference ticket 04). Date + start-end +
+ * service + client name/phone + notes and the ticket 04 logistics/money fields
+ * (event, headcount, venue, hairdo, reference, total, DP), status pending →
+ * confirmed / cancelled, reschedule via Ubah (same overlap guard as create).
+ * The Style is an optional two-value radio and the Reference an optional text
+ * input, in both the create form and the inline row edit; a legacy row keeps
+ * its stored text read-only in the list and starts an edit with no Style
+ * chosen. Confirming/cancelling writes the bookings rows the
  * public month RPC derives day-status from, so the public calendar reflects
  * the change on next load without extra wiring. Double bookings are refused
  * by the adapter guard and surfaced as form/row errors in Indonesian.
@@ -77,6 +82,7 @@ export function BookingsManager() {
   const [headcount, setHeadcount] = useState("1");
   const [venue, setVenue] = useState("");
   const [hairdo, setHairdo] = useState("");
+  const [reference, setReference] = useState("");
   const [totalPrice, setTotalPrice] = useState("");
   const [dpAmount, setDpAmount] = useState("0");
   // Until the admin edits the total by hand, a chosen service keeps it in
@@ -101,6 +107,7 @@ export function BookingsManager() {
     headcount: "1",
     venue: "",
     hairdo: "",
+    reference: "",
     total_price: "",
     dp_amount: "0",
   });
@@ -177,6 +184,7 @@ export function BookingsManager() {
       setHeadcount(String(draft.headcount));
       setVenue(draft.venue);
       setHairdo(draft.hairdo);
+      setReference(draft.reference);
       if (draft.date) setDate(draft.date);
       if (draft.start_time) setStart(draft.start_time);
       if (draft.end_time) setEnd(draft.end_time);
@@ -225,6 +233,7 @@ export function BookingsManager() {
         headcount: parseIntField(headcount, 1),
         venue,
         hairdo,
+        reference,
         total_price: parseIntField(totalPrice, null),
         dp_amount: parseIntField(dpAmount, 0),
       });
@@ -251,6 +260,7 @@ export function BookingsManager() {
       setHeadcount("1");
       setVenue("");
       setHairdo("");
+      setReference("");
       setTotalPrice("");
       setDpAmount("0");
       setTotalTouched(false);
@@ -297,7 +307,11 @@ export function BookingsManager() {
       event_type: item.event_type,
       headcount: String(item.headcount),
       venue: item.venue,
-      hairdo: item.hairdo,
+      // Legacy free text in the reused column cannot be re-selected by a
+      // two-option radio: it shows read-only in the list, and editing starts
+      // with no Style chosen so the admin picks one or leaves it empty.
+      hairdo: isStyle(item.hairdo) ? item.hairdo : "",
+      reference: item.reference,
       total_price: item.total_price === null ? "" : String(item.total_price),
       dp_amount: String(item.dp_amount),
     });
@@ -321,6 +335,7 @@ export function BookingsManager() {
         headcount: parseIntField(editFields.headcount, 1),
         venue: editFields.venue,
         hairdo: editFields.hairdo,
+        reference: editFields.reference,
         total_price: parseIntField(editFields.total_price, null),
         dp_amount: parseIntField(editFields.dp_amount, 0),
       });
@@ -509,13 +524,50 @@ export function BookingsManager() {
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
+          <fieldset className="block sm:col-span-2">
+            <legend className="text-sm font-medium">
+              Gaya rambut{" "}
+              <span className="font-normal text-neutral-500">(opsional)</span>
+            </legend>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {STYLE_VALUES.map((value) => {
+                const option = STYLE_COPY[value];
+                const selected = hairdo === value;
+                return (
+                  <label
+                    key={value}
+                    htmlFor={`create-style-${value}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${
+                      selected
+                        ? "border-neutral-900 bg-neutral-50"
+                        : "border-neutral-300 bg-white"
+                    }`}
+                  >
+                    <input
+                      id={`create-style-${value}`}
+                      type="radio"
+                      name="create-hairdo"
+                      value={value}
+                      checked={selected}
+                      onChange={() => setHairdo(value)}
+                      className="h-4 w-4 accent-neutral-900"
+                    />
+                    <span className="text-sm font-medium">{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
           <label className="block">
-            <span className="text-sm font-medium">Model rambut</span>
+            <span className="text-sm font-medium">
+              Referensi{" "}
+              <span className="font-normal text-neutral-500">(opsional)</span>
+            </span>
             <input
               type="text"
-              value={hairdo}
-              onChange={(e) => setHairdo(e.target.value)}
-              placeholder="Sanggul, keriting…"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="Link foto atau deskripsi singkat"
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
@@ -596,250 +648,299 @@ export function BookingsManager() {
         className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
       />
       <ul className="mt-4 space-y-2">
-        {visibleItems.map((item) => (
-          <li
-            key={item.id}
-            className="rounded-xl border border-neutral-200 bg-white p-3"
-          >
-            {editingId === item.id ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  type="date"
-                  aria-label="Tanggal"
-                  value={editFields.date}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, date: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <select
-                  aria-label="Status"
-                  value={editFields.status}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      status: e.target.value as BookingStatus,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABEL[s]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="time"
-                  aria-label="Jam mulai"
-                  value={editFields.start_time}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, start_time: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="time"
-                  aria-label="Jam selesai"
-                  value={editFields.end_time}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, end_time: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="text"
-                  aria-label="Nama klien"
-                  value={editFields.client_name}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, client_name: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="tel"
-                  aria-label="No. HP klien"
-                  value={editFields.client_phone}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      client_phone: e.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="text"
-                  aria-label="Jenis acara"
-                  value={editFields.event_type}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      event_type: e.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  aria-label="Jumlah orang"
-                  value={editFields.headcount}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      headcount: e.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="text"
-                  aria-label="Lokasi"
-                  value={editFields.venue}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, venue: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="text"
-                  aria-label="Model rambut"
-                  value={editFields.hairdo}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, hairdo: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  aria-label="Total harga"
-                  value={editFields.total_price}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      total_price: e.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  aria-label="DP"
-                  value={editFields.dp_amount}
-                  onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      dp_amount: e.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-                <input
-                  type="text"
-                  aria-label="Catatan"
-                  value={editFields.notes}
-                  onChange={(e) =>
-                    setEditFields((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                />
-              </div>
-            ) : (
-              <div>
-                <p className="text-sm font-semibold">
-                  {item.date} · {item.start_time}–{item.end_time} ·{" "}
-                  {STATUS_LABEL[item.status]}
-                </p>
-                <p className="mt-0.5 text-xs text-neutral-500">
-                  {item.client_name} · {item.client_phone} ·{" "}
-                  {serviceName(item.service_id)}
-                </p>
-                <p className="mt-0.5 text-xs text-neutral-500">
-                  {item.event_type || "—"} · {item.headcount} orang ·{" "}
-                  {item.venue || "—"} · {item.hairdo || "—"}
-                </p>
-                {item.total_price !== null ? (
-                  <p className="mt-0.5 text-xs text-neutral-600">
-                    Total {formatIDR(item.total_price)} · DP{" "}
-                    {formatIDR(item.dp_amount)} · Sisa{" "}
-                    {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
-                  </p>
-                ) : null}
-                {item.notes ? (
-                  <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
-                ) : null}
-              </div>
-            )}
-            <div className="mt-3 flex flex-wrap gap-2">
+        {visibleItems.map((item) => {
+          // The Style shows its label for one of the two values and the legacy
+          // free text as stored otherwise; "" means "not known" and is hidden.
+          const styleText = isStyle(item.hairdo)
+            ? STYLE_COPY[item.hairdo].label
+            : item.hairdo;
+          const legacyHairdo =
+            item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
+          return (
+            <li
+              key={item.id}
+              className="rounded-xl border border-neutral-200 bg-white p-3"
+            >
               {editingId === item.id ? (
-                <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    type="date"
+                    aria-label="Tanggal"
+                    value={editFields.date}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, date: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <select
+                    aria-label="Status"
+                    value={editFields.status}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        status: e.target.value as BookingStatus,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABEL[s]}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="time"
+                    aria-label="Jam mulai"
+                    value={editFields.start_time}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, start_time: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="time"
+                    aria-label="Jam selesai"
+                    value={editFields.end_time}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, end_time: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Nama klien"
+                    value={editFields.client_name}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, client_name: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="tel"
+                    aria-label="No. HP klien"
+                    value={editFields.client_phone}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        client_phone: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Jenis acara"
+                    value={editFields.event_type}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        event_type: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    aria-label="Jumlah orang"
+                    value={editFields.headcount}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        headcount: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Lokasi"
+                    value={editFields.venue}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, venue: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <fieldset className="rounded-lg border border-neutral-200 p-2 sm:col-span-2">
+                    <legend className="px-1 text-xs font-medium text-neutral-600">
+                      Gaya rambut (opsional)
+                    </legend>
+                    <div className="flex flex-wrap gap-3">
+                      {STYLE_VALUES.map((value) => (
+                        <label
+                          key={value}
+                          htmlFor={`edit-style-${item.id}-${value}`}
+                          className="flex cursor-pointer items-center gap-2 text-sm"
+                        >
+                          <input
+                            id={`edit-style-${item.id}-${value}`}
+                            type="radio"
+                            name={`edit-hairdo-${item.id}`}
+                            value={value}
+                            checked={editFields.hairdo === value}
+                            onChange={() =>
+                              setEditFields((f) => ({ ...f, hairdo: value }))
+                            }
+                            className="h-4 w-4 accent-neutral-900"
+                          />
+                          {STYLE_COPY[value].label}
+                        </label>
+                      ))}
+                    </div>
+                    {legacyHairdo ? (
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Teks lama (hanya baca): {legacyHairdo}
+                      </p>
+                    ) : null}
+                  </fieldset>
+                  <input
+                    type="text"
+                    aria-label="Referensi"
+                    placeholder="Referensi (opsional)"
+                    value={editFields.reference}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, reference: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    aria-label="Total harga"
+                    value={editFields.total_price}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        total_price: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    aria-label="DP"
+                    value={editFields.dp_amount}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        dp_amount: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Catatan"
+                    value={editFields.notes}
+                    onChange={(e) =>
+                      setEditFields((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm font-semibold">
+                    {item.date} · {item.start_time}–{item.end_time} ·{" "}
+                    {STATUS_LABEL[item.status]}
+                  </p>
+                  <p className="mt-0.5 text-xs text-neutral-500">
+                    {item.client_name} · {item.client_phone} ·{" "}
+                    {serviceName(item.service_id)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-neutral-500">
+                    {item.event_type || "—"} · {item.headcount} orang ·{" "}
+                    {item.venue || "—"}
+                  </p>
+                  {styleText || item.reference ? (
+                    <p className="mt-0.5 text-xs text-neutral-600">
+                      {styleText ? `Gaya: ${styleText}` : ""}
+                      {styleText && item.reference ? " · " : ""}
+                      {item.reference ? `Referensi: ${item.reference}` : ""}
+                    </p>
+                  ) : null}
+                  {item.total_price !== null ? (
+                    <p className="mt-0.5 text-xs text-neutral-600">
+                      Total {formatIDR(item.total_price)} · DP{" "}
+                      {formatIDR(item.dp_amount)} · Sisa{" "}
+                      {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
+                    </p>
+                  ) : null}
+                  {item.notes ? (
+                    <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
+                  ) : null}
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {editingId === item.id ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={rowBusy === item.id}
+                      onClick={() => onSaveEdit(item)}
+                      className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                    >
+                      Batal
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(item)}
+                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                  >
+                    Ubah Jadwal
+                  </button>
+                )}
+                {item.status !== "confirmed" ? (
                   <button
                     type="button"
                     disabled={rowBusy === item.id}
-                    onClick={() => onSaveEdit(item)}
-                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    onClick={() => onSetStatus(item, "confirmed")}
+                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
                   >
-                    {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+                    Konfirmasi
                   </button>
+                ) : null}
+                {item.status !== "cancelled" ? (
                   <button
                     type="button"
-                    onClick={() => setEditingId(null)}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                    disabled={rowBusy === item.id}
+                    onClick={() => onSetStatus(item, "cancelled")}
+                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
                   >
-                    Batal
+                    Batalkan
                   </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => startEdit(item)}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-                >
-                  Ubah Jadwal
-                </button>
-              )}
-              {item.status !== "confirmed" ? (
+                ) : null}
                 <button
                   type="button"
                   disabled={rowBusy === item.id}
-                  onClick={() => onSetStatus(item, "confirmed")}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+                  onClick={() => onDelete(item)}
+                  className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                    confirmDeleteId === item.id
+                      ? "bg-red-600 text-white"
+                      : "border border-red-300 text-red-700"
+                  }`}
                 >
-                  Konfirmasi
+                  {rowBusy === item.id
+                    ? "Menghapus…"
+                    : confirmDeleteId === item.id
+                      ? "Klik lagi untuk hapus"
+                      : "Hapus"}
                 </button>
-              ) : null}
-              {item.status !== "cancelled" ? (
-                <button
-                  type="button"
-                  disabled={rowBusy === item.id}
-                  onClick={() => onSetStatus(item, "cancelled")}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-                >
-                  Batalkan
-                </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={rowBusy === item.id}
-                onClick={() => onDelete(item)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                  confirmDeleteId === item.id
-                    ? "bg-red-600 text-white"
-                    : "border border-red-300 text-red-700"
-                }`}
-              >
-                {rowBusy === item.id
-                  ? "Menghapus…"
-                  : confirmDeleteId === item.id
-                    ? "Klik lagi untuk hapus"
-                    : "Hapus"}
-              </button>
-            </div>
-          </li>
-        ))}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {items.length === 0 && !error ? (
         <p className="mt-3 text-sm text-neutral-600">

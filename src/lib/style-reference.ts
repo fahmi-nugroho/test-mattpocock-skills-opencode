@@ -26,3 +26,16 @@ export function isStyle(value: unknown): value is Style {
     (STYLE_VALUES as readonly string[]).includes(value)
   );
 }
+
+/**
+ * The two Styles as form options: the human label, and the plain-language
+ * description shared by the client form and the admin form, so the two values
+ * are spelled the same way everywhere. Keyed by Style, so adding a Style is a
+ * compile error until its copy is written. The admin's field is optional, but
+ * the two option labels are the same either way.
+ */
+export const STYLE_COPY: Record<Style, { label: string; description: string }> =
+  {
+    hijabdo: { label: "Hijabdo", description: "Ditata di atas hijab" },
+    hairdo: { label: "Hairdo", description: "Ditata di rambut terbuka" },
+  };
