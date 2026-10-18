@@ -115,7 +115,8 @@ export interface BookingPrefillDraft {
   event_type: string;
   headcount: number;
   venue: string;
-  hairdo: string;
+  hairdo: string; // the request's Style
+  reference: string; // the request's Reference, "" when absent
   date: string;
   start_time: string;
   end_time: string;
@@ -123,9 +124,9 @@ export interface BookingPrefillDraft {
 
 /**
  * Map a submitted request onto a booking-form draft: carry the client's own
- * details and the requested slot only. An absent slot becomes "" so the
- * form's own defaults stand. It never carries a price, status, service, or
- * notes.
+ * details, the requested slot, and the Style and Reference only. An absent
+ * slot becomes "" so the form's own defaults stand. It never carries a price,
+ * status, service, or notes.
  */
 export function requestToBookingDraft(
   request: BookingRequest,
@@ -137,6 +138,7 @@ export function requestToBookingDraft(
     headcount: request.headcount,
     venue: request.venue,
     hairdo: request.hairdo,
+    reference: request.reference,
     date: request.date ?? "",
     start_time: request.start_time ?? "",
     end_time: request.end_time ?? "",

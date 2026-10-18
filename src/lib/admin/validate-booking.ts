@@ -1,4 +1,5 @@
 import type { BookingStatus } from "../supabase/database";
+import { REFERENCE_MAX, isStyle } from "../style-reference";
 
 export interface BookingInput {
   date: string;
@@ -13,6 +14,7 @@ export interface BookingInput {
   headcount?: number;
   venue?: string;
   hairdo?: string;
+  reference?: string;
   total_price?: number | null;
   dp_amount?: number;
 }
@@ -30,6 +32,7 @@ export interface ValidatedBookingInput {
   headcount: number;
   venue: string;
   hairdo: string;
+  reference: string;
   total_price: number | null;
   dp_amount: number;
 }
@@ -44,15 +47,17 @@ const STATUSES: readonly BookingStatus[] = [
 // Caps mirror the 0015 column checks.
 const EVENT_TYPE_MAX = 100;
 const VENUE_MAX = 200;
-const HAIRDO_MAX = 100;
 
 /**
- * Validate the admin booking form (ticket 07, extended ticket 04). Mirrors
- * the SQL CHECKs (0001_schema.sql + 0015 columns: HH:MM shape, start < end,
- * status set, headcount >= 1, total/DP >= 0, field caps) so bad rows are
- * rejected before a DB write; trims names/notes and defaults notes to ""
- * (same shape as the bookings table). Overlap is checked separately in
- * booking-conflicts.ts after fetching same-day siblings.
+ * Validate the admin booking form (ticket 07, extended tickets 04 and 02).
+ * Mirrors the SQL CHECKs (0001_schema.sql + 0015 columns: HH:MM shape,
+ * start < end, status set, headcount >= 1, total/DP >= 0, field caps) so bad
+ * rows are rejected before a DB write; trims names/notes and defaults notes to
+ * "" (same shape as the bookings table). The Style is optional ('' allowed) but
+ * otherwise exactly hijabdo|hairdo, and the Reference is optional up to 300
+ * chars — the same two-value set and cap the public validator and the 0017
+ * submit function enforce. Overlap is checked separately in booking-conflicts.ts
+ * after fetching same-day siblings.
  */
 export function validateBookingInput(
   input: BookingInput,
@@ -92,9 +97,16 @@ export function validateBookingInput(
   if (venue.length > VENUE_MAX) {
     throw new Error(`Lokasi maksimal ${VENUE_MAX} karakter`);
   }
-  const hairdo = (input.hairdo ?? "").trim();
-  if (hairdo.length > HAIRDO_MAX) {
-    throw new Error(`Model rambut maksimal ${HAIRDO_MAX} karakter`);
+  // Style is optional: '' means "not known" (a hand-typed booking may predate
+  // the client's choice). Any other value must be exactly one of the two,
+  // matching the public validator and the SQL submit function (untrimmed enum).
+  const hairdo = input.hairdo ?? "";
+  if (hairdo !== "" && !isStyle(hairdo)) {
+    throw new Error("Gaya rambut harus Hijabdo atau Hairdo");
+  }
+  const reference = (input.reference ?? "").trim();
+  if (reference.length > REFERENCE_MAX) {
+    throw new Error(`Referensi maksimal ${REFERENCE_MAX} karakter`);
   }
 
   const headcount = input.headcount ?? 1;
@@ -131,6 +143,7 @@ export function validateBookingInput(
     headcount,
     venue,
     hairdo,
+    reference,
     total_price,
     dp_amount,
   };

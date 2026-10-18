@@ -136,6 +136,7 @@ const BOOKING = {
   headcount: 1,
   venue: "",
   hairdo: "",
+  reference: "",
   total_price: null as number | null,
   dp_amount: 0,
 };

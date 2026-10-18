@@ -30,6 +30,7 @@ describe("validateBookingInput", () => {
       headcount: 1,
       venue: "",
       hairdo: "",
+      reference: "",
       total_price: null,
       dp_amount: 0,
     });
@@ -47,7 +48,8 @@ describe("validateBookingInput", () => {
         event_type: "  Wisuda  ",
         headcount: 3,
         venue: " Gedung A ",
-        hairdo: " Sanggul ",
+        hairdo: "hijabdo",
+        reference: " https://contoh.test/look ",
         total_price: 450000,
         dp_amount: 100000,
       }),
@@ -55,7 +57,8 @@ describe("validateBookingInput", () => {
       event_type: "Wisuda",
       headcount: 3,
       venue: "Gedung A",
-      hairdo: "Sanggul",
+      hairdo: "hijabdo",
+      reference: "https://contoh.test/look",
       total_price: 450000,
       dp_amount: 100000,
     });
@@ -192,7 +195,7 @@ describe("validateBookingInput", () => {
     ).toThrow(/dp|down/i);
   });
 
-  it("rejects over-long event type / venue / hairdo instead of truncating silently", () => {
+  it("rejects over-long event type / venue / reference instead of truncating silently", () => {
     const base = {
       date: "2026-10-12",
       start_time: "09:00",
@@ -208,8 +211,52 @@ describe("validateBookingInput", () => {
       validateBookingInput({ ...base, venue: "x".repeat(201) }),
     ).toThrow(/lokasi|venue|tempat/i);
     expect(() =>
-      validateBookingInput({ ...base, hairdo: "x".repeat(101) }),
-    ).toThrow(/rambut|hairdo/i);
+      validateBookingInput({ ...base, reference: "x".repeat(301) }),
+    ).toThrow(/referensi|reference/i);
+  });
+
+  it("accepts an empty Style: a hand-typed booking may predate the choice", () => {
+    const base = {
+      date: "2026-10-12",
+      start_time: "09:00",
+      end_time: "10:00",
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      status: "pending" as const,
+    };
+    expect(validateBookingInput({ ...base, hairdo: "" }).hairdo).toBe("");
+    expect(validateBookingInput(base).hairdo).toBe("");
+  });
+
+  it("refuses a Style that is neither hijabdo nor hairdo, in Indonesian", () => {
+    const base = {
+      date: "2026-10-12",
+      start_time: "09:00",
+      end_time: "10:00",
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      status: "pending" as const,
+    };
+    expect(() =>
+      validateBookingInput({ ...base, hairdo: "Sanggul" }),
+    ).toThrow(/gaya rambut/i);
+  });
+
+  it("caps the Reference at exactly 300 characters, in Indonesian", () => {
+    const base = {
+      date: "2026-10-12",
+      start_time: "09:00",
+      end_time: "10:00",
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      status: "pending" as const,
+    };
+    expect(
+      validateBookingInput({ ...base, reference: "x".repeat(300) }).reference,
+    ).toHaveLength(300);
+    expect(() =>
+      validateBookingInput({ ...base, reference: "x".repeat(301) }),
+    ).toThrow(/referensi|reference/i);
   });
 
   it("clears total_price to null when empty", () => {

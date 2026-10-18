@@ -14,6 +14,11 @@
 
 import type { RpcClient } from "./month-availability";
 import { validateRequestSlot } from "./admin/validate-booking-request";
+import {
+  REFERENCE_MAX,
+  isStyle,
+  type Style,
+} from "./style-reference";
 
 export type BookingRequestState = "open" | "submitted" | "expired" | "missing";
 
@@ -33,7 +38,8 @@ export interface ValidatedBookingRequestPayload {
   event_type: string;
   headcount: number;
   venue: string;
-  hairdo: string;
+  hairdo: Style; // the required Style, reusing the hairdo storage key
+  reference: string; // the optional Reference, "" when absent
   notes: string;
   date: string | null; // "YYYY-MM-DD"
   start_time: string | null; // "HH:MM"
@@ -57,7 +63,6 @@ const HEADCOUNT_MIN = 1;
 const HEADCOUNT_MAX = 100;
 const EVENT_TYPE_MAX = 100;
 const VENUE_MAX = 200;
-const HAIRDO_MAX = 100;
 const NOTES_MAX = 1000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -167,6 +172,27 @@ function requiredHeadcount(value: unknown): number {
   return count;
 }
 
+/**
+ * The Style is required and exactly one of the two values, matching the SQL
+ * submit function (untrimmed enum handling). A distinct Indonesian message
+ * separates "not chosen" from "chosen but unrecognised".
+ */
+function requiredStyle(value: unknown): Style {
+  if (value === undefined || value === null) {
+    throw new Error("Gaya rambut wajib dipilih");
+  }
+  if (typeof value !== "string") {
+    throw new Error("Gaya rambut tidak valid");
+  }
+  if (value.trim() === "") {
+    throw new Error("Gaya rambut tidak boleh kosong");
+  }
+  if (!isStyle(value)) {
+    throw new Error("Gaya rambut tidak valid");
+  }
+  return value;
+}
+
 function optionalText(value: unknown, max: number, label: string): string {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") throw new Error(`${label} tidak valid`);
@@ -188,10 +214,11 @@ function slotValue(value: unknown, label: string): string | null {
 /**
  * Fail-closed validation of the client-owned payload. Mirrors the SQL submit
  * function's rules and caps (name <= 120 trimmed, phone >= 9 digits and <= 32
- * chars, headcount integer 1..100, per-field optional slot with YYYY-MM-DD +
- * strict HH:MM + start < end only when both times are present, event_type/
- * hairdo <= 100, venue <= 200, notes <= 1000) so a bad or oversized payload is
- * rejected before the RPC. Unknown keys are stripped: only the ten client-owned
+ * chars, headcount integer 1..100, required Style exactly hijabdo|hairdo,
+ * optional reference <= 300, per-field optional slot with YYYY-MM-DD + strict
+ * HH:MM + start < end only when both times are present, event_type <= 100,
+ * venue <= 200, notes <= 1000) so a bad or oversized payload is rejected
+ * before the RPC. Unknown keys are stripped: only the eleven client-owned
  * columns are ever returned.
  */
 export function validateBookingRequestPayload(
@@ -204,7 +231,8 @@ export function validateBookingRequestPayload(
   const headcount = requiredHeadcount(input.headcount);
   const event_type = optionalText(input.event_type, EVENT_TYPE_MAX, "Jenis acara");
   const venue = optionalText(input.venue, VENUE_MAX, "Lokasi");
-  const hairdo = optionalText(input.hairdo, HAIRDO_MAX, "Model rambut");
+  const hairdo = requiredStyle(input.hairdo);
+  const reference = optionalText(input.reference, REFERENCE_MAX, "Referensi");
   const notes = optionalText(input.notes, NOTES_MAX, "Catatan");
 
   // Each field is optional on its own; slotValue fails closed on a non-string
@@ -221,6 +249,7 @@ export function validateBookingRequestPayload(
     headcount,
     venue,
     hairdo,
+    reference,
     notes,
     date: slot.date,
     start_time: slot.start_time,
@@ -294,7 +323,7 @@ function mapSubmitBookingRequestResult(
 /**
  * Public request submit for the `submit_booking_request` RPC. Validates the
  * payload fail-closed BEFORE the call (same rules/caps as the SQL), forwards
- * only the ten client-owned fields, and returns the four known refusals
+ * only the eleven client-owned fields, and returns the four known refusals
  * distinctly; only a transport/RPC error or a malformed response throws.
  */
 export async function submitBookingRequest(

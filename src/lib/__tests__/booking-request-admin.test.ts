@@ -145,7 +145,8 @@ describe("requestToBookingDraft", () => {
       event_type: "Wisuda",
       headcount: 3,
       venue: "Gedung A",
-      hairdo: "Sanggul",
+      hairdo: "hijabdo",
+      reference: "https://contoh.test/look",
       date: "2026-11-01",
       start_time: "09:00",
       end_time: "11:00",
@@ -157,7 +158,8 @@ describe("requestToBookingDraft", () => {
       event_type: "Wisuda",
       headcount: 3,
       venue: "Gedung A",
-      hairdo: "Sanggul",
+      hairdo: "hijabdo",
+      reference: "https://contoh.test/look",
       date: "2026-11-01",
       start_time: "09:00",
       end_time: "11:00",
@@ -171,11 +173,22 @@ describe("requestToBookingDraft", () => {
     expect(draft).not.toHaveProperty("status");
   });
 
-  it("maps an absent requested slot to empty strings so the form defaults stand", () => {
+  it("carries the request's Style and Reference so the admin does not retype them", () => {
+    const draft = requestToBookingDraft({
+      ...REQUEST,
+      hairdo: "hairdo",
+      reference: "lihat ini",
+    });
+    expect(draft.hairdo).toBe("hairdo");
+    expect(draft.reference).toBe("lihat ini");
+  });
+
+  it("maps an absent requested slot to empty strings and carries an empty Reference through", () => {
     const draft = requestToBookingDraft(REQUEST);
     expect(draft.date).toBe("");
     expect(draft.start_time).toBe("");
     expect(draft.end_time).toBe("");
+    expect(draft.reference).toBe("");
   });
 });
 

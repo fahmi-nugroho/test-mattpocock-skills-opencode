@@ -144,7 +144,8 @@ const VALID_PAYLOAD = {
   event_type: "Akad",
   headcount: 3,
   venue: "Rumah mempelai",
-  hairdo: "Sanggul",
+  hairdo: "hijabdo",
+  reference: "https://contoh.test/look",
   notes: "datang pagi",
   date: "2026-11-01",
   start_time: "09:00",
@@ -290,7 +291,7 @@ describe("validateBookingRequestPayload", () => {
     ).toThrow(/jam|waktu|time/i);
   });
 
-  it("rejects oversized event_type/venue/hairdo/notes", () => {
+  it("rejects oversized event_type/venue/notes", () => {
     expect(() =>
       validateBookingRequestPayload({ ...VALID_PAYLOAD, event_type: "a".repeat(101) }),
     ).toThrow(/acara|event/i);
@@ -298,10 +299,53 @@ describe("validateBookingRequestPayload", () => {
       validateBookingRequestPayload({ ...VALID_PAYLOAD, venue: "a".repeat(201) }),
     ).toThrow(/lokasi|venue|tempat/i);
     expect(() =>
-      validateBookingRequestPayload({ ...VALID_PAYLOAD, hairdo: "a".repeat(101) }),
-    ).toThrow(/rambut|hairdo/i);
-    expect(() =>
       validateBookingRequestPayload({ ...VALID_PAYLOAD, notes: "a".repeat(1001) }),
     ).toThrow(/catatan|notes/i);
+  });
+
+  it("requires a Style: missing, empty, and unrecognised each fail in Indonesian", () => {
+    const { hairdo, ...noStyle } = VALID_PAYLOAD;
+    void hairdo;
+    expect(() => validateBookingRequestPayload(noStyle)).toThrow(
+      /wajib dipilih/i,
+    );
+    expect(() =>
+      validateBookingRequestPayload({ ...VALID_PAYLOAD, hairdo: "" }),
+    ).toThrow(/kosong/i);
+    expect(() =>
+      validateBookingRequestPayload({ ...VALID_PAYLOAD, hairdo: "Sanggul" }),
+    ).toThrow(/tidak valid/i);
+  });
+
+  it("accepts either Style value", () => {
+    expect(
+      validateBookingRequestPayload({ ...VALID_PAYLOAD, hairdo: "hijabdo" })
+        .hairdo,
+    ).toBe("hijabdo");
+    expect(
+      validateBookingRequestPayload({ ...VALID_PAYLOAD, hairdo: "hairdo" })
+        .hairdo,
+    ).toBe("hairdo");
+  });
+
+  it("accepts an absent Reference and defaults it to empty", () => {
+    const { reference, ...noReference } = VALID_PAYLOAD;
+    void reference;
+    expect(validateBookingRequestPayload(noReference).reference).toBe("");
+  });
+
+  it("caps the Reference at exactly 300 characters", () => {
+    expect(
+      validateBookingRequestPayload({
+        ...VALID_PAYLOAD,
+        reference: "a".repeat(300),
+      }).reference,
+    ).toHaveLength(300);
+    expect(() =>
+      validateBookingRequestPayload({
+        ...VALID_PAYLOAD,
+        reference: "a".repeat(301),
+      }),
+    ).toThrow(/referensi|reference/i);
   });
 });

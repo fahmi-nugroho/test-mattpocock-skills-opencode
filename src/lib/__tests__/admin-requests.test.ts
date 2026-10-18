@@ -113,6 +113,7 @@ const REQUEST_ROW = {
   headcount: 1,
   venue: "",
   hairdo: "",
+  reference: "",
   notes: "",
   date: null,
   start_time: null,
