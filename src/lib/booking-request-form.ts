@@ -19,7 +19,8 @@ export interface BookingRequestFormFields {
   event_type: string;
   headcount: string; // kept as text so a number input stays controlled
   venue: string;
-  hairdo: string;
+  hairdo: string; // the Style: "hijabdo" | "hairdo" | "" before the client picks
+  reference: string; // the optional Reference: a link or short description
   notes: string;
   date: string; // "YYYY-MM-DD", "" when not chosen
   start_time: string; // "HH:MM", "" when not chosen
@@ -34,6 +35,7 @@ export const EMPTY_REQUEST_FORM: BookingRequestFormFields = {
   headcount: "1",
   venue: "",
   hairdo: "",
+  reference: "",
   notes: "",
   date: "",
   start_time: "",

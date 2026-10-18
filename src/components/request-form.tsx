@@ -15,6 +15,7 @@ import {
 import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
 import type { RpcClient } from "@/lib/month-availability";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { STYLE_VALUES, type Style } from "@/lib/style-reference";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,6 +25,19 @@ const INPUT_CLASS =
 // Shown next to the slot in every non-blank state: a submitted request never
 // reserves the day, so the client must not read the form as a confirmed slot.
 const NOT_LOCKED_COPY = "Slot belum terkunci sampai DP diterima.";
+
+// The two Styles, rendered as a required choice. The values are driven by the
+// one two-value set the pure validator uses (src/lib/style-reference.ts); the
+// Record makes adding a Style a compile error until its copy is written.
+const STYLE_COPY: Record<Style, { label: string; description: string }> = {
+  hijabdo: { label: "Hijabdo", description: "Ditata di atas hijab" },
+  hairdo: { label: "Hairdo", description: "Ditata di rambut terbuka" },
+};
+
+// Photos are never uploaded here; the client sends them in the WhatsApp thread
+// they are already in, so this line stops them hunting for an upload button.
+const PHOTOS_VIA_WHATSAPP_COPY =
+  "Tidak ada unggah foto di formulir ini. Kirim foto referensimu lewat WhatsApp.";
 
 /**
  * The page is a small state machine over the token read:
@@ -322,16 +336,67 @@ export function RequestForm({ token }: { token: string }) {
         />
       </label>
 
-      <label htmlFor="req-hairdo" className="block">
-        <span className="text-sm font-medium">Model rambut</span>
-        <input
-          id="req-hairdo"
-          type="text"
-          value={fields.hairdo}
-          onChange={(event) => update("hairdo", event.target.value)}
-          className={INPUT_CLASS}
-        />
-      </label>
+      <fieldset className="block">
+        <legend className="text-sm font-medium">Gaya rambut</legend>
+        <span className="mt-0.5 block text-xs text-stone-500">
+          Pilih salah satu supaya Makeup Artist tahu cara menata.
+        </span>
+        <div className="mt-2 space-y-2">
+          {STYLE_VALUES.map((value) => {
+            const option = STYLE_COPY[value];
+            const selected = fields.hairdo === value;
+            return (
+              <label
+                key={value}
+                htmlFor={`req-style-${value}`}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                  selected
+                    ? "border-stone-900 bg-stone-50"
+                    : "border-stone-300 bg-white"
+                }`}
+              >
+                <input
+                  id={`req-style-${value}`}
+                  type="radio"
+                  name="req-hairdo"
+                  value={value}
+                  checked={selected}
+                  onChange={(event) => update("hairdo", event.target.value)}
+                  className="mt-0.5 h-4 w-4 accent-stone-900"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-stone-900">
+                    {option.label}
+                  </span>
+                  <span className="block text-xs text-stone-500">
+                    {option.description}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div className="block">
+        <label htmlFor="req-reference" className="block">
+          <span className="text-sm font-medium">
+            Referensi{" "}
+            <span className="font-normal text-stone-500">(opsional)</span>
+          </span>
+          <input
+            id="req-reference"
+            type="text"
+            value={fields.reference}
+            onChange={(event) => update("reference", event.target.value)}
+            placeholder="Link foto atau deskripsi singkat tampilan yang kamu mau"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <p className="mt-1 text-xs text-stone-500">
+          {PHOTOS_VIA_WHATSAPP_COPY}
+        </p>
+      </div>
 
       <label htmlFor="req-notes" className="block">
         <span className="text-sm font-medium">Catatan</span>

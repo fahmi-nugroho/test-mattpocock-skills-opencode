@@ -26,6 +26,7 @@ describe("formFieldsFromContext", () => {
       headcount: "1",
       venue: "",
       hairdo: "",
+      reference: "",
       notes: "",
       date: "2026-11-01",
       start_time: "09:00",
@@ -43,6 +44,8 @@ describe("formFieldsFromContext", () => {
     };
     expect(formFieldsFromContext(context)).toEqual(EMPTY_REQUEST_FORM);
     expect(EMPTY_REQUEST_FORM.headcount).toBe("1");
+    expect(EMPTY_REQUEST_FORM.reference).toBe("");
+    expect(EMPTY_REQUEST_FORM.hairdo).toBe("");
   });
 });
 
