@@ -81,3 +81,20 @@ export function buildStyleWaLink(
 ): string {
   return buildWaLink(number, buildStyleWaMessage(title, category));
 }
+
+/**
+ * Format Booking chat starter (ticket 04 of booking-request-intake): the
+ * admin sends the per-request link so the client fills a short form instead
+ * of retyping the whole text format. Indonesian, carries the link; the link
+ * itself is built by buildFormatBookingLink.
+ */
+export function buildFormatBookingWaMessage(link: string): string {
+  return `Halo, silakan isi format booking lewat link ini: ${link}`;
+}
+
+export function buildFormatBookingWaLink(
+  number: string,
+  link: string,
+): string {
+  return buildWaLink(number, buildFormatBookingWaMessage(link));
+}

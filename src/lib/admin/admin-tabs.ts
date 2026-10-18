@@ -8,6 +8,7 @@ export const ADMIN_TABS = [
   { id: "ringkasan", label: "Ringkasan" },
   { id: "kalender", label: "Kalender" },
   { id: "booking", label: "Booking" },
+  { id: "permintaan", label: "Permintaan" },
   { id: "blokir", label: "Blokir" },
   { id: "portfolio", label: "Portfolio" },
   { id: "harga", label: "Harga" },

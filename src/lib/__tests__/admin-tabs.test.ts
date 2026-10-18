@@ -8,6 +8,7 @@ describe("parseAdminTab", () => {
     expect(parseAdminTab("#ringkasan")).toBe("ringkasan");
     expect(parseAdminTab("#kalender")).toBe("kalender");
     expect(parseAdminTab("#booking")).toBe("booking");
+    expect(parseAdminTab("#permintaan")).toBe("permintaan");
     expect(parseAdminTab("#blokir")).toBe("blokir");
     expect(parseAdminTab("#portfolio")).toBe("portfolio");
     expect(parseAdminTab("#harga")).toBe("harga");
@@ -21,11 +22,12 @@ describe("parseAdminTab", () => {
     expect(parseAdminTab("#BOOKING")).toBe("ringkasan");
   });
 
-  it("exposes eight tabs in bar order", () => {
+  it("exposes nine tabs in bar order", () => {
     expect(ADMIN_TABS.map((t) => t.id)).toEqual([
       "ringkasan",
       "kalender",
       "booking",
+      "permintaan",
       "blokir",
       "portfolio",
       "harga",

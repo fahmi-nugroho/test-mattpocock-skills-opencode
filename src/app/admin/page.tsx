@@ -16,6 +16,7 @@ import { ProfileForm } from "@/components/admin/profile-form";
 import { StatsManager } from "@/components/admin/stats-manager";
 import { TestimonialsManager } from "@/components/admin/testimonials-manager";
 import { BookingsManager } from "@/components/admin/bookings-manager";
+import { RequestsManager } from "@/components/admin/requests-manager";
 import { BlocksManager } from "@/components/admin/blocks-manager";
 import { AdminCalendar } from "@/components/admin/admin-calendar";
 
@@ -36,6 +37,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [summary, setSummary] = useState<OverviewSummary>(EMPTY_SUMMARY);
+  const [requestCount, setRequestCount] = useState(0);
   const [waNumber, setWaNumber] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -198,6 +200,11 @@ export default function AdminPage() {
                 }`}
               >
                 {tab.label}
+                {tab.id === "permintaan" && requestCount > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {requestCount}
+                  </span>
+                ) : null}
               </a>
             </li>
           ))}
@@ -256,6 +263,26 @@ export default function AdminPage() {
           status hari di kalender publik.
         </p>
         <BookingsManager />
+      </section>
+
+      <section
+        id="permintaan"
+        aria-label="Permintaan booking"
+        className="mt-8 scroll-mt-24"
+      >
+        <h2 className="flex flex-wrap items-center gap-2 font-display text-lg font-bold">
+          Permintaan
+          {requestCount > 0 ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+              {requestCount} perlu ditindak
+            </span>
+          ) : null}
+        </h2>
+        <p className="mt-1 text-sm text-neutral-600">
+          Kirim link Format Booking ke klien, lalu terima permintaan yang
+          masuk menjadi booking lewat form yang sudah ada.
+        </p>
+        <RequestsManager onAttentionCountChange={setRequestCount} />
       </section>
 
       <section id="blokir" aria-label="Blokir dan tanggal penuh" className="mt-8 scroll-mt-24">
