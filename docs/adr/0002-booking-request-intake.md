@@ -37,8 +37,9 @@ Intake is a per-request token link plus a Booking Request.
   admin, and an accepted request is kept as a link to the booking it
   produced, so one request can be accepted at most once.
 - The public reaches intake through two purpose-built functions only,
-  never the underlying data, and both validate the token and the payload
-  fail-closed. This is the project's first public write path.
+  never the underlying data: both validate the token, and the submit
+  function validates the payload fail-closed. This is the project's first
+  public write path.
 
 Alternatives considered:
 

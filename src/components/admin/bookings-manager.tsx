@@ -29,19 +29,17 @@ import { getTodayKey } from "@/lib/calendar";
 const STATUSES: readonly BookingStatus[] = ["pending", "confirmed", "cancelled"];
 const STATUS_LABEL: Record<BookingStatus, string> = {
   pending: "Menunggu",
-  confirmed: "Confirmed",
+  confirmed: "Terkonfirmasi",
   cancelled: "Dibatalkan",
 };
 
-/** "" → null (an empty total means "not quoted yet"); otherwise the number. */
-function parseOptionalInt(value: string): number | null {
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  return Number(trimmed);
-}
-
-/** "" → fallback (headcount/DP keep their defaults when left blank). */
-function parseIntOr(value: string, fallback: number): number {
+/**
+ * Parse a numeric form field: "" → fallback (a blank total stays null, a
+ * blank headcount/DP keeps its default), otherwise the number.
+ */
+function parseIntField(value: string, fallback: number): number;
+function parseIntField(value: string, fallback: null): number | null;
+function parseIntField(value: string, fallback: number | null): number | null {
   const trimmed = value.trim();
   if (trimmed === "") return fallback;
   return Number(trimmed);
@@ -199,13 +197,13 @@ export function BookingsManager() {
       setTotalPrice("");
       return;
     }
-    const suggested = suggestTotal(service.price_idr, parseIntOr(headcount, 1));
+    const suggested = suggestTotal(service.price_idr, parseIntField(headcount, 1));
     setTotalPrice(suggested === null ? "" : String(suggested));
   }, [serviceId, headcount, totalTouched, services]);
 
   const createRemaining = remainingBalance(
-    parseOptionalInt(totalPrice),
-    parseIntOr(dpAmount, 0),
+    parseIntField(totalPrice, null),
+    parseIntField(dpAmount, 0),
   );
 
   async function onCreate(e: React.FormEvent) {
@@ -224,11 +222,11 @@ export function BookingsManager() {
         notes,
         status,
         event_type: eventType,
-        headcount: parseIntOr(headcount, 1),
+        headcount: parseIntField(headcount, 1),
         venue,
         hairdo,
-        total_price: parseOptionalInt(totalPrice),
-        dp_amount: parseIntOr(dpAmount, 0),
+        total_price: parseIntField(totalPrice, null),
+        dp_amount: parseIntField(dpAmount, 0),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Input tidak valid");
@@ -258,17 +256,20 @@ export function BookingsManager() {
       setTotalTouched(false);
       // A prefilled accept path links the request to the booking it just
       // created. The booking already exists, so a link failure is reported
-      // rather than retried — it must never be created a second time.
+      // rather than retried — it must never be created a second time. The
+      // pending id is cleared no matter what, so a later manual save can
+      // never link this request to an unrelated booking.
       if (pendingRequestId) {
         try {
           await linkBookingRequest(supabaseBrowser(), pendingRequestId, row.id);
-          setPendingRequestId(null);
         } catch (linkErr) {
           setFormError(
             linkErr instanceof Error
               ? linkErr.message
               : "Booking tersimpan, tetapi permintaan gagal ditautkan.",
           );
+        } finally {
+          setPendingRequestId(null);
         }
       }
       notifyScheduleChanged();
@@ -317,11 +318,11 @@ export function BookingsManager() {
         notes: editFields.notes,
         status: editFields.status,
         event_type: editFields.event_type,
-        headcount: parseIntOr(editFields.headcount, 1),
+        headcount: parseIntField(editFields.headcount, 1),
         venue: editFields.venue,
         hairdo: editFields.hairdo,
-        total_price: parseOptionalInt(editFields.total_price),
-        dp_amount: parseIntOr(editFields.dp_amount, 0),
+        total_price: parseIntField(editFields.total_price, null),
+        dp_amount: parseIntField(editFields.dp_amount, 0),
       });
     } catch (err) {
       setRowError(err instanceof Error ? err.message : "Input tidak valid");
@@ -514,7 +515,7 @@ export function BookingsManager() {
               type="text"
               value={hairdo}
               onChange={(e) => setHairdo(e.target.value)}
-              placeholder="Sanggul, curly…"
+              placeholder="Sanggul, keriting…"
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
@@ -797,7 +798,7 @@ export function BookingsManager() {
                   onClick={() => startEdit(item)}
                   className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
                 >
-                  Ubah / Reschedule
+                  Ubah Jadwal
                 </button>
               )}
               {item.status !== "confirmed" ? (

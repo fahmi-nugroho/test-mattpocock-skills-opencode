@@ -21,7 +21,7 @@ export default async function RequestPage({
         Makeup Artist
       </p>
       <h1 className="mt-2 text-center font-display text-2xl font-bold">
-        Formulir Booking
+        Format Booking
       </h1>
       <RequestForm token={token} />
     </main>

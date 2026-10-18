@@ -13,6 +13,7 @@
  */
 
 import type { RpcClient } from "./month-availability";
+import { validateRequestSlot } from "./admin/validate-booking-request";
 
 export type BookingRequestState = "open" | "submitted" | "expired" | "missing";
 
@@ -187,10 +188,11 @@ function slotValue(value: unknown, label: string): string | null {
 /**
  * Fail-closed validation of the client-owned payload. Mirrors the SQL submit
  * function's rules and caps (name <= 120 trimmed, phone >= 9 digits and <= 32
- * chars, headcount integer 1..100, slot all-or-nothing with YYYY-MM-DD + strict
- * HH:MM + start < end, event_type/hairdo <= 100, venue <= 200, notes <= 1000)
- * so a bad or oversized payload is rejected before the RPC. Unknown keys are
- * stripped: only the ten client-owned columns are ever returned.
+ * chars, headcount integer 1..100, per-field optional slot with YYYY-MM-DD +
+ * strict HH:MM + start < end only when both times are present, event_type/
+ * hairdo <= 100, venue <= 200, notes <= 1000) so a bad or oversized payload is
+ * rejected before the RPC. Unknown keys are stripped: only the ten client-owned
+ * columns are ever returned.
  */
 export function validateBookingRequestPayload(
   input: unknown,
@@ -205,26 +207,12 @@ export function validateBookingRequestPayload(
   const hairdo = optionalText(input.hairdo, HAIRDO_MAX, "Model rambut");
   const notes = optionalText(input.notes, NOTES_MAX, "Catatan");
 
+  // Each field is optional on its own; slotValue fails closed on a non-string
+  // and the shared validator enforces the formats and start < end.
   const date = slotValue(input.date, "Tanggal permintaan");
   const start_time = slotValue(input.start_time, "Jam permintaan");
   const end_time = slotValue(input.end_time, "Jam permintaan");
-
-  // All-or-nothing: a partial slot (some but not all of date/start/end) is
-  // rejected rather than silently ignored.
-  if (date !== null || start_time !== null || end_time !== null) {
-    if (date === null || start_time === null || end_time === null) {
-      throw new Error("Tanggal dan jam permintaan harus diisi lengkap");
-    }
-    if (!DATE_RE.test(date)) {
-      throw new Error("Tanggal permintaan harus format YYYY-MM-DD");
-    }
-    if (!HHMM_RE.test(start_time) || !HHMM_RE.test(end_time)) {
-      throw new Error("Jam permintaan harus format HH:MM (00:00–23:59)");
-    }
-    if (!(start_time < end_time)) {
-      throw new Error("Jam mulai harus sebelum jam selesai");
-    }
-  }
+  const slot = validateRequestSlot({ date, start_time, end_time });
 
   return {
     client_name,
@@ -234,9 +222,9 @@ export function validateBookingRequestPayload(
     venue,
     hairdo,
     notes,
-    date,
-    start_time,
-    end_time,
+    date: slot.date,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
   };
 }
 

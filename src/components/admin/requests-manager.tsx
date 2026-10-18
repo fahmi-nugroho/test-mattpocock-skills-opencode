@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
+  BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
   requestToBookingDraft,
@@ -17,33 +19,12 @@ import {
 } from "@/lib/supabase/admin-requests";
 import type { BookingRequest } from "@/lib/supabase/database";
 
-const STATUS_LABEL: Record<BookingRequestStatus, string> = {
-  open: "Terbuka",
-  submitted: "Terkirim",
-  accepted: "Diterima",
-  expired: "Kedaluwarsa",
-};
-
 const STATUS_STYLE: Record<BookingRequestStatus, string> = {
   open: "bg-neutral-100 text-neutral-700",
   submitted: "bg-amber-100 text-amber-800",
   accepted: "bg-green-100 text-green-800",
   expired: "bg-red-100 text-red-700",
 };
-
-/** Why a non-submitted request cannot be accepted (Indonesian, inline). */
-function refusalHint(status: BookingRequestStatus): string {
-  switch (status) {
-    case "open":
-      return "Menunggu klien mengirim form — belum bisa dijadikan booking.";
-    case "expired":
-      return "Link sudah kedaluwarsa — buat link baru untuk klien ini.";
-    case "accepted":
-      return "Sudah diterima menjadi booking.";
-    default:
-      return "Belum bisa dijadikan booking.";
-  }
-}
 
 interface RequestsManagerProps {
   /** Reports how many submitted requests need attention after each load. */
@@ -236,9 +217,9 @@ export function RequestsManager({
           </label>
         </div>
         <p className="text-xs text-neutral-500">
-          Isi tanggal dan jam lengkap, atau kosongkan semuanya agar klien
-          memilih sendiri. Nomor WhatsApp hanya dipakai untuk tombol kirim,
-          tidak disimpan.
+          Tanggal dan jam bersifat opsional dan boleh diisi sebagian saja —
+          klien bisa menyesuaikan sendiri. Nomor WhatsApp hanya dipakai untuk
+          tombol kirim, tidak disimpan.
         </p>
         {createError ? (
           <p role="alert" className="text-sm text-red-600">
@@ -310,7 +291,7 @@ export function RequestsManager({
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[status]}`}
                 >
-                  {STATUS_LABEL[status]}
+                  {BOOKING_REQUEST_STATUS_LABEL[status]}
                 </span>
                 <span className="text-sm font-semibold">
                   {item.client_name || "Tanpa nama"}
@@ -351,7 +332,7 @@ export function RequestsManager({
                       Jadikan Booking
                     </button>
                     <p className="mt-1 text-xs text-neutral-500">
-                      {refusalHint(status)}
+                      {bookingRequestRefusalHint(status)}
                     </p>
                   </div>
                 )}
