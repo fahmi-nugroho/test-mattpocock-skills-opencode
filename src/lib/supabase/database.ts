@@ -43,7 +43,8 @@ export interface Booking {
   event_type: string; // "" when none (0015)
   headcount: number; // >= 1 (0015)
   venue: string; // "" when none (0015)
-  hairdo: string; // "" when none (0015)
+  hairdo: string; // Style: "hijabdo" | "hairdo" | "" when unknown (0015, narrowed by 0017)
+  reference: string; // "" when none; <= 300 chars (0017)
   total_price: number | null; // null = not quoted yet (0015)
   dp_amount: number; // >= 0, default 0 (0015)
 }
@@ -66,7 +67,8 @@ export interface BookingRequest {
   event_type: string;
   headcount: number; // >= 1
   venue: string;
-  hairdo: string;
+  hairdo: string; // Style: "hijabdo" | "hairdo" | "" when unknown
+  reference: string; // "" when none; <= 300 chars
   notes: string;
   date: string | null; // "YYYY-MM-DD"
   start_time: string | null; // "HH:MM"

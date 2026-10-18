@@ -31,6 +31,7 @@ const REQUEST: BookingRequest = {
   headcount: 1,
   venue: "",
   hairdo: "",
+  reference: "",
   notes: "",
   date: null,
   start_time: null,

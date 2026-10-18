@@ -15,6 +15,15 @@ function codeOnly(sql: string): string {
     .replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+/** Extract the submit_booking_request definition (SQL only) for contract checks. */
+function submitFunction(sql: string): string {
+  return (
+    sql.match(
+      /create or replace function\s+submit_booking_request[\s\S]*?\$\$;/,
+    )?.[0] ?? ""
+  );
+}
+
 // Seam 3 (declarative SQL verify): asserts migration files contain the
 // spec'd tables/columns/RLS/storage/RPC/seed. Catches missing backend
 // pieces without a live DB. Misses live Postgres semantics.
@@ -607,7 +616,8 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
       expect(read).toContain(key);
     }
     // Negative sweep: the read body never selects or returns the client's
-    // phone/notes, an admin price, status, or the accepted link.
+    // phone/notes, an admin price, status, the accepted link, or the
+    // client-owned Style/Reference.
     for (const forbidden of [
       "client_phone",
       "notes",
@@ -615,6 +625,8 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
       "dp_amount",
       "status",
       "accepted_booking_id",
+      "hairdo",
+      "reference",
     ]) {
       expect(read.toLowerCase()).not.toContain(forbidden);
     }
@@ -706,6 +718,102 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     // No grant or policy may name booking_requests at all for anon.
     expect(code).not.toMatch(/grant[^;]*booking_requests/);
     expect(code).not.toMatch(/create policy[^;]*booking_requests/);
+    expect(code).not.toMatch(/on\s+booking_requests\s+to\s+anon/);
+  });
+
+  it("0017 adds a non-null reference column defaulting to '' on both tables", () => {
+    const code = codeOnly(
+      readMigration("0017_style_and_reference.sql"),
+    ).toLowerCase();
+    // One reference column on each table, the same plain-scalar shape as the
+    // other text columns; existing rows get '' and keep their old hairdo text.
+    expect(code).toMatch(
+      /alter table\s+bookings\s+add column\s+reference\s+text\s+not null\s+default\s+''/,
+    );
+    expect(code).toMatch(
+      /alter table\s+booking_requests\s+add column\s+reference\s+text\s+not null\s+default\s+''/,
+    );
+    // No new constraint: the 300-char cap and the two Style values live in the
+    // submit function (and the TS validators), so legacy free text in the
+    // reused hairdo column cannot collide with a schema CHECK.
+    expect(code).not.toMatch(/check\s*\(\s*char_length\s*\(\s*reference/);
+    expect(code).not.toMatch(/check\s*\(\s*hairdo/);
+    expect(code).not.toMatch(/add constraint[^;]*hairdo/);
+  });
+
+  it("0017 makes the submit Style required and exactly hijabdo or hairdo", () => {
+    const code = codeOnly(readMigration("0017_style_and_reference.sql"));
+    const submit = submitFunction(code);
+    expect(submit).not.toBe("");
+    // The reused key is validated as a two-value choice, so '' is refused.
+    expect(submit).toMatch(/-\>>\s*'hairdo'/);
+    expect(submit).toMatch(
+      /v_hairdo\s+not in\s*\(\s*'hijabdo'\s*,\s*'hairdo'\s*\)/,
+    );
+    // "Exactly" the two values: the raw key is compared, not normalised.
+    expect(submit).not.toMatch(
+      /btrim\s*\(\s*coalesce\s*\(\s*p_payload\s*->>\s*'hairdo'/,
+    );
+  });
+
+  it("0017 caps the submit Reference at 300 and writes it with the client-owned columns", () => {
+    const code = codeOnly(readMigration("0017_style_and_reference.sql"));
+    const submit = submitFunction(code);
+    expect(submit).not.toBe("");
+    expect(submit).toMatch(/-\>>\s*'reference'/);
+    expect(submit).toMatch(/char_length\s*\(\s*v_reference\s*\)\s*>\s*300/);
+    // The SET clause carries the client-owned columns plus submitted_at only —
+    // never the token, price, status, accepted link, or other stamps.
+    const setClause =
+      submit.match(
+        /update\s+booking_requests\s+set([\s\S]*?)where\s+token\s*=\s*p_token/,
+      )?.[1] ?? "";
+    expect(setClause).not.toBe("");
+    for (const col of [
+      "client_name",
+      "client_phone",
+      "event_type",
+      "headcount",
+      "venue",
+      "hairdo",
+      "reference",
+      "notes",
+      "date",
+      "start_time",
+      "end_time",
+      "submitted_at",
+    ]) {
+      expect(setClause).toContain(col);
+    }
+    for (const forbidden of [
+      "token",
+      "total_price",
+      "dp_amount",
+      "status",
+      "accepted_booking_id",
+      "created_at",
+      "expires_at",
+    ]) {
+      expect(setClause.toLowerCase()).not.toContain(forbidden);
+    }
+    // The guarded, race-safe update is carried over from 0016.
+    expect(submit).toMatch(
+      /where\s+token\s*=\s*p_token[\s\S]*submitted_at\s+is null[\s\S]*expires_at\s*>\s*now\(\)/,
+    );
+  });
+
+  it("0017 keeps the public read contract and anon table denial untouched", () => {
+    const code = codeOnly(
+      readMigration("0017_style_and_reference.sql"),
+    ).toLowerCase();
+    // The read function is not redefined, so Style/Reference stay client-owned
+    // and are never returned to a token holder.
+    expect(code).not.toContain("get_booking_request");
+    // The submit function stays anon-executable; the table never is.
+    expect(code).toMatch(
+      /grant execute on function submit_booking_request\(text,\s*jsonb\) to anon,\s*authenticated/,
+    );
+    expect(code).not.toMatch(/grant[^;]*booking_requests/);
     expect(code).not.toMatch(/on\s+booking_requests\s+to\s+anon/);
   });
 });
