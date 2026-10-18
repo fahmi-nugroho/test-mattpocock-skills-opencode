@@ -9,6 +9,12 @@ export interface BookingInput {
   client_phone: string;
   notes?: string;
   status: BookingStatus | string;
+  event_type?: string;
+  headcount?: number;
+  venue?: string;
+  hairdo?: string;
+  total_price?: number | null;
+  dp_amount?: number;
 }
 
 export interface ValidatedBookingInput {
@@ -20,6 +26,12 @@ export interface ValidatedBookingInput {
   client_phone: string;
   notes: string;
   status: BookingStatus;
+  event_type: string;
+  headcount: number;
+  venue: string;
+  hairdo: string;
+  total_price: number | null;
+  dp_amount: number;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,13 +41,18 @@ const STATUSES: readonly BookingStatus[] = [
   "confirmed",
   "cancelled",
 ];
+// Caps mirror the 0015 column checks.
+const EVENT_TYPE_MAX = 100;
+const VENUE_MAX = 200;
+const HAIRDO_MAX = 100;
 
 /**
- * Validate the admin booking form (ticket 07). Mirrors the SQL CHECKs
- * (0001_schema.sql: HH:MM shape, start < end, status set) so bad rows
- * are rejected before a DB write; trims names/notes and defaults
- * notes to "" (same shape as the bookings table). Overlap is checked
- * separately in booking-conflicts.ts after fetching same-day siblings.
+ * Validate the admin booking form (ticket 07, extended ticket 04). Mirrors
+ * the SQL CHECKs (0001_schema.sql + 0015 columns: HH:MM shape, start < end,
+ * status set, headcount >= 1, total/DP >= 0, field caps) so bad rows are
+ * rejected before a DB write; trims names/notes and defaults notes to ""
+ * (same shape as the bookings table). Overlap is checked separately in
+ * booking-conflicts.ts after fetching same-day siblings.
  */
 export function validateBookingInput(
   input: BookingInput,
@@ -66,6 +83,41 @@ export function validateBookingInput(
       : input.service_id.trim() === ""
         ? null
         : input.service_id.trim();
+
+  const event_type = (input.event_type ?? "").trim();
+  if (event_type.length > EVENT_TYPE_MAX) {
+    throw new Error(`Jenis acara maksimal ${EVENT_TYPE_MAX} karakter`);
+  }
+  const venue = (input.venue ?? "").trim();
+  if (venue.length > VENUE_MAX) {
+    throw new Error(`Lokasi maksimal ${VENUE_MAX} karakter`);
+  }
+  const hairdo = (input.hairdo ?? "").trim();
+  if (hairdo.length > HAIRDO_MAX) {
+    throw new Error(`Model rambut maksimal ${HAIRDO_MAX} karakter`);
+  }
+
+  const headcount = input.headcount ?? 1;
+  if (!Number.isInteger(headcount) || headcount < 1) {
+    throw new Error("Jumlah orang harus angka bulat minimal 1");
+  }
+
+  const total_price =
+    input.total_price === undefined || input.total_price === null
+      ? null
+      : input.total_price;
+  if (
+    total_price !== null &&
+    (!Number.isInteger(total_price) || total_price < 0)
+  ) {
+    throw new Error("Total harga harus angka minimal 0");
+  }
+
+  const dp_amount = input.dp_amount ?? 0;
+  if (!Number.isInteger(dp_amount) || dp_amount < 0) {
+    throw new Error("DP harus angka minimal 0");
+  }
+
   return {
     date: input.date,
     start_time: input.start_time,
@@ -75,5 +127,11 @@ export function validateBookingInput(
     client_phone,
     notes: (input.notes ?? "").trim(),
     status: input.status as BookingStatus,
+    event_type,
+    headcount,
+    venue,
+    hairdo,
+    total_price,
+    dp_amount,
   };
 }

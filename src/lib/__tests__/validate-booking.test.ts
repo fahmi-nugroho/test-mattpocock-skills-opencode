@@ -26,6 +26,38 @@ describe("validateBookingInput", () => {
       client_phone: "081234567890",
       notes: "Rias wisuda",
       status: "pending",
+      event_type: "",
+      headcount: 1,
+      venue: "",
+      hairdo: "",
+      total_price: null,
+      dp_amount: 0,
+    });
+  });
+
+  it("carries the new booking fields through, trimmed", () => {
+    expect(
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "11:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        event_type: "  Wisuda  ",
+        headcount: 3,
+        venue: " Gedung A ",
+        hairdo: " Sanggul ",
+        total_price: 450000,
+        dp_amount: 100000,
+      }),
+    ).toMatchObject({
+      event_type: "Wisuda",
+      headcount: 3,
+      venue: "Gedung A",
+      hairdo: "Sanggul",
+      total_price: 450000,
+      dp_amount: 100000,
     });
   });
 
@@ -105,5 +137,92 @@ describe("validateBookingInput", () => {
         status: "waiting",
       }),
     ).toThrow(/status/i);
+  });
+
+  it("rejects a headcount below one instead of an empty job", () => {
+    expect(() =>
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "10:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        headcount: 0,
+      }),
+    ).toThrow(/jumlah|orang|headcount/i);
+  });
+
+  it("rejects a fractional headcount instead of a partial person", () => {
+    expect(() =>
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "10:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        headcount: 1.5,
+      }),
+    ).toThrow(/jumlah|orang|headcount/i);
+  });
+
+  it("rejects a negative total and a negative DP", () => {
+    expect(() =>
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "10:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        total_price: -1,
+      }),
+    ).toThrow(/total|harga/i);
+    expect(() =>
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "10:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        dp_amount: -1,
+      }),
+    ).toThrow(/dp|down/i);
+  });
+
+  it("rejects over-long event type / venue / hairdo instead of truncating silently", () => {
+    const base = {
+      date: "2026-10-12",
+      start_time: "09:00",
+      end_time: "10:00",
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      status: "pending" as const,
+    };
+    expect(() =>
+      validateBookingInput({ ...base, event_type: "x".repeat(101) }),
+    ).toThrow(/jenis|acara/i);
+    expect(() =>
+      validateBookingInput({ ...base, venue: "x".repeat(201) }),
+    ).toThrow(/lokasi|venue|tempat/i);
+    expect(() =>
+      validateBookingInput({ ...base, hairdo: "x".repeat(101) }),
+    ).toThrow(/rambut|hairdo/i);
+  });
+
+  it("clears total_price to null when empty", () => {
+    expect(
+      validateBookingInput({
+        date: "2026-10-12",
+        start_time: "09:00",
+        end_time: "10:00",
+        client_name: "Sinta",
+        client_phone: "081234567890",
+        status: "pending",
+        total_price: null,
+      }).total_price,
+    ).toBeNull();
   });
 });

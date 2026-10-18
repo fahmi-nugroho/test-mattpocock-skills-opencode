@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateBookingInput } from "@/lib/admin/validate-booking";
+import {
+  remainingBalance,
+  suggestTotal,
+} from "@/lib/admin/booking-request";
+import {
+  ACCEPT_REQUEST_EVENT,
+  type AcceptRequestDetail,
+} from "@/lib/admin/request-events";
+import { formatIDR } from "@/lib/format";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createBooking,
@@ -11,6 +20,7 @@ import {
   setBookingStatus,
   updateBooking,
 } from "@/lib/supabase/admin-bookings";
+import { linkBookingRequest } from "@/lib/supabase/admin-requests";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import type { Booking, BookingStatus, Service } from "@/lib/supabase/database";
@@ -23,15 +33,34 @@ const STATUS_LABEL: Record<BookingStatus, string> = {
   cancelled: "Dibatalkan",
 };
 
+/** "" → null (an empty total means "not quoted yet"); otherwise the number. */
+function parseOptionalInt(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  return Number(trimmed);
+}
+
+/** "" → fallback (headcount/DP keep their defaults when left blank). */
+function parseIntOr(value: string, fallback: number): number {
+  const trimmed = value.trim();
+  if (trimmed === "") return fallback;
+  return Number(trimmed);
+}
+
 /**
- * Booking CRUD manager for the admin dashboard (ticket 07). Date +
- * start-end + service + client name/phone + notes, status
- * pending → confirmed / cancelled, reschedule via Ubah (same overlap
+ * Booking CRUD manager for the admin dashboard (ticket 07, extended ticket
+ * 04). Date + start-end + service + client name/phone + notes and the ticket
+ * 04 logistics/money fields (event, headcount, venue, hairdo, total, DP),
+ * status pending → confirmed / cancelled, reschedule via Ubah (same overlap
  * guard as create). Confirming/cancelling writes the bookings rows the
- * public month RPC derives day-status from, so the public calendar
- * reflects the change on next load without extra wiring. Double
- * bookings are refused by the adapter guard and surfaced as form/row
- * errors in Indonesian.
+ * public month RPC derives day-status from, so the public calendar reflects
+ * the change on next load without extra wiring. Double bookings are refused
+ * by the adapter guard and surfaced as form/row errors in Indonesian.
+ *
+ * "Jadikan Booking" from the Permintaan section dispatches
+ * ACCEPT_REQUEST_EVENT; this form listens, prefills, and after a normal
+ * (guarded) save links the request to the new booking — the accept path
+ * never bypasses validation or the conflict guard.
  */
 export function BookingsManager() {
   const [items, setItems] = useState<Booking[]>([]);
@@ -46,6 +75,18 @@ export function BookingsManager() {
   const [clientPhone, setClientPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<BookingStatus>("pending");
+  const [eventType, setEventType] = useState("");
+  const [headcount, setHeadcount] = useState("1");
+  const [venue, setVenue] = useState("");
+  const [hairdo, setHairdo] = useState("");
+  const [totalPrice, setTotalPrice] = useState("");
+  const [dpAmount, setDpAmount] = useState("0");
+  // Until the admin edits the total by hand, a chosen service keeps it in
+  // sync with price × headcount (a hint only — never saved unless left in).
+  const [totalTouched, setTotalTouched] = useState(false);
+  // Set when "Jadikan Booking" prefilled this form from a request; the next
+  // successful save links the request to the new booking.
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,6 +99,12 @@ export function BookingsManager() {
     client_phone: "",
     notes: "",
     status: "pending" as BookingStatus,
+    event_type: "",
+    headcount: "1",
+    venue: "",
+    hairdo: "",
+    total_price: "",
+    dp_amount: "0",
   });
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -117,6 +164,50 @@ export function BookingsManager() {
     };
   }, []);
 
+  // "Jadikan Booking" hand-off: the Permintaan section dispatches the request
+  // draft, this always-mounted form fills itself in (client/event fields
+  // always; slot only when the admin already set one, else keep the form
+  // defaults) and remembers the request to link after a normal save.
+  useEffect(() => {
+    const onAccept = (event: Event) => {
+      const detail = (event as CustomEvent<AcceptRequestDetail>).detail;
+      if (!detail) return;
+      const { requestId, draft } = detail;
+      setClientName(draft.client_name);
+      setClientPhone(draft.client_phone);
+      setEventType(draft.event_type);
+      setHeadcount(String(draft.headcount));
+      setVenue(draft.venue);
+      setHairdo(draft.hairdo);
+      if (draft.date) setDate(draft.date);
+      if (draft.start_time) setStart(draft.start_time);
+      if (draft.end_time) setEnd(draft.end_time);
+      setPendingRequestId(requestId);
+      setTotalTouched(false);
+      setFormError(null);
+    };
+    window.addEventListener(ACCEPT_REQUEST_EVENT, onAccept);
+    return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
+  }, []);
+
+  // Service suggestion: price × headcount fills the total only while the
+  // admin has not edited the total by hand; a cleared total stays cleared.
+  useEffect(() => {
+    if (totalTouched) return;
+    const service = services.find((s) => s.id === serviceId);
+    if (!service) {
+      setTotalPrice("");
+      return;
+    }
+    const suggested = suggestTotal(service.price_idr, parseIntOr(headcount, 1));
+    setTotalPrice(suggested === null ? "" : String(suggested));
+  }, [serviceId, headcount, totalTouched, services]);
+
+  const createRemaining = remainingBalance(
+    parseOptionalInt(totalPrice),
+    parseIntOr(dpAmount, 0),
+  );
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return;
@@ -132,6 +223,12 @@ export function BookingsManager() {
         client_phone: clientPhone,
         notes,
         status,
+        event_type: eventType,
+        headcount: parseIntOr(headcount, 1),
+        venue,
+        hairdo,
+        total_price: parseOptionalInt(totalPrice),
+        dp_amount: parseIntOr(dpAmount, 0),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Input tidak valid");
@@ -152,6 +249,28 @@ export function BookingsManager() {
       setNotes("");
       setServiceId("");
       setStatus("pending");
+      setEventType("");
+      setHeadcount("1");
+      setVenue("");
+      setHairdo("");
+      setTotalPrice("");
+      setDpAmount("0");
+      setTotalTouched(false);
+      // A prefilled accept path links the request to the booking it just
+      // created. The booking already exists, so a link failure is reported
+      // rather than retried — it must never be created a second time.
+      if (pendingRequestId) {
+        try {
+          await linkBookingRequest(supabaseBrowser(), pendingRequestId, row.id);
+          setPendingRequestId(null);
+        } catch (linkErr) {
+          setFormError(
+            linkErr instanceof Error
+              ? linkErr.message
+              : "Booking tersimpan, tetapi permintaan gagal ditautkan.",
+          );
+        }
+      }
       notifyScheduleChanged();
     } catch (err) {
       setFormError(
@@ -174,6 +293,12 @@ export function BookingsManager() {
       client_phone: item.client_phone,
       notes: item.notes,
       status: item.status,
+      event_type: item.event_type,
+      headcount: String(item.headcount),
+      venue: item.venue,
+      hairdo: item.hairdo,
+      total_price: item.total_price === null ? "" : String(item.total_price),
+      dp_amount: String(item.dp_amount),
     });
   }
 
@@ -191,6 +316,12 @@ export function BookingsManager() {
         client_phone: editFields.client_phone,
         notes: editFields.notes,
         status: editFields.status,
+        event_type: editFields.event_type,
+        headcount: parseIntOr(editFields.headcount, 1),
+        venue: editFields.venue,
+        hairdo: editFields.hairdo,
+        total_price: parseOptionalInt(editFields.total_price),
+        dp_amount: parseIntOr(editFields.dp_amount, 0),
       });
     } catch (err) {
       setRowError(err instanceof Error ? err.message : "Input tidak valid");
@@ -347,6 +478,70 @@ export function BookingsManager() {
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
+          <label className="block">
+            <span className="text-sm font-medium">Jenis acara</span>
+            <input
+              type="text"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value)}
+              placeholder="Wisuda, lamaran…"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Jumlah orang</span>
+            <input
+              type="number"
+              min={1}
+              value={headcount}
+              onChange={(e) => setHeadcount(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Lokasi</span>
+            <input
+              type="text"
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+              placeholder="Gedung / alamat"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Model rambut</span>
+            <input
+              type="text"
+              value={hairdo}
+              onChange={(e) => setHairdo(e.target.value)}
+              placeholder="Sanggul, curly…"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Total harga (Rp)</span>
+            <input
+              type="number"
+              min={0}
+              value={totalPrice}
+              onChange={(e) => {
+                setTotalPrice(e.target.value);
+                setTotalTouched(true);
+              }}
+              placeholder="Kosongkan bila belum disepakati"
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">DP (Rp)</span>
+            <input
+              type="number"
+              min={0}
+              value={dpAmount}
+              onChange={(e) => setDpAmount(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
           <label className="block sm:col-span-2">
             <span className="text-sm font-medium">Catatan</span>
             <input
@@ -372,6 +567,11 @@ export function BookingsManager() {
             </select>
           </label>
         </div>
+        {createRemaining !== null ? (
+          <p className="text-sm text-neutral-600">
+            Sisa pembayaran: {formatIDR(createRemaining)}
+          </p>
+        ) : null}
         {formError ? (
           <p role="alert" className="text-sm text-red-600">
             {formError}
@@ -469,6 +669,75 @@ export function BookingsManager() {
                 />
                 <input
                   type="text"
+                  aria-label="Jenis acara"
+                  value={editFields.event_type}
+                  onChange={(e) =>
+                    setEditFields((f) => ({
+                      ...f,
+                      event_type: e.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  aria-label="Jumlah orang"
+                  value={editFields.headcount}
+                  onChange={(e) =>
+                    setEditFields((f) => ({
+                      ...f,
+                      headcount: e.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="text"
+                  aria-label="Lokasi"
+                  value={editFields.venue}
+                  onChange={(e) =>
+                    setEditFields((f) => ({ ...f, venue: e.target.value }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="text"
+                  aria-label="Model rambut"
+                  value={editFields.hairdo}
+                  onChange={(e) =>
+                    setEditFields((f) => ({ ...f, hairdo: e.target.value }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  aria-label="Total harga"
+                  value={editFields.total_price}
+                  onChange={(e) =>
+                    setEditFields((f) => ({
+                      ...f,
+                      total_price: e.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  aria-label="DP"
+                  value={editFields.dp_amount}
+                  onChange={(e) =>
+                    setEditFields((f) => ({
+                      ...f,
+                      dp_amount: e.target.value,
+                    }))
+                  }
+                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="text"
                   aria-label="Catatan"
                   value={editFields.notes}
                   onChange={(e) =>
@@ -487,6 +756,17 @@ export function BookingsManager() {
                   {item.client_name} · {item.client_phone} ·{" "}
                   {serviceName(item.service_id)}
                 </p>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {item.event_type || "—"} · {item.headcount} orang ·{" "}
+                  {item.venue || "—"} · {item.hairdo || "—"}
+                </p>
+                {item.total_price !== null ? (
+                  <p className="mt-0.5 text-xs text-neutral-600">
+                    Total {formatIDR(item.total_price)} · DP{" "}
+                    {formatIDR(item.dp_amount)} · Sisa{" "}
+                    {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
+                  </p>
+                ) : null}
                 {item.notes ? (
                   <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
                 ) : null}
