@@ -1,5 +1,7 @@
 # 01: Schema foundation for requests and the new booking fields
 
+**Spec:** [booking-request-intake/spec.md](../spec.md)
+
 **What to build:** A forward migration creating the `booking_requests` table and adding the six new columns to `bookings`, with the matching policies and a token that cannot be guessed. Extend the existing declarative migration contract test to cover it.
 
 **Blocked by:** nothing.

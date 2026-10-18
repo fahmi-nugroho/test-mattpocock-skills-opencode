@@ -159,8 +159,9 @@ The link is a route keyed by the token. The admin message reuses the existing Wh
 
 ## Further Notes
 
-- This deliberately reopens what the calendar popup spec left out of scope ("booking creation … out of scope"), and it introduces the project's first public write path. That is the trade-off worth recording as an **ADR on build**: intake through a token link and a Booking Request table, rather than parsing the WhatsApp text or wiring the WhatsApp API.
+- This deliberately reopens what the calendar popup spec left out of scope ("booking creation … out of scope"), and it introduces the project's first public write path. That trade-off is recorded in [`docs/adr/0002-booking-request-intake.md`](../../docs/adr/0002-booking-request-intake.md): intake through a token link and a Booking Request table, rather than parsing the WhatsApp text or wiring the WhatsApp API.
 - The occupancy rule from the earlier days remains exactly as-is: only confirmed bookings occupy, and the hours-removal ADR is untouched — no operating window comes back.
 - Glossary terms this creates, for the first `GLOSSARY.md`: Booking, Format Booking, Booking Request, Headcount. Each entry must stay free of implementation detail.
 - Build order: 1) schema foundation (table, new columns, RLS, SQL verify); 2) the two public functions plus their wrappers and the payload validator/mapper; 3) the client form page with prefill, clash warning, and all states; 4) the admin "Permintaan" section with token generation, the Format Booking message, and accept-into-booking; 5) glossary and ADR.
+- Tickets for this feature live at `.scratch/booking-request-intake/issues/`: 01 `01-schema-foundation.md`, 02 `02-public-request-rpcs.md`, 03 `03-format-booking-form.md`, 04 `04-admin-permintaan-accept.md`, 05 `05-glossary-and-adr.md`.
 - Reachable everywhere as a first contact point? No: the client only sees the form after the admin sends the link, so the landing's existing shortcuts and the general WhatsApp starters are unchanged.

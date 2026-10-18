@@ -1,5 +1,7 @@
 # 04: Admin Permintaan section, link generation, and accept-into-booking
 
+**Spec:** [booking-request-intake/spec.md](../spec.md)
+
 **What to build:** The admin half: a "Permintaan" section listing requests, generating a Format Booking link, and turning a submitted request into a booking through the existing create form — plus the new booking fields on that form.
 
 **Blocked by:** 03 (the form the link points at must exist before a link is useful).
