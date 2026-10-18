@@ -1,5 +1,7 @@
 # 05: Glossary and the intake ADR
 
+**Spec:** [booking-request-intake/spec.md](../spec.md)
+
 **What to build:** The project's first `GLOSSARY.md` and the architecture decision record for this intake design.
 
 **Blocked by:** nothing, but best written once 01 to 04 have settled the names.
