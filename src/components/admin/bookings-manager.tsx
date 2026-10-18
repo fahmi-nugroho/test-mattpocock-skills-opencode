@@ -24,6 +24,7 @@ import {
 import { linkBookingRequest } from "@/lib/supabase/admin-requests";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
+import { StyleReferenceFacts } from "./style-reference-facts";
 import type { Booking, BookingStatus, Service } from "@/lib/supabase/database";
 import { getTodayKey } from "@/lib/calendar";
 
@@ -83,6 +84,9 @@ export function BookingsManager() {
   const [venue, setVenue] = useState("");
   const [hairdo, setHairdo] = useState("");
   const [reference, setReference] = useState("");
+  // A request accepted from before the change carries free text in the reused
+  // column; the radio cannot show it, so it is kept here and shown read-only.
+  const [legacyPrefillHairdo, setLegacyPrefillHairdo] = useState("");
   const [totalPrice, setTotalPrice] = useState("");
   const [dpAmount, setDpAmount] = useState("0");
   // Until the admin edits the total by hand, a chosen service keeps it in
@@ -183,7 +187,12 @@ export function BookingsManager() {
       setEventType(draft.event_type);
       setHeadcount(String(draft.headcount));
       setVenue(draft.venue);
-      setHairdo(draft.hairdo);
+      // A legacy request's text is not one of the two Styles, so it cannot
+      // seed the radio; keep it read-only and leave the radio unselected.
+      setHairdo(isStyle(draft.hairdo) ? draft.hairdo : "");
+      setLegacyPrefillHairdo(
+        draft.hairdo !== "" && !isStyle(draft.hairdo) ? draft.hairdo : "",
+      );
       setReference(draft.reference);
       if (draft.date) setDate(draft.date);
       if (draft.start_time) setStart(draft.start_time);
@@ -261,6 +270,7 @@ export function BookingsManager() {
       setVenue("");
       setHairdo("");
       setReference("");
+      setLegacyPrefillHairdo("");
       setTotalPrice("");
       setDpAmount("0");
       setTotalTouched(false);
@@ -549,7 +559,10 @@ export function BookingsManager() {
                       name="create-hairdo"
                       value={value}
                       checked={selected}
-                      onChange={() => setHairdo(value)}
+                      onChange={() => {
+                        setHairdo(value);
+                        setLegacyPrefillHairdo("");
+                      }}
                       className="h-4 w-4 accent-neutral-900"
                     />
                     <span className="text-sm font-medium">{option.label}</span>
@@ -557,6 +570,11 @@ export function BookingsManager() {
                 );
               })}
             </div>
+            {legacyPrefillHairdo ? (
+              <p className="mt-1 text-xs text-neutral-500">
+                Teks gaya lama (hanya baca): {legacyPrefillHairdo}
+              </p>
+            ) : null}
           </fieldset>
           <label className="block">
             <span className="text-sm font-medium">
@@ -649,11 +667,6 @@ export function BookingsManager() {
       />
       <ul className="mt-4 space-y-2">
         {visibleItems.map((item) => {
-          // The Style shows its label for one of the two values and the legacy
-          // free text as stored otherwise; "" means "not known" and is hidden.
-          const styleText = isStyle(item.hairdo)
-            ? STYLE_COPY[item.hairdo].label
-            : item.hairdo;
           const legacyHairdo =
             item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
           return (
@@ -854,13 +867,10 @@ export function BookingsManager() {
                     {item.event_type || "—"} · {item.headcount} orang ·{" "}
                     {item.venue || "—"}
                   </p>
-                  {styleText || item.reference ? (
-                    <p className="mt-0.5 text-xs text-neutral-600">
-                      {styleText ? `Gaya: ${styleText}` : ""}
-                      {styleText && item.reference ? " · " : ""}
-                      {item.reference ? `Referensi: ${item.reference}` : ""}
-                    </p>
-                  ) : null}
+                  <StyleReferenceFacts
+                    hairdo={item.hairdo}
+                    reference={item.reference}
+                  />
                   {item.total_price !== null ? (
                     <p className="mt-0.5 text-xs text-neutral-600">
                       Total {formatIDR(item.total_price)} · DP{" "}

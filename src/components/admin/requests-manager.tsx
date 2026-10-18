@@ -11,8 +11,8 @@ import {
 } from "@/lib/admin/booking-request";
 import { notifyAcceptRequest } from "@/lib/admin/request-events";
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
-import { isStyle, STYLE_COPY } from "@/lib/style-reference";
 import { buildFormatBookingWaLink } from "@/lib/whatsapp";
+import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createBookingRequest,
@@ -285,11 +285,6 @@ export function RequestsManager({
       <ul className="mt-3 space-y-2">
         {items.map((item) => {
           const status = deriveBookingRequestState(item, new Date());
-          // The Style shows its label for one of the two values and the legacy
-          // free text as stored otherwise; "" means "not known" and is hidden.
-          const styleText = isStyle(item.hairdo)
-            ? STYLE_COPY[item.hairdo].label
-            : item.hairdo;
           return (
             <li
               key={item.id}
@@ -312,13 +307,10 @@ export function RequestsManager({
                 {item.event_type || "—"} · {item.headcount} orang ·{" "}
                 {item.venue || "—"}
               </p>
-              {styleText || item.reference ? (
-                <p className="mt-0.5 text-xs text-neutral-600">
-                  {styleText ? `Gaya: ${styleText}` : ""}
-                  {styleText && item.reference ? " · " : ""}
-                  {item.reference ? `Referensi: ${item.reference}` : ""}
-                </p>
-              ) : null}
+              <StyleReferenceFacts
+                hairdo={item.hairdo}
+                reference={item.reference}
+              />
               <p className="mt-0.5 text-xs text-neutral-600">
                 Diminta:{" "}
                 {item.date
