@@ -1,5 +1,7 @@
 # 03: The Format Booking form page
 
+**Spec:** [booking-request-intake/spec.md](../spec.md)
+
 **What to build:** The token-keyed page the client opens: a short Indonesian form over the public read/write wrappers, with the prefilled slot, the clash warning, and every terminal state.
 
 **Blocked by:** 02 (needs the read and submit functions).

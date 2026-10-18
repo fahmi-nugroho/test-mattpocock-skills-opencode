@@ -1,5 +1,7 @@
 # 02: Public read and submit functions for a request token
 
+**Spec:** [booking-request-intake/spec.md](../spec.md)
+
 **What to build:** The two security-definer functions that are the only way the public touches a Booking Request, plus their client-side wrappers and the fail-closed payload validator and row mapper.
 
 **Blocked by:** 01 (needs the table and its constraints).
