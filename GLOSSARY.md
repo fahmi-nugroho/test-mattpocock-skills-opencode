@@ -28,3 +28,14 @@ _Avoid_: Inquiry, ask, quote, reservation.
 The number of people to be made up in one booking. One service per booking, and the
 price is multiplied by the headcount.
 _Avoid_: Guest count, pax, quantity.
+
+**Style**:
+The styling the client chooses: Hijabdo (styled over a hijab) or Hairdo (styled on
+open hair). A choice, not a description, and not a Reference: a Style is the
+answer itself, while a Reference only points at what the client means.
+_Avoid_: Model rambut, hairstyle.
+
+**Reference**:
+A link, or a short written description, of the look the client wants, sent with a
+Booking Request.
+_Avoid_: Photo, attachment.
