@@ -40,6 +40,37 @@ export interface Booking {
   client_phone: string;
   notes: string;
   status: BookingStatus;
+  event_type: string; // "" when none (0015)
+  headcount: number; // >= 1 (0015)
+  venue: string; // "" when none (0015)
+  hairdo: string; // "" when none (0015)
+  total_price: number | null; // null = not quoted yet (0015)
+  dp_amount: number; // >= 0, default 0 (0015)
+}
+
+/**
+ * A client submission from a Format Booking link (see 0015 migration). The
+ * reserved slot (date/start_time/end_time) is nullable because the admin may
+ * generate the link before anything is agreed; accepted_booking_id is null
+ * until the admin accepts the request into a Booking.
+ */
+export interface BookingRequest {
+  id: string;
+  token: string; // DB-generated 128-bit hex, distinct from id
+  created_at: string;
+  expires_at: string;
+  submitted_at: string | null;
+  accepted_booking_id: string | null;
+  client_name: string;
+  client_phone: string;
+  event_type: string;
+  headcount: number; // >= 1
+  venue: string;
+  hairdo: string;
+  notes: string;
+  date: string | null; // "YYYY-MM-DD"
+  start_time: string | null; // "HH:MM"
+  end_time: string | null; // "HH:MM"
 }
 
 export interface Block {
@@ -106,6 +137,7 @@ export interface Database {
       settings: Table<Settings>;
       testimonials: Table<TestimonialRow>;
       profile_stats: Table<ProfileStatRow>;
+      booking_requests: Table<BookingRequest>;
     };
     Functions: {
       get_month_availability: {
