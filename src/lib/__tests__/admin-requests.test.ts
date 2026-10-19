@@ -352,6 +352,15 @@ describe("deleteBookingRequest", () => {
 });
 
 describe("correctBookingRequest", () => {
+  // The correction is the whole admin-owned prefill, so every call here passes
+  // all four fields; only the failure prefill differs per test.
+  const FULL_PREFILL = {
+    client_name: "Sinta",
+    date: null,
+    start_time: null,
+    end_time: null,
+  };
+
   it("patches only the admin-owned prefill behind not-answered + not-lapsed + not-accepted guards", async () => {
     const calls: Array<[string, ...unknown[]]> = [];
     const corrected = {
@@ -391,6 +400,8 @@ describe("correctBookingRequest", () => {
     const { client } = requestClient({ calls });
     await expect(
       correctBookingRequest(client, "req-1", {
+        client_name: "Sinta",
+        date: "2026-11-01",
         start_time: "11:00",
         end_time: "09:00",
       }),
@@ -405,7 +416,7 @@ describe("correctBookingRequest", () => {
     };
     const { client } = requestClient({ updateRows: [], current });
     await expect(
-      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+      correctBookingRequest(client, "req-1", FULL_PREFILL),
     ).rejects.toThrow(/klien sudah mengirim/i);
   });
 
@@ -417,7 +428,7 @@ describe("correctBookingRequest", () => {
     };
     const { client } = requestClient({ updateRows: [], current });
     await expect(
-      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+      correctBookingRequest(client, "req-1", FULL_PREFILL),
     ).rejects.toThrow(/sudah diterima/i);
   });
 
@@ -425,21 +436,21 @@ describe("correctBookingRequest", () => {
     const current = { ...REQUEST_ROW, expires_at: "2020-01-01T00:00:00.000Z" };
     const { client } = requestClient({ updateRows: [], current });
     await expect(
-      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+      correctBookingRequest(client, "req-1", FULL_PREFILL),
     ).rejects.toThrow(/kedaluwarsa/i);
   });
 
   it("explains a lost-race refusal in Indonesian without pretending the row changed", async () => {
     const { client } = requestClient({ updateRows: [], current: REQUEST_ROW });
     await expect(
-      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+      correctBookingRequest(client, "req-1", FULL_PREFILL),
     ).rejects.toThrow(/muat ulang/i);
   });
 
   it("surfaces a write failure instead of pretending the row changed", async () => {
     const { client } = requestClient({ updateError: "db down" });
     await expect(
-      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+      correctBookingRequest(client, "req-1", FULL_PREFILL),
     ).rejects.toThrow(/gagal memperbarui/i);
   });
 });

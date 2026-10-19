@@ -63,7 +63,7 @@ interface RequestsManagerProps {
  * behind the guarded adapter that refuses a request already turned into a
  * Booking and points at deleting the Booking instead; a deleted row leaves the
  * list at once, and no schedule event is dispatched because a request never
- * owner occupies the calendar. Each row's admin-owned prefill (the client's
+ * occupies the calendar. Each row's admin-owned prefill (the client's
  * name and the requested slot) can also be corrected in place while the row is
  * open — behind the guarded adapter that refuses anything already answered or
  * lapsed, so a stale screen cannot rewrite a client's own request — and the

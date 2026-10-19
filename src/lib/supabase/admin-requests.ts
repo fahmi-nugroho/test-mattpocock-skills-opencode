@@ -236,13 +236,15 @@ export async function deleteBookingRequest(
  * only an open request — not yet answered (`submitted_at is null`), not yet
  * lapsed (`expires_at > now`), and not yet accepted — so a stale screen can
  * never rewrite a client's own request. The requested slot runs through the
- * same `validateRequestSlot` the create path uses before any write. On refusal
- * the row is read back and explained in Indonesian.
+ * same `validateRequestSlot` the create path uses before any write. The whole
+ * admin-owned prefill is written, so the input is required in full — an omitted
+ * field would silently clear it. On refusal the row is read back and explained
+ * in Indonesian.
  */
 export async function correctBookingRequest(
   client: TypedClient,
   requestId: string,
-  input: BookingRequestPrefillInput,
+  input: Required<BookingRequestPrefillInput>,
 ): Promise<BookingRequest> {
   const client_name = (input.client_name ?? "").trim();
   const { date, start_time, end_time } = validateRequestSlot(input);
