@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
+  deleteRefusalMessage,
   deriveBookingRequestState,
   filterBookingRequests,
   refusalMessage,
@@ -227,6 +230,25 @@ describe("status copy (single home)", () => {
     expect(refusalMessage("expired")).toMatch(/kedaluwarsa/i);
     expect(refusalMessage("submitted")).toMatch(/muat ulang|tidak bisa diterima/i);
     expect(refusalMessage("open")).toMatch(/belum dikirim/i);
+  });
+});
+
+describe("delete copy (single home)", () => {
+  it("allows delete for every state except an accepted one", () => {
+    expect(bookingRequestDeleteRefusal("open")).toBeNull();
+    expect(bookingRequestDeleteRefusal("submitted")).toBeNull();
+    expect(bookingRequestDeleteRefusal("expired")).toBeNull();
+    expect(bookingRequestDeleteRefusal("accepted")).toMatch(/hapus booking/i);
+  });
+
+  it("explains a delete refusal in Indonesian, pointing at the Booking", () => {
+    expect(deleteRefusalMessage("accepted")).toMatch(/hapus booking/i);
+    expect(deleteRefusalMessage("open")).toMatch(/muat ulang/i);
+  });
+
+  it("warns before the second click that deleting kills the client's link", () => {
+    expect(BOOKING_REQUEST_DELETE_WARNING).toMatch(/link/i);
+    expect(BOOKING_REQUEST_DELETE_WARNING).toMatch(/klien/i);
   });
 });
 

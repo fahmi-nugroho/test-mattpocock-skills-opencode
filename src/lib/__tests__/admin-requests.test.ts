@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createBookingRequest,
+  deleteBookingRequest,
   linkBookingRequest,
   listBookingRequestsAdmin,
 } from "../supabase/admin-requests";
@@ -28,6 +29,8 @@ function requestClient(opts: {
   insertError?: string;
   linkRows?: unknown[];
   linkError?: string;
+  deletedRows?: unknown[];
+  deleteError?: string;
   current?: unknown;
   currentError?: string;
   calls?: Array<[string, ...unknown[]]>;
@@ -90,6 +93,24 @@ function requestClient(opts: {
                 opts.linkError
                   ? fail(opts.linkError)
                   : ok(opts.linkRows ?? []),
+            };
+          };
+          return chain;
+        },
+        delete: () => {
+          calls.push(["delete"]);
+          const chain: Record<string, unknown> = {};
+          chain.eq = (col: string, val: unknown) => {
+            calls.push(["delete.eq", col, val]);
+            return chain;
+          };
+          chain.is = (col: string, val: unknown) => {
+            calls.push(["delete.is", col, val]);
+            return {
+              select: async () =>
+                opts.deleteError
+                  ? fail(opts.deleteError)
+                  : ok(opts.deletedRows ?? []),
             };
           };
           return chain;
@@ -282,6 +303,46 @@ describe("linkBookingRequest", () => {
     });
     await expect(linkBookingRequest(client, "req-1", "b-1")).rejects.toThrow(
       /sudah diterima/i,
+    );
+  });
+});
+
+describe("deleteBookingRequest", () => {
+  it("deletes by id behind a not-accepted guard", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const { client } = requestClient({
+      deletedRows: [{ ...REQUEST_ROW, id: "req-1" }],
+      calls,
+    });
+    await expect(deleteBookingRequest(client, "req-1")).resolves.toBeUndefined();
+    expect(calls).toContainEqual(["from", "booking_requests"]);
+    expect(calls).toContainEqual(["delete.eq", "id", "req-1"]);
+    expect(calls).toContainEqual(["delete.is", "accepted_booking_id", null]);
+  });
+
+  it("refuses an accepted request in Indonesian and points at deleting the Booking", async () => {
+    const current = {
+      ...REQUEST_ROW,
+      submitted_at: "2026-10-17T09:00:00.000Z",
+      accepted_booking_id: "b-9",
+    };
+    const { client } = requestClient({ deletedRows: [], current });
+    await expect(deleteBookingRequest(client, "req-1")).rejects.toThrow(
+      /hapus booking/i,
+    );
+  });
+
+  it("explains a lost-race refusal in Indonesian without pretending the row is gone", async () => {
+    const { client } = requestClient({ deletedRows: [], current: REQUEST_ROW });
+    await expect(deleteBookingRequest(client, "req-1")).rejects.toThrow(
+      /muat ulang/i,
+    );
+  });
+
+  it("surfaces a delete failure instead of pretending the row is gone", async () => {
+    const { client } = requestClient({ deleteError: "db down" });
+    await expect(deleteBookingRequest(client, "req-1")).rejects.toThrow(
+      /gagal menghapus/i,
     );
   });
 });

@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingRequest, Database } from "./database";
 import { insertRow } from "./admin-crud";
 import {
+  deleteRefusalMessage,
   deriveBookingRequestState,
   refusalMessage,
 } from "../admin/booking-request";
@@ -158,4 +159,70 @@ export async function linkBookingRequest(
     throw new Error(`Gagal memuat permintaan: ${readError.message}`);
   }
   throw new Error(refusalMessage(deriveBookingRequestState(current as BookingRequest, new Date())));
+}
+
+/**
+ * Delete a request the artist will never act on (admin-actions ticket 03): a
+ * hard delete behind a guarded query that only matches a request not linked to
+ * a Booking. An accepted request is refused because the record of what it
+ * became must survive; the route that works is to delete the Booking, whose
+ * foreign key (`on delete set null`) releases the request, after which it
+ * deletes normally. On refusal the row is read back and explained in
+ * Indonesian. A request never occupies the calendar, so this dispatches no
+ * schedule event.
+ */
+export async function deleteBookingRequest(
+  client: TypedClient,
+  requestId: string,
+): Promise<void> {
+  const loose = client as unknown as {
+    from(t: string): {
+      delete(): {
+        eq(c: string, v: string): {
+          is(c: string, v: null): {
+            select(): Promise<{
+              data: unknown;
+              error: { message: string } | null;
+            }>;
+          };
+        };
+      };
+      select(c: string): {
+        eq(c: string, v: string): {
+          single(): Promise<{ data: unknown; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+
+  const { data, error } = await loose
+    .from("booking_requests")
+    .delete()
+    .eq("id", requestId)
+    .is("accepted_booking_id", null)
+    .select();
+
+  if (error) {
+    throw new Error(`Gagal menghapus permintaan: ${error.message}`);
+  }
+
+  const rows = Array.isArray(data) ? (data as BookingRequest[]) : [];
+  if (rows.length > 0) return;
+
+  // The guard matched nothing (the request is linked to a Booking, or a lost
+  // race): read the row back to say which state blocked deletion, in
+  // Indonesian, pointing at deleting the Booking as the route that works.
+  const { data: current, error: readError } = await loose
+    .from("booking_requests")
+    .select("*")
+    .eq("id", requestId)
+    .single();
+  if (readError) {
+    throw new Error(`Gagal memuat permintaan: ${readError.message}`);
+  }
+  throw new Error(
+    deleteRefusalMessage(
+      deriveBookingRequestState(current as BookingRequest, new Date()),
+    ),
+  );
 }

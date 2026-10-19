@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
+  BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
@@ -21,6 +23,7 @@ import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createBookingRequest,
+  deleteBookingRequest,
   listBookingRequestsAdmin,
 } from "@/lib/supabase/admin-requests";
 import type { BookingRequest } from "@/lib/supabase/database";
@@ -52,7 +55,12 @@ interface RequestsManagerProps {
  * ticket 04), an empty one shown as absent. A roving-tablist row of chips
  * (booking-request-admin-actions ticket 02) narrows the list to one derived
  * state — reusing the same `deriveBookingRequestState` the badge and the accept
- * guard read — and composes with the search box rather than replacing it.
+ * guard read — and composes with the search box rather than replacing it. Each
+ * row can also be deleted (admin-actions ticket 03) after a two-click confirm,
+ * behind the guarded adapter that refuses a request already turned into a
+ * Booking and points at deleting the Booking instead; a deleted row leaves the
+ * list at once, and no schedule event is dispatched because a request never
+ * occupies the calendar.
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -75,6 +83,12 @@ export function RequestsManager({
   const [attentionCount, setAttentionCount] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BookingRequestFilter>("all");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // The derived state is clock-dependent, so pin one clock per list load: every
@@ -131,9 +145,10 @@ export function RequestsManager({
         const rows = await listBookingRequestsAdmin(supabaseBrowser());
         if (cancelled) return;
         setItems(rows);
-        const count = rows.filter(
-          (row) => deriveBookingRequestState(row, new Date()) === "submitted",
-        ).length;
+        // "Needs action" is the chip vocabulary's own name for what the badge
+        // counts, so reuse the filter rather than re-deriving the predicate.
+        const count = filterBookingRequests(rows, "needs_action", new Date())
+          .length;
         setAttentionCount(count);
         onAttentionCountChange?.(count);
         setError(null);
@@ -206,6 +221,45 @@ export function RequestsManager({
       draft: requestToBookingDraft(item),
     });
     window.location.hash = "#booking";
+  }
+
+  /**
+   * Two deliberate clicks: the first arms the row's delete (and shows the
+   * warning that the client's link dies with it), the second deletes. The
+   * guarded adapter refuses an accepted request, whose message surfaces in the
+   * row; a deleted request leaves the list at once, and the attention count is
+   * recomputed from the new list so the badge never disagrees with it. A
+   * request never occupies the calendar, so no schedule event is dispatched.
+   */
+  async function onDelete(item: BookingRequest) {
+    if (confirmDeleteId !== item.id) {
+      setRowError(null);
+      setConfirmDeleteId(item.id);
+      return;
+    }
+    if (rowBusy) return;
+    setRowError(null);
+    setRowBusy(item.id);
+    try {
+      await deleteBookingRequest(supabaseBrowser(), item.id);
+      const next = items.filter((row) => row.id !== item.id);
+      setItems(next);
+      const count = filterBookingRequests(next, "needs_action", now).length;
+      setAttentionCount(count);
+      onAttentionCountChange?.(count);
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal menghapus permintaan. Coba lagi.",
+      });
+      setConfirmDeleteId(null);
+    } finally {
+      setRowBusy(null);
+    }
   }
 
   if (loading) {
@@ -417,29 +471,76 @@ export function RequestsManager({
               {item.notes ? (
                 <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
               ) : null}
-              <div className="mt-3">
-                {status === "submitted" ? (
-                  <button
-                    type="button"
-                    onClick={() => onAccept(item)}
-                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
-                  >
-                    Jadikan Booking
-                  </button>
-                ) : (
-                  <div>
+              <div className="mt-3 flex flex-wrap items-start gap-3">
+                <div>
+                  {status === "submitted" ? (
                     <button
                       type="button"
-                      disabled
-                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                      onClick={() => onAccept(item)}
+                      className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
                     >
                       Jadikan Booking
                     </button>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {bookingRequestRefusalHint(status)}
+                  ) : (
+                    <div>
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                      >
+                        Jadikan Booking
+                      </button>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {bookingRequestRefusalHint(status)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  {bookingRequestDeleteRefusal(status) === null ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={rowBusy === item.id}
+                        onClick={() => onDelete(item)}
+                        className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                          confirmDeleteId === item.id
+                            ? "bg-red-600 text-white"
+                            : "border border-red-300 text-red-700"
+                        }`}
+                      >
+                        {rowBusy === item.id
+                          ? "Menghapus…"
+                          : confirmDeleteId === item.id
+                            ? "Klik lagi untuk hapus"
+                            : "Hapus"}
+                      </button>
+                      {confirmDeleteId === item.id ? (
+                        <p className="mt-1 text-xs text-red-700">
+                          {BOOKING_REQUEST_DELETE_WARNING}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div>
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                      >
+                        Hapus
+                      </button>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {bookingRequestDeleteRefusal(status)}
+                      </p>
+                    </div>
+                  )}
+                  {rowError?.id === item.id ? (
+                    <p role="alert" className="mt-1 text-xs text-red-600">
+                      {rowError.message}
                     </p>
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
             </li>
           );

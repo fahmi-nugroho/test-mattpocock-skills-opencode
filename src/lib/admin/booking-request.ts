@@ -174,6 +174,40 @@ export function refusalMessage(status: BookingRequestStatus): string {
 }
 
 /**
+ * The confirmation step's warning, shown only after the admin's first click and
+ * before the destructive second one: what deleting costs.
+ */
+export const BOOKING_REQUEST_DELETE_WARNING =
+  "Menghapus permintaan ini akan mematikan link yang sudah dikirim ke klien.";
+
+/**
+ * Why this request cannot be deleted, or null when it can. Only a request
+ * already turned into a Booking refuses — the record of what it became must
+ * survive — and the route that works is to delete the Booking, whose foreign
+ * key releases the request.
+ */
+export function bookingRequestDeleteRefusal(
+  status: BookingRequestStatus,
+): string | null {
+  if (status === "accepted") {
+    return "Permintaan ini sudah diterima menjadi booking — hapus Booking-nya dulu untuk melepas permintaan ini.";
+  }
+  return null;
+}
+
+/**
+ * The refusal explanation after a guarded delete matched nothing, keyed by the
+ * state read back from the row. A non-accepted state here is a lost race, not a
+ * real refusal.
+ */
+export function deleteRefusalMessage(status: BookingRequestStatus): string {
+  return (
+    bookingRequestDeleteRefusal(status) ??
+    "Permintaan tidak bisa dihapus saat ini — coba muat ulang."
+  );
+}
+
+/**
  * The admin booking form's prefill shape. It mirrors only the booking form
  * fields the request actually supplies — a client submission never carries
  * money, status, service, or notes, and the form's own defaults already leave
