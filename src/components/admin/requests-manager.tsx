@@ -7,7 +7,9 @@ import {
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
+  BOOKING_REQUEST_REISSUE_NOTICE,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestCanReissue,
   bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
@@ -15,7 +17,9 @@ import {
   deriveBookingRequestState,
   filterBookingRequests,
   requestToBookingDraft,
+  requestToReissuePrefill,
   type BookingRequestFilter,
+  type BookingRequestPrefillInput,
   type BookingRequestStatus,
 } from "@/lib/admin/booking-request";
 import { notifyAcceptRequest } from "@/lib/admin/request-events";
@@ -37,6 +41,9 @@ const STATUS_STYLE: Record<BookingRequestStatus, string> = {
   accepted: "bg-green-100 text-green-800",
   expired: "bg-red-100 text-red-700",
 };
+
+/** A per-row action that can be in flight, so only its button shows "…". */
+type RowAction = "edit" | "delete" | "reissue";
 
 interface RequestsManagerProps {
   /** Reports how many submitted requests need attention after each load. */
@@ -67,7 +74,11 @@ interface RequestsManagerProps {
  * name and the requested slot) can also be corrected in place while the row is
  * open — behind the guarded adapter that refuses anything already answered or
  * lapsed, so a stale screen cannot rewrite a client's own request — and the
- * saved row keeps the same token and link (admin-actions ticket 04).
+ * saved row keeps the same token and link (admin-actions ticket 04). A lapsed
+ * row instead offers "Buat link baru" (admin-actions ticket 05), which reuses
+ * the create path to make a fresh request carrying only the name and slot, with
+ * a new token and a fresh seven-day window; the old row is left untouched as
+ * history, so a dead token is never revived.
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -91,7 +102,13 @@ export function RequestsManager({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BookingRequestFilter>("all");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  // A row op in flight: which row and which action, so only that action's
+  // button shows a busy label while the row's controls are disabled. Re-issue
+  // joins delete and edit here.
+  const [rowBusy, setRowBusy] = useState<{
+    id: string;
+    action: RowAction;
+  } | null>(null);
   const [rowError, setRowError] = useState<{
     id: string;
     message: string;
@@ -183,6 +200,25 @@ export function RequestsManager({
     };
   }, [onAttentionCountChange]);
 
+  /** Whether the row's given action is the one currently in flight. */
+  const busyOn = (id: string, action: RowAction) =>
+    rowBusy?.id === id && rowBusy.action === action;
+
+  /**
+   * Create a request through the shared adapter and surface its fresh link in
+   * the created panel. Both the link form and re-issue use it, so each builds
+   * the same `/request/<token>` link from the row's brand-new token.
+   */
+  async function createAndSurface(
+    input: BookingRequestPrefillInput,
+    sendTo: string,
+  ): Promise<BookingRequest> {
+    const row = await createBookingRequest(supabaseBrowser(), input);
+    const link = buildFormatBookingLink(window.location.origin, row.token);
+    setCreated({ link, waNumber: sendTo });
+    return row;
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (creating) return;
@@ -190,14 +226,15 @@ export function RequestsManager({
     setCopiedLink(null);
     setCreating(true);
     try {
-      const row = await createBookingRequest(supabaseBrowser(), {
-        client_name: clientName,
-        date: date || null,
-        start_time: start || null,
-        end_time: end || null,
-      });
-      const link = buildFormatBookingLink(window.location.origin, row.token);
-      setCreated({ link, waNumber: waNumber.trim() });
+      const row = await createAndSurface(
+        {
+          client_name: clientName,
+          date: date || null,
+          start_time: start || null,
+          end_time: end || null,
+        },
+        waNumber.trim(),
+      );
       setItems((prev) => [row, ...prev]);
       setClientName("");
       setWaNumber("");
@@ -251,7 +288,7 @@ export function RequestsManager({
     }
     if (rowBusy) return;
     setRowError(null);
-    setRowBusy(item.id);
+    setRowBusy({ id: item.id, action: "delete" });
     try {
       await deleteBookingRequest(supabaseBrowser(), item.id);
       const next = items.filter((row) => row.id !== item.id);
@@ -299,7 +336,7 @@ export function RequestsManager({
   async function onSaveEdit(item: BookingRequest) {
     if (rowBusy) return;
     setRowError(null);
-    setRowBusy(item.id);
+    setRowBusy({ id: item.id, action: "edit" });
     try {
       const updated = await correctBookingRequest(supabaseBrowser(), item.id, {
         client_name: editName,
@@ -318,6 +355,40 @@ export function RequestsManager({
           err instanceof Error
             ? err.message
             : "Gagal memperbarui permintaan. Coba lagi.",
+      });
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  /**
+   * Re-issue a lapsed link (ticket 05): a client who never answered can be
+   * asked again. This calls the same create path the link form calls, so the
+   * fresh request gets a brand-new token and the database's fresh seven-day
+   * window, and nothing about the old row is written. It carries only the name
+   * and the requested slot — the client must fill the rest in again. The new row
+   * is prepended, and the filter drops back to "all" so the fresh open row is
+   * visible at once alongside the old lapsed one kept as history. No WhatsApp
+   * number is carried over: the old row's number is the client's, not the
+   * admin's, and the fresh request has not been answered yet.
+   */
+  async function onReissue(item: BookingRequest) {
+    if (rowBusy) return;
+    setRowError(null);
+    setConfirmDeleteId(null);
+    setCopiedLink(null);
+    setRowBusy({ id: item.id, action: "reissue" });
+    try {
+      const row = await createAndSurface(requestToReissuePrefill(item), "");
+      setFilter("all");
+      setItems((prev) => [row, ...prev]);
+    } catch (err) {
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal membuat link baru. Coba lagi.",
       });
     } finally {
       setRowBusy(null);
@@ -579,11 +650,11 @@ export function RequestsManager({
                       <>
                         <button
                           type="button"
-                          disabled={rowBusy === item.id}
+                          disabled={rowBusy?.id === item.id}
                           onClick={() => onSaveEdit(item)}
                           className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                         >
-                          {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+                          {busyOn(item.id, "edit") ? "Menyimpan…" : "Simpan"}
                         </button>
                         <button
                           type="button"
@@ -644,12 +715,29 @@ export function RequestsManager({
                     </div>
                   )}
                 </div>
+                {bookingRequestCanReissue(status) ? (
+                  <div>
+                    <button
+                      type="button"
+                      disabled={rowBusy?.id === item.id}
+                      onClick={() => onReissue(item)}
+                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+                    >
+                      {busyOn(item.id, "reissue")
+                        ? "Membuat…"
+                        : "Buat link baru"}
+                    </button>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {BOOKING_REQUEST_REISSUE_NOTICE}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   {bookingRequestDeleteRefusal(status) === null ? (
                     <>
                       <button
                         type="button"
-                        disabled={rowBusy === item.id}
+                        disabled={rowBusy?.id === item.id}
                         onClick={() => onDelete(item)}
                         className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
                           confirmDeleteId === item.id
@@ -657,7 +745,7 @@ export function RequestsManager({
                             : "border border-red-300 text-red-700"
                         }`}
                       >
-                        {rowBusy === item.id
+                        {busyOn(item.id, "delete")
                           ? "Menghapus…"
                           : confirmDeleteId === item.id
                             ? "Klik lagi untuk hapus"

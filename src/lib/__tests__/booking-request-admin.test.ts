@@ -4,7 +4,9 @@ import {
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
+  BOOKING_REQUEST_REISSUE_NOTICE,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestCanReissue,
   bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
@@ -16,14 +18,16 @@ import {
   refusalMessage,
   remainingBalance,
   requestToBookingDraft,
+  requestToReissuePrefill,
   suggestTotal,
 } from "../admin/booking-request";
 import type { BookingRequest } from "../supabase/database";
 
-// Seam 1 (pure): admin Booking Request helpers — derived state, link
-// building, request→booking draft, total suggestion, remaining balance.
-// Catches wrong state precedence, a leaked price/status on the draft, and
-// a stored-instead-of-derived settlement. Misses live DB/RLS behavior.
+// Seam 1 (pure): admin Booking Request helpers — derived state, state filter,
+// link building, request→booking draft, re-issue prefill, and the status /
+// correct / delete / re-issue copy. Catches wrong state precedence, a leaked
+// field on a draft or re-issue prefill, and a stored-instead-of-derived
+// settlement. Misses live DB/RLS behavior.
 
 const NOW = new Date("2026-10-18T12:00:00.000Z");
 
@@ -277,6 +281,64 @@ describe("correct copy (single home)", () => {
   it("warns that a client who already opened the form may still send the values they loaded", () => {
     expect(BOOKING_REQUEST_CORRECT_NOTICE).toMatch(/membuka form/i);
     expect(BOOKING_REQUEST_CORRECT_NOTICE).toMatch(/lama/i);
+  });
+});
+
+describe("reissue copy (single home)", () => {
+  it("offers a fresh link only for a lapsed request", () => {
+    expect(bookingRequestCanReissue("expired")).toBe(true);
+    expect(bookingRequestCanReissue("open")).toBe(false);
+    expect(bookingRequestCanReissue("submitted")).toBe(false);
+    expect(bookingRequestCanReissue("accepted")).toBe(false);
+  });
+
+  it("says plainly that the client must fill the form again and that only the name and slot carry over", () => {
+    expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/isi ulang|mengisi|form lagi/i);
+    expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/nama/i);
+    expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/jadwal/i);
+  });
+});
+
+describe("requestToReissuePrefill", () => {
+  it("carries only the client name and the requested slot from the old row", () => {
+    const prefill = requestToReissuePrefill({
+      ...REQUEST,
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      event_type: "Wisuda",
+      headcount: 3,
+      venue: "Gedung A",
+      hairdo: "hijabdo",
+      reference: "https://contoh.test/look",
+      notes: "Punya catatan",
+      date: "2026-11-01",
+      start_time: "09:00",
+      end_time: "11:00",
+    });
+    expect(prefill).toEqual({
+      client_name: "Sinta",
+      date: "2026-11-01",
+      start_time: "09:00",
+      end_time: "11:00",
+    });
+    // Nothing the client sent is carried over: the fresh link starts empty
+    // apart from what the admin entered by hand.
+    expect(prefill).not.toHaveProperty("client_phone");
+    expect(prefill).not.toHaveProperty("event_type");
+    expect(prefill).not.toHaveProperty("headcount");
+    expect(prefill).not.toHaveProperty("venue");
+    expect(prefill).not.toHaveProperty("hairdo");
+    expect(prefill).not.toHaveProperty("reference");
+    expect(prefill).not.toHaveProperty("notes");
+  });
+
+  it("carries an absent requested slot as null so the fresh link stays open", () => {
+    expect(requestToReissuePrefill(REQUEST)).toEqual({
+      client_name: "",
+      date: null,
+      start_time: null,
+      end_time: null,
+    });
   });
 });
 

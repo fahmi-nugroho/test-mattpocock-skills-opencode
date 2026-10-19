@@ -215,6 +215,27 @@ export const BOOKING_REQUEST_CORRECT_NOTICE =
   "Klien yang sudah membuka form mungkin masih mengirim nilai lama yang sudah dimuat — perbaikan ini berlaku untuk pengiriman berikutnya.";
 
 /**
+ * Whether a request can be re-issued as a fresh link. Only a lapsed one: a
+ * client who never got to answer can be asked again, while a live link already
+ * works, an answered request is the record of their answer, and an accepted one
+ * is spent.
+ */
+export function bookingRequestCanReissue(
+  status: BookingRequestStatus,
+): boolean {
+  return status === "expired";
+}
+
+/**
+ * The re-issue's plain statement of what it does: a fresh link with a fresh
+ * clock that carries over only the name and the requested slot, so the client
+ * has to fill the form in again. Shown beside "Buat link baru" because
+ * re-issuing is not a re-send of the dead token.
+ */
+export const BOOKING_REQUEST_REISSUE_NOTICE =
+  "Ini link baru dengan masa berlaku baru. Klien harus mengisi ulang form — hanya nama dan jadwal yang diminta yang ikut terbawa.";
+
+/**
  * The confirmation step's warning, shown only after the admin's first click and
  * before the destructive second one: what deleting costs.
  */
@@ -287,6 +308,45 @@ export function requestToBookingDraft(
     date: request.date ?? "",
     start_time: request.start_time ?? "",
     end_time: request.end_time ?? "",
+  };
+}
+
+/**
+ * The admin-owned prefill of a Booking Request: the client's name and the
+ * requested date/start/end. It is exactly what the create path writes and the
+ * correction path patches, and nothing the client answered. Every field is
+ * optional on create; a correction takes it in full so an omitted field cannot
+ * silently clear it.
+ */
+export interface BookingRequestPrefillInput {
+  client_name?: string;
+  date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+}
+
+/**
+ * The prefill a re-issue carries from a lapsed request: the client's name and
+ * the requested slot, in full, and nothing the client answered. The fresh link
+ * starts empty apart from what the admin entered by hand, which is what "the
+ * client fills the form again" means.
+ */
+export type BookingRequestReissuePrefill = Required<BookingRequestPrefillInput>;
+
+/**
+ * Map a lapsed request onto a fresh create input: carry the client's name and
+ * the requested slot only. The event, phone, style, reference, and notes the
+ * client may have sent are deliberately left behind, so re-issuing starts a new
+ * request rather than a copy of the old one.
+ */
+export function requestToReissuePrefill(
+  request: BookingRequest,
+): BookingRequestReissuePrefill {
+  return {
+    client_name: request.client_name,
+    date: request.date,
+    start_time: request.start_time,
+    end_time: request.end_time,
   };
 }
 

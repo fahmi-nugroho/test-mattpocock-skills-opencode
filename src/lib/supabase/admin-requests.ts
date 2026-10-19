@@ -21,17 +21,11 @@ import {
   deleteRefusalMessage,
   deriveBookingRequestState,
   refusalMessage,
+  type BookingRequestPrefillInput,
 } from "../admin/booking-request";
 import { validateRequestSlot } from "../admin/validate-booking-request";
 
 type TypedClient = SupabaseClient<Database>;
-
-export interface BookingRequestPrefillInput {
-  client_name?: string;
-  date?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
-}
 
 /**
  * Admin request list (ticket 04): every request ordered newest first, so the
