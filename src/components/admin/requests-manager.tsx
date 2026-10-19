@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   BOOKING_REQUEST_STATUS_LABEL,
   bookingRequestRefusalHint,
@@ -65,6 +66,40 @@ export function RequestsManager({
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [attentionCount, setAttentionCount] = useState(0);
+  const [query, setQuery] = useState("");
+
+  // The derived state is clock-dependent, so derive it once per list load and
+  // carry it with the row: the badge the admin reads and the state label the
+  // search matches can then never disagree.
+  const rows = useMemo(
+    () =>
+      items.map((item) => ({
+        item,
+        status: deriveBookingRequestState(item, new Date()),
+      })),
+    [items],
+  );
+
+  // Client-side search over the visible text fields only — the same pure
+  // substring helper and convention as the other admin lists. The requested
+  // date and the state label are included so the box finds a request by
+  // anything the admin can read on its row; the CRUD/data flow below is
+  // unchanged.
+  const visibleRows = useMemo(
+    () =>
+      filterByQuery(rows, query, (row) => [
+        row.item.client_name,
+        row.item.client_phone,
+        row.item.event_type,
+        row.item.venue,
+        row.item.hairdo,
+        row.item.reference,
+        row.item.notes,
+        row.item.date,
+        BOOKING_REQUEST_STATUS_LABEL[row.status],
+      ]),
+    [rows, query],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -282,9 +317,17 @@ export function RequestsManager({
         </span>
       </div>
 
-      <ul className="mt-3 space-y-2">
-        {items.map((item) => {
-          const status = deriveBookingRequestState(item, new Date());
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Cari permintaan…"
+        aria-label="Cari permintaan"
+        className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+      />
+
+      <ul className="mt-4 space-y-2">
+        {visibleRows.map(({ item, status }) => {
           return (
             <li
               key={item.id}
@@ -351,6 +394,11 @@ export function RequestsManager({
       {items.length === 0 && !error ? (
         <p className="mt-3 text-sm text-neutral-600">
           Belum ada permintaan — buat link pertama di atas.
+        </p>
+      ) : null}
+      {items.length > 0 && visibleRows.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-600">
+          {`Tidak ada hasil untuk "${query.trim()}".`}
         </p>
       ) : null}
     </div>
