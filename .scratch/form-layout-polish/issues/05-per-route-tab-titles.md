@@ -4,13 +4,23 @@
 
 **Blocked by:** 04 — the route titles are composed with the business name through the template that ticket introduces.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The dashboard tab reads "Dashboard Admin"; the login tab reads "Login Admin"; both compose with the business name through the root template, and a client's Format Booking tab reads "Format Booking".
-- [ ] Each admin route is a server page that exports its metadata and renders the client component holding the existing markup and logic.
-- [ ] The dashboard's browser-session guard and its redirect to the login page behave exactly as before.
-- [ ] The login page's session check, its redirect to the dashboard when a session exists, and its sign-in error mapping behave exactly as before.
-- [ ] No component's rendered markup changes as a result of the split; the only new artifact per route is the metadata export.
-- [ ] `npm run typecheck`, the full test suite, and a production build all pass.
+- [x] The dashboard tab reads "Dashboard Admin"; the login tab reads "Login Admin"; both compose with the business name through the root template, and a client's Format Booking tab reads "Format Booking".
+- [x] Each admin route is a server page that exports its metadata and renders the client component holding the existing markup and logic.
+- [x] The dashboard's browser-session guard and its redirect to the login page behave exactly as before.
+- [x] The login page's session check, its redirect to the dashboard when a session exists, and its sign-in error mapping behave exactly as before.
+- [x] No component's rendered markup changes as a result of the split; the only new artifact per route is the metadata export.
+- [x] `npm run typecheck`, the full test suite, and a production build all pass.
 
 ## Comments
+
+- 2026-10-19 — Implemented on `feat/form-layout-polish-spec`.
+  - `src/app/admin/page.tsx` and `src/app/admin/login/page.tsx` are now thin server pages exporting `metadata` with the titles `"Dashboard Admin"` and `"Login Admin"`. The root template renders them as `Dashboard Admin · Wandana Makeup` and `Login Admin · Wandana Makeup`.
+  - The existing dashboard and login code moved unchanged to `src/components/admin/admin-dashboard.tsx` (`AdminDashboard`) and `src/components/admin/admin-login.tsx` (`AdminLogin`); only the export/function names changed. The auth guard, session redirects, sign-in handling, error mapping, and all JSX are identical to their previous versions.
+  - `src/app/request/[token]/page.tsx` now exports `metadata.title = "Format Booking"`, rendering as `Format Booking · Wandana Makeup`; the page and form markup are untouched.
+  - `README.md`'s project-structure tree now reflects the server routes and the two moved client components.
+  - No new tests: the change has no pure logic seam (the spec's Testing Decisions forbid React-rendering and snapshot tests), and behaviour is covered by the existing suite.
+  - Verified: `npm run typecheck` clean, full `vitest run` (55 files, 491 passed), `npm run build` succeeds. Rendered titles confirmed in the build output and against the running dev server.
+  - Code review (standards + spec axes) found no hard violations and no spec gaps; the only finding, the stale README tree, was fixed.
+
