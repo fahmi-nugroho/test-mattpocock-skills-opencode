@@ -25,8 +25,13 @@ import {
   type BookingRequestStatus,
 } from "@/lib/admin/booking-request";
 import { notifyAcceptRequest } from "@/lib/admin/request-events";
+import {
+  LIST_PAGE_SIZE,
+  windowRows,
+} from "@/lib/admin/list-window";
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { buildFormatBookingWaLink } from "@/lib/whatsapp";
+import { Dialog } from "@/components/dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
@@ -101,6 +106,12 @@ interface RequestsManagerProps {
  * answered request is one tap. Both actions are hidden once the link is spent
  * (accepted) or lapsed, where re-issuing is the route instead.
  *
+ * The list itself lives in a dialog (form-layout-polish ticket 03): the
+ * section keeps the link form and shows the "perlu ditindak" count plus a
+ * trigger, while the dialog holds the badge, the refresh, the chips, the
+ * search, the rows and every row action, capped at ten rows over whatever the
+ * chip and the search currently match. Opening it fetches nothing.
+ *
  * The load is hoisted out of its effect (admin-actions ticket 07) so the
  * section's own "Muat ulang" button can pull in a request that arrived while
  * the tab stayed open, without a page reload. The in-flight flag is separate
@@ -133,6 +144,16 @@ export function RequestsManager({
   const [attentionCount, setAttentionCount] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BookingRequestFilter>("all");
+  // The list lives in a dialog (form-layout-polish ticket 03); the section
+  // keeps the link form and shows a summary plus this trigger.
+  const [listOpen, setListOpen] = useState(false);
+  // How many filtered rows have been revealed; reset on every chip or search
+  // change so a narrowed list always opens at one page.
+  const [revealed, setRevealed] = useState(LIST_PAGE_SIZE);
+  // The "Jadikan Booking" close navigates to the form, so that one close must
+  // not pull focus back down to the trigger.
+  const [skipReturnFocus, setSkipReturnFocus] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // A row op in flight: which row and which action, so only that action's
   // button shows a busy label while the row's controls are disabled. Re-issue
@@ -197,6 +218,22 @@ export function RequestsManager({
     [items, filter, now, query],
   );
 
+  // One cap over whatever the chip and the search currently match — the
+  // Permintaan list has no date grouping.
+  const listWindow = windowRows(visibleRows, revealed);
+
+  /** Changing the chip (or clearing it after a re-issue) opens one page. */
+  function changeFilter(next: BookingRequestFilter) {
+    setFilter(next);
+    setRevealed(LIST_PAGE_SIZE);
+  }
+
+  /** Changing the search text opens one page too. */
+  function changeQuery(next: string) {
+    setQuery(next);
+    setRevealed(LIST_PAGE_SIZE);
+  }
+
   // Roving tabindex for the chip tablist: arrow keys move the selection (and
   // therefore the single tab stop) between chips, Home/End jump to the ends.
   function onFilterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -209,7 +246,7 @@ export function RequestsManager({
     else if (e.key === "End") next = last;
     if (next === null) return;
     e.preventDefault();
-    setFilter(BOOKING_REQUEST_FILTERS[next]);
+    changeFilter(BOOKING_REQUEST_FILTERS[next]);
     filterRefs.current[next]?.focus();
   }
 
@@ -355,6 +392,8 @@ export function RequestsManager({
       requestId: item.id,
       draft: requestToBookingDraft(item),
     });
+    setSkipReturnFocus(true);
+    setListOpen(false);
     window.location.hash = "#booking";
   }
 
@@ -466,7 +505,7 @@ export function RequestsManager({
     setRowBusy({ id: item.id, action: "reissue" });
     try {
       const row = await createAndSurface(requestToReissuePrefill(item), "");
-      setFilter("all");
+      changeFilter("all");
       setItems((prev) => [row, ...prev]);
     } catch (err) {
       setRowError({
@@ -479,6 +518,282 @@ export function RequestsManager({
     } finally {
       setRowBusy(null);
     }
+  }
+
+  /** One Booking Request row, with every action and message it carries. */
+  function renderRow(item: BookingRequest, status: BookingRequestStatus) {
+    const isEditing = editingId === item.id;
+    const correctRefusal = bookingRequestCorrectRefusal(status);
+    const resendNumber = resendNumbers[item.id] ?? item.client_phone;
+    const resendLink = buildFormatBookingLink(origin, item.token);
+    return (
+      <li
+        key={item.id}
+        className="rounded-xl border border-neutral-200 bg-white p-3"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[status]}`}
+          >
+            {BOOKING_REQUEST_STATUS_LABEL[status]}
+          </span>
+          {isEditing ? (
+            <label className="flex flex-col">
+              <span className="text-sm font-medium">
+                Nama klien (opsional)
+              </span>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Nama klien"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+          ) : (
+            <span className="text-sm font-semibold">
+              {item.client_name || "Tanpa nama"}
+            </span>
+          )}
+          <span className="text-xs text-neutral-500">
+            {item.client_phone || "—"}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-neutral-600">
+          {item.event_type || "—"} · {item.headcount} orang ·{" "}
+          {item.venue || "—"}
+        </p>
+        <StyleReferenceFacts
+          hairdo={item.hairdo}
+          reference={item.reference}
+        />
+        {isEditing ? (
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <label className="block">
+              <span className="text-sm font-medium">
+                Tanggal (opsional)
+              </span>
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">
+                Jam mulai (opsional)
+              </span>
+              <input
+                type="time"
+                value={editStart}
+                onChange={(e) => setEditStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">
+                Jam selesai (opsional)
+              </span>
+              <input
+                type="time"
+                value={editEnd}
+                onChange={(e) => setEditEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+        ) : (
+          <p className="mt-0.5 text-xs text-neutral-600">
+            Diminta:{" "}
+            {item.date
+              ? `${item.date} · ${item.start_time ?? "—"}–${item.end_time ?? "—"}`
+              : "belum ditentukan"}
+          </p>
+        )}
+        {item.notes ? (
+          <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-start gap-3">
+          <div>
+            {correctRefusal === null ? (
+              isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={rowBusy?.id === item.id}
+                    onClick={() => onSaveEdit(item)}
+                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {busyOn(item.id, "edit") ? "Menyimpan…" : "Simpan"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onCancelEdit}
+                    className="ml-2 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                  >
+                    Batal
+                  </button>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {BOOKING_REQUEST_CORRECT_NOTICE}
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onStartEdit(item)}
+                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                >
+                  Ubah
+                </button>
+              )
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                >
+                  Ubah
+                </button>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {correctRefusal}
+                </p>
+              </div>
+            )}
+          </div>
+          <div>
+            {status === "submitted" ? (
+              <button
+                type="button"
+                onClick={() => onAccept(item)}
+                className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
+              >
+                Jadikan Booking
+              </button>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                >
+                  Jadikan Booking
+                </button>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {bookingRequestRefusalHint(status)}
+                </p>
+              </div>
+            )}
+          </div>
+          {bookingRequestCanResend(status) ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onCopyResend(item)}
+                className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+              >
+                {copiedLink === resendLink ? "Tersalin" : "Salin link"}
+              </button>
+              <input
+                type="tel"
+                aria-label="Nomor WhatsApp untuk kirim ulang"
+                value={resendNumber}
+                onChange={(e) =>
+                  setResendNumbers((prev) => ({
+                    ...prev,
+                    [item.id]: e.target.value,
+                  }))
+                }
+                placeholder="08… (tidak disimpan)"
+                className="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+              />
+              {resendNumber.trim() ? (
+                <a
+                  href={buildFormatBookingWaLink(resendNumber, resendLink)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
+                >
+                  Kirim via WhatsApp
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title="Isi nomor WhatsApp dulu"
+                  className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white opacity-50"
+                >
+                  Kirim via WhatsApp
+                </button>
+              )}
+            </div>
+          ) : null}
+          {bookingRequestCanReissue(status) ? (
+            <div>
+              <button
+                type="button"
+                disabled={rowBusy?.id === item.id}
+                onClick={() => onReissue(item)}
+                className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+              >
+                {busyOn(item.id, "reissue")
+                  ? "Membuat…"
+                  : "Buat link baru"}
+              </button>
+              <p className="mt-1 text-xs text-neutral-500">
+                {BOOKING_REQUEST_REISSUE_NOTICE}
+              </p>
+            </div>
+          ) : null}
+          <div>
+            {bookingRequestDeleteRefusal(status) === null ? (
+              <>
+                <button
+                  type="button"
+                  disabled={rowBusy?.id === item.id}
+                  onClick={() => onDelete(item)}
+                  className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                    confirmDeleteId === item.id
+                      ? "bg-red-600 text-white"
+                      : "border border-red-300 text-red-700"
+                  }`}
+                >
+                  {busyOn(item.id, "delete")
+                    ? "Menghapus…"
+                    : confirmDeleteId === item.id
+                      ? "Klik lagi untuk hapus"
+                      : "Hapus"}
+                </button>
+                {confirmDeleteId === item.id ? (
+                  <p className="mt-1 text-xs text-red-700">
+                    {BOOKING_REQUEST_DELETE_WARNING}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                >
+                  Hapus
+                </button>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {bookingRequestDeleteRefusal(status)}
+                </p>
+              </div>
+            )}
+          </div>
+          {rowError?.id === item.id ? (
+            <p role="alert" className="mt-1 text-xs text-red-600">
+              {rowError.message}
+            </p>
+          ) : null}
+        </div>
+      </li>
+    );
   }
 
   if (loading) {
@@ -498,58 +813,69 @@ export function RequestsManager({
         className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
       >
         <h3 className="text-sm font-bold">Buat link Format Booking</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">Nama klien (opsional)</span>
-            <input
-              type="text"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Nama klien"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">
-              No. WhatsApp untuk kirim (opsional)
-            </span>
-            <input
-              type="tel"
-              value={waNumber}
-              onChange={(e) => setWaNumber(e.target.value)}
-              placeholder="08… (tidak disimpan)"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Tanggal (opsional)</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <span className="hidden sm:block" />
-          <label className="block">
-            <span className="text-sm font-medium">Jam mulai (opsional)</span>
-            <input
-              type="time"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jam selesai (opsional)</span>
-            <input
-              type="time"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-        </div>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Klien dan pengiriman
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Nama klien (opsional)</span>
+              <input
+                type="text"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Nama klien"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">
+                No. WhatsApp untuk kirim (opsional)
+              </span>
+              <input
+                type="tel"
+                value={waNumber}
+                onChange={(e) => setWaNumber(e.target.value)}
+                placeholder="08… (tidak disimpan)"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Jadwal opsional
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium">Tanggal (opsional)</span>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam mulai (opsional)</span>
+              <input
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam selesai (opsional)</span>
+              <input
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
         <p className="text-xs text-neutral-500">
           Tanggal dan jam bersifat opsional dan boleh diisi sebagian saja —
           klien bisa menyesuaikan sendiri. Nomor WhatsApp hanya dipakai untuk
@@ -600,339 +926,122 @@ export function RequestsManager({
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-bold">Daftar permintaan</h3>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            attentionCount > 0
-              ? "bg-amber-100 text-amber-800"
-              : "bg-neutral-100 text-neutral-600"
-          }`}
-        >
-          {attentionCount} perlu ditindak
-        </span>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="ml-auto rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-        >
-          {refreshing ? "Memuat…" : "Muat ulang"}
-        </button>
-      </div>
-
-      <div
-        className="mt-4 flex flex-wrap gap-2"
-        role="tablist"
-        aria-label="Filter status permintaan"
-        onKeyDown={onFilterKeyDown}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          setSkipReturnFocus(false);
+          setListOpen(true);
+        }}
+        aria-haspopup="dialog"
+        className="mt-5 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50"
       >
-        {BOOKING_REQUEST_FILTERS.map((value, index) => {
-          const selected = value === filter;
-          return (
-            <button
-              key={value}
-              ref={(el) => {
-                filterRefs.current[index] = el;
-              }}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => setFilter(value)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                selected
-                  ? "bg-stone-900 text-amber-50"
-                  : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
-              }`}
-            >
-              {BOOKING_REQUEST_FILTER_LABEL[value]}
-            </button>
-          );
-        })}
-      </div>
+        <span>
+          <span className="block text-sm font-semibold">
+            Lihat daftar permintaan
+          </span>
+          <span className="mt-0.5 block text-xs text-neutral-600">
+            {attentionCount} perlu ditindak
+          </span>
+        </span>
+        <span aria-hidden="true" className="ml-auto text-lg">
+          ›
+        </span>
+      </button>
 
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Cari permintaan…"
-        aria-label="Cari permintaan"
-        className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-      />
+      <Dialog
+        open={listOpen}
+        onClose={() => setListOpen(false)}
+        title="Daftar permintaan"
+        returnFocusTo={triggerRef}
+        restoreFocus={!skipReturnFocus}
+        panelClassName="sm:max-w-3xl"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              attentionCount > 0
+                ? "bg-amber-100 text-amber-800"
+                : "bg-neutral-100 text-neutral-600"
+            }`}
+          >
+            {attentionCount} perlu ditindak
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="ml-auto rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+          >
+            {refreshing ? "Memuat…" : "Muat ulang"}
+          </button>
+        </div>
 
-      <ul className="mt-4 space-y-2">
-        {visibleRows.map(({ item, status }) => {
-          const isEditing = editingId === item.id;
-          const correctRefusal = bookingRequestCorrectRefusal(status);
-          const resendNumber = resendNumbers[item.id] ?? item.client_phone;
-          const resendLink = buildFormatBookingLink(origin, item.token);
-          return (
-            <li
-              key={item.id}
-              className="rounded-xl border border-neutral-200 bg-white p-3"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[status]}`}
-                >
-                  {BOOKING_REQUEST_STATUS_LABEL[status]}
-                </span>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    aria-label="Nama klien"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Nama klien"
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                ) : (
-                  <span className="text-sm font-semibold">
-                    {item.client_name || "Tanpa nama"}
-                  </span>
-                )}
-                <span className="text-xs text-neutral-500">
-                  {item.client_phone || "—"}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-neutral-600">
-                {item.event_type || "—"} · {item.headcount} orang ·{" "}
-                {item.venue || "—"}
-              </p>
-              <StyleReferenceFacts
-                hairdo={item.hairdo}
-                reference={item.reference}
-              />
-              {isEditing ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <input
-                    type="date"
-                    aria-label="Tanggal diminta"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    aria-label="Jam mulai diminta"
-                    value={editStart}
-                    onChange={(e) => setEditStart(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    aria-label="Jam selesai diminta"
-                    value={editEnd}
-                    onChange={(e) => setEditEnd(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                </div>
-              ) : (
-                <p className="mt-0.5 text-xs text-neutral-600">
-                  Diminta:{" "}
-                  {item.date
-                    ? `${item.date} · ${item.start_time ?? "—"}–${item.end_time ?? "—"}`
-                    : "belum ditentukan"}
-                </p>
-              )}
-              {item.notes ? (
-                <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-start gap-3">
-                <div>
-                  {correctRefusal === null ? (
-                    isEditing ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={rowBusy?.id === item.id}
-                          onClick={() => onSaveEdit(item)}
-                          className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                        >
-                          {busyOn(item.id, "edit") ? "Menyimpan…" : "Simpan"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onCancelEdit}
-                          className="ml-2 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-                        >
-                          Batal
-                        </button>
-                        <p className="mt-1 text-xs text-neutral-500">
-                          {BOOKING_REQUEST_CORRECT_NOTICE}
-                        </p>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onStartEdit(item)}
-                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-                      >
-                        Ubah
-                      </button>
-                    )
-                  ) : (
-                    <div>
-                      <button
-                        type="button"
-                        disabled
-                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
-                      >
-                        Ubah
-                      </button>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {correctRefusal}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  {status === "submitted" ? (
-                    <button
-                      type="button"
-                      onClick={() => onAccept(item)}
-                      className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
-                    >
-                      Jadikan Booking
-                    </button>
-                  ) : (
-                    <div>
-                      <button
-                        type="button"
-                        disabled
-                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
-                      >
-                        Jadikan Booking
-                      </button>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {bookingRequestRefusalHint(status)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {bookingRequestCanResend(status) ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onCopyResend(item)}
-                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
-                    >
-                      {copiedLink === resendLink ? "Tersalin" : "Salin link"}
-                    </button>
-                    <input
-                      type="tel"
-                      aria-label="Nomor WhatsApp untuk kirim ulang"
-                      value={resendNumber}
-                      onChange={(e) =>
-                        setResendNumbers((prev) => ({
-                          ...prev,
-                          [item.id]: e.target.value,
-                        }))
-                      }
-                      placeholder="08… (tidak disimpan)"
-                      className="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
-                    />
-                    {resendNumber.trim() ? (
-                      <a
-                        href={buildFormatBookingWaLink(resendNumber, resendLink)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
-                      >
-                        Kirim via WhatsApp
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        title="Isi nomor WhatsApp dulu"
-                        className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white opacity-50"
-                      >
-                        Kirim via WhatsApp
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-                {bookingRequestCanReissue(status) ? (
-                  <div>
-                    <button
-                      type="button"
-                      disabled={rowBusy?.id === item.id}
-                      onClick={() => onReissue(item)}
-                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-                    >
-                      {busyOn(item.id, "reissue")
-                        ? "Membuat…"
-                        : "Buat link baru"}
-                    </button>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {BOOKING_REQUEST_REISSUE_NOTICE}
-                    </p>
-                  </div>
-                ) : null}
-                <div>
-                  {bookingRequestDeleteRefusal(status) === null ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={rowBusy?.id === item.id}
-                        onClick={() => onDelete(item)}
-                        className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                          confirmDeleteId === item.id
-                            ? "bg-red-600 text-white"
-                            : "border border-red-300 text-red-700"
-                        }`}
-                      >
-                        {busyOn(item.id, "delete")
-                          ? "Menghapus…"
-                          : confirmDeleteId === item.id
-                            ? "Klik lagi untuk hapus"
-                            : "Hapus"}
-                      </button>
-                      {confirmDeleteId === item.id ? (
-                        <p className="mt-1 text-xs text-red-700">
-                          {BOOKING_REQUEST_DELETE_WARNING}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div>
-                      <button
-                        type="button"
-                        disabled
-                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
-                      >
-                        Hapus
-                      </button>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {bookingRequestDeleteRefusal(status)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {rowError?.id === item.id ? (
-                  <p role="alert" className="mt-1 text-xs text-red-600">
-                    {rowError.message}
-                  </p>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {items.length === 0 && !error ? (
-        <p className="mt-3 text-sm text-neutral-600">
-          Belum ada permintaan — buat link pertama di atas.
-        </p>
-      ) : null}
-      {items.length > 0 && visibleRows.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-600">
-          {query.trim()
-            ? `Tidak ada hasil untuk "${query.trim()}".`
-            : "Tidak ada permintaan dengan status ini."}
-        </p>
-      ) : null}
+        <div
+          className="mt-4 flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Filter status permintaan"
+          onKeyDown={onFilterKeyDown}
+        >
+          {BOOKING_REQUEST_FILTERS.map((value, index) => {
+            const selected = value === filter;
+            return (
+              <button
+                key={value}
+                ref={(el) => {
+                  filterRefs.current[index] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => changeFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  selected
+                    ? "bg-stone-900 text-amber-50"
+                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {BOOKING_REQUEST_FILTER_LABEL[value]}
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => changeQuery(e.target.value)}
+          placeholder="Cari permintaan…"
+          aria-label="Cari permintaan"
+          className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+
+        <ul className="mt-4 space-y-2">
+          {listWindow.visible.map(({ item, status }) => renderRow(item, status))}
+        </ul>
+        {listWindow.hidden > 0 ? (
+          <button
+            type="button"
+            onClick={() => setRevealed((n) => n + LIST_PAGE_SIZE)}
+            className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+          >
+            Muat lebih banyak ({listWindow.hidden} lagi)
+          </button>
+        ) : null}
+        {items.length === 0 && !error ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            Belum ada permintaan — buat link pertama di atas.
+          </p>
+        ) : null}
+        {items.length > 0 && visibleRows.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            {query.trim()
+              ? `Tidak ada hasil untuk "${query.trim()}".`
+              : "Tidak ada permintaan dengan status ini."}
+          </p>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

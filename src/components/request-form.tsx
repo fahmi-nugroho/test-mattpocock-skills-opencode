@@ -15,6 +15,7 @@ import {
 import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
 import type { RpcClient } from "@/lib/month-availability";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { BUSINESS_NAME } from "@/lib/brand";
 import { STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -236,7 +237,7 @@ export function RequestForm({ token }: { token: string }) {
       >
         <h2 className="font-display text-lg font-bold">Link kedaluwarsa</h2>
         <p className="mt-2 text-sm text-stone-700">
-          Link ini sudah kedaluwarsa. Minta link baru ke Makeup Artist lewat
+          Link ini sudah kedaluwarsa. Minta link baru ke {BUSINESS_NAME} lewat
           WhatsApp untuk mengisi formulir lagi.
         </p>
       </div>
@@ -265,7 +266,7 @@ export function RequestForm({ token }: { token: string }) {
   return (
     <form onSubmit={onSubmit} className="mt-6 space-y-4">
       <p className="text-sm text-stone-600">
-        Isi data di bawah ini supaya Makeup Artist bisa menyiapkan jadwalmu.
+        Isi data di bawah ini supaya {BUSINESS_NAME} bisa menyiapkan jadwalmu.
       </p>
 
       <label htmlFor="req-name" className="block">
@@ -331,7 +332,7 @@ export function RequestForm({ token }: { token: string }) {
       <fieldset className="block">
         <legend className="text-sm font-medium">Gaya rambut</legend>
         <span className="mt-0.5 block text-xs text-stone-500">
-          Pilih salah satu supaya Makeup Artist tahu cara menata.
+          Pilih salah satu supaya {BUSINESS_NAME} tahu cara menata.
         </span>
         <div className="mt-2 space-y-2">
           {STYLE_VALUES.map((value) => {

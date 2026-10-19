@@ -12,6 +12,7 @@ import {
   resolveHeroPortraitUrl,
 } from "@/lib/hero-proof";
 import type { PublicProfile } from "@/lib/supabase/public-profile";
+import { BUSINESS_NAME } from "@/lib/brand";
 
 /** Owner-supplied portrait; empty until the owner provides one. */
 const OWNER_PORTRAIT_URL = process.env.NEXT_PUBLIC_HERO_PORTRAIT ?? "";
@@ -59,7 +60,7 @@ export function HeroTrust({
     >
       <div className="min-w-0 text-center lg:text-left">
         <p className="text-sm font-medium uppercase tracking-widest text-gold">
-          Makeup Artist
+          {BUSINESS_NAME}
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
           {headline}

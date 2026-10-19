@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+import { BUSINESS_NAME } from "@/lib/brand";
 import "./globals.css";
 
 // Serif display for H1/H2 only; body copy stays sans.
@@ -16,8 +17,11 @@ const sans = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Makeup Artist",
-  description: "Portfolio, prices, and availability — booking via WhatsApp.",
+  title: {
+    default: BUSINESS_NAME,
+    template: `%s · ${BUSINESS_NAME}`,
+  },
+  description: `Portofolio, harga, dan ketersediaan ${BUSINESS_NAME} — pemesanan lewat WhatsApp.`,
 };
 
 export default function RootLayout({
