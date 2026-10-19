@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
+import {
+  LIST_PAGE_SIZE,
+  splitByToday,
+  windowRows,
+} from "@/lib/admin/list-window";
+import { summarizeBookings } from "@/lib/admin/overview";
 import { validateBookingInput } from "@/lib/admin/validate-booking";
 import {
   remainingBalance,
@@ -24,6 +30,7 @@ import {
 import { linkBookingRequest } from "@/lib/supabase/admin-requests";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
+import { Dialog } from "@/components/dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import type { Booking, BookingStatus, Service } from "@/lib/supabase/database";
 import { getTodayKey } from "@/lib/calendar";
@@ -65,6 +72,11 @@ function parseIntField(value: string, fallback: number | null): number | null {
  * ACCEPT_REQUEST_EVENT; this form listens, prefills, and after a normal
  * (guarded) save links the request to the new booking — the accept path
  * never bypasses validation or the conflict guard.
+ *
+ * The list itself lives in a dialog (form-layout-polish ticket 03): the
+ * section keeps the create form and shows a summary plus a trigger, and the
+ * dialog splits the rows it already loaded into Mendatang and Riwayat, ten at
+ * a time. Opening it fetches nothing.
  */
 export function BookingsManager() {
   const [items, setItems] = useState<Booking[]>([]);
@@ -116,9 +128,22 @@ export function BookingsManager() {
     dp_amount: "0",
   });
   const [rowBusy, setRowBusy] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<string | null>(null);
+  // A row op's failure, kept with the row it belongs to so the reason appears
+  // in that row even when the dialog shows twenty of them.
+  const [rowError, setRowError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The list lives in a dialog (form-layout-polish ticket 03); the section
+  // keeps the create form and shows a summary plus this trigger.
+  const [listOpen, setListOpen] = useState(false);
+  // How many rows each group has revealed; reset on every search change so a
+  // narrowed list always opens at one page.
+  const [revealedUpcoming, setRevealedUpcoming] = useState(LIST_PAGE_SIZE);
+  const [revealedHistory, setRevealedHistory] = useState(LIST_PAGE_SIZE);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const serviceName = useMemo(() => {
     const map = new Map<string, string>();
@@ -140,6 +165,37 @@ export function BookingsManager() {
       ]),
     [items, query, serviceName],
   );
+
+  // The dialog reads the rows the section already loaded — opening it fetches
+  // nothing. Today's key is pinned per render so the split and the trigger's
+  // counts agree with each other.
+  const todayKey = getTodayKey();
+  const { upcoming, history } = useMemo(
+    () => splitByToday(visibleItems, todayKey),
+    [visibleItems, todayKey],
+  );
+  const upcomingWindow = windowRows(upcoming, revealedUpcoming);
+  const historyWindow = windowRows(history, revealedHistory);
+
+  /** Changing the search text opens both groups at one page again. */
+  function changeQuery(next: string) {
+    setQuery(next);
+    setRevealedUpcoming(LIST_PAGE_SIZE);
+    setRevealedHistory(LIST_PAGE_SIZE);
+  }
+
+  // The trigger's summary reuses the overview summariser the Ringkasan cards
+  // already use, so the number on the button cannot drift from the counts.
+  const summary = useMemo(
+    () => summarizeBookings(items, todayKey),
+    [items, todayKey],
+  );
+  const upcomingCount =
+    summary.todayConfirmed +
+    summary.todayPending +
+    summary.upcomingConfirmed +
+    summary.upcomingPending;
+  const upcomingWaiting = summary.todayPending + summary.upcomingPending;
 
   useEffect(() => {
     let cancelled = false;
@@ -253,13 +309,9 @@ export function BookingsManager() {
     setSaving(true);
     try {
       const row = await createBooking(supabaseBrowser(), validated);
-      setItems((prev) =>
-        [...prev, row].sort((a, b) =>
-          a.date === b.date
-            ? a.start_time.localeCompare(b.start_time)
-            : a.date.localeCompare(b.date),
-        ),
-      );
+      // One ordering rule now: the dialog's Mendatang/Riwayat split sorts
+      // whatever is loaded, so a create no longer re-sorts here.
+      setItems((prev) => [...prev, row]);
       setClientName("");
       setClientPhone("");
       setNotes("");
@@ -350,27 +402,27 @@ export function BookingsManager() {
         dp_amount: parseIntField(editFields.dp_amount, 0),
       });
     } catch (err) {
-      setRowError(err instanceof Error ? err.message : "Input tidak valid");
+      setRowError({
+        id: item.id,
+        message: err instanceof Error ? err.message : "Input tidak valid",
+      });
       return;
     }
     setRowBusy(item.id);
     try {
       const row = await updateBooking(supabaseBrowser(), item.id, validated);
-      setItems((prev) =>
-        prev
-          .map((p) => (p.id === item.id ? row : p))
-          .sort((a, b) =>
-            a.date === b.date
-              ? a.start_time.localeCompare(b.start_time)
-              : a.date.localeCompare(b.date),
-          ),
-      );
+      // Same one ordering rule: the split orders the list, not this save.
+      setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
       setEditingId(null);
       notifyScheduleChanged();
     } catch (err) {
-      setRowError(
-        err instanceof Error ? err.message : "Gagal menyimpan perubahan. Coba lagi.",
-      );
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal menyimpan perubahan. Coba lagi.",
+      });
     } finally {
       setRowBusy(null);
     }
@@ -385,9 +437,11 @@ export function BookingsManager() {
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
       notifyScheduleChanged();
     } catch (err) {
-      setRowError(
-        err instanceof Error ? err.message : "Gagal mengubah status. Coba lagi.",
-      );
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error ? err.message : "Gagal mengubah status. Coba lagi.",
+      });
     } finally {
       setRowBusy(null);
     }
@@ -408,10 +462,349 @@ export function BookingsManager() {
       setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
     } catch {
-      setRowError("Gagal menghapus booking. Coba lagi.");
+      setRowError({
+        id: item.id,
+        message: "Gagal menghapus booking. Coba lagi.",
+      });
     } finally {
       setRowBusy(null);
     }
+  }
+
+  /** One Booking row, with its inline editor, its actions, and its messages. */
+  function renderRow(item: Booking) {
+    const legacyHairdo =
+      item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
+    return (
+      <li
+        key={item.id}
+        className="rounded-xl border border-neutral-200 bg-white p-3"
+      >
+        {editingId === item.id ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Tanggal</span>
+              <input
+                type="date"
+                value={editFields.date}
+                onChange={(e) =>
+                  setEditFields((f) => ({ ...f, date: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Status</span>
+              <select
+                value={editFields.status}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    status: e.target.value as BookingStatus,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam mulai</span>
+              <input
+                type="time"
+                value={editFields.start_time}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    start_time: e.target.value,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam selesai</span>
+              <input
+                type="time"
+                value={editFields.end_time}
+                onChange={(e) =>
+                  setEditFields((f) => ({ ...f, end_time: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Nama klien</span>
+              <input
+                type="text"
+                value={editFields.client_name}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    client_name: e.target.value,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">No. HP / WA klien</span>
+              <input
+                type="tel"
+                value={editFields.client_phone}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    client_phone: e.target.value,
+                  }))
+                }
+                placeholder="08…"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jenis acara</span>
+              <input
+                type="text"
+                value={editFields.event_type}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    event_type: e.target.value,
+                  }))
+                }
+                placeholder="Wisuda, lamaran…"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jumlah orang</span>
+              <input
+                type="number"
+                min={1}
+                value={editFields.headcount}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    headcount: e.target.value,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Lokasi</span>
+              <input
+                type="text"
+                value={editFields.venue}
+                onChange={(e) =>
+                  setEditFields((f) => ({ ...f, venue: e.target.value }))
+                }
+                placeholder="Gedung / alamat"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <fieldset className="rounded-lg border border-neutral-200 p-2 sm:col-span-2">
+              <legend className="px-1 text-xs font-medium text-neutral-600">
+                Gaya rambut (opsional)
+              </legend>
+              <div className="flex flex-wrap gap-3">
+                {STYLE_VALUES.map((value) => (
+                  <label
+                    key={value}
+                    htmlFor={`edit-style-${item.id}-${value}`}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <input
+                      id={`edit-style-${item.id}-${value}`}
+                      type="radio"
+                      name={`edit-hairdo-${item.id}`}
+                      value={value}
+                      checked={editFields.hairdo === value}
+                      onChange={() =>
+                        setEditFields((f) => ({ ...f, hairdo: value }))
+                      }
+                      className="h-4 w-4 accent-neutral-900"
+                    />
+                    {STYLE_COPY[value].label}
+                  </label>
+                ))}
+              </div>
+              {legacyHairdo ? (
+                <p className="mt-1 text-xs text-neutral-500">
+                  Teks lama (hanya baca): {legacyHairdo}
+                </p>
+              ) : null}
+            </fieldset>
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium">
+                Referensi{" "}
+                <span className="font-normal text-neutral-500">
+                  (opsional)
+                </span>
+              </span>
+              <input
+                type="text"
+                value={editFields.reference}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    reference: e.target.value,
+                  }))
+                }
+                placeholder="Link foto atau deskripsi singkat"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Total harga (Rp)</span>
+              <input
+                type="number"
+                min={0}
+                value={editFields.total_price}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    total_price: e.target.value,
+                  }))
+                }
+                placeholder="Kosongkan bila belum disepakati"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">DP (Rp)</span>
+              <input
+                type="number"
+                min={0}
+                value={editFields.dp_amount}
+                onChange={(e) =>
+                  setEditFields((f) => ({
+                    ...f,
+                    dp_amount: e.target.value,
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium">Catatan</span>
+              <input
+                type="text"
+                value={editFields.notes}
+                onChange={(e) =>
+                  setEditFields((f) => ({ ...f, notes: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-semibold">
+              {item.date} · {item.start_time}–{item.end_time} ·{" "}
+              {STATUS_LABEL[item.status]}
+            </p>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              {item.client_name} · {item.client_phone} ·{" "}
+              {serviceName(item.service_id)}
+            </p>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              {item.event_type || "—"} · {item.headcount} orang ·{" "}
+              {item.venue || "—"}
+            </p>
+            <StyleReferenceFacts
+              hairdo={item.hairdo}
+              reference={item.reference}
+            />
+            {item.total_price !== null ? (
+              <p className="mt-0.5 text-xs text-neutral-600">
+                Total {formatIDR(item.total_price)} · DP{" "}
+                {formatIDR(item.dp_amount)} · Sisa{" "}
+                {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
+              </p>
+            ) : null}
+            {item.notes ? (
+              <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
+            ) : null}
+          </div>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {editingId === item.id ? (
+            <>
+              <button
+                type="button"
+                disabled={rowBusy === item.id}
+                onClick={() => onSaveEdit(item)}
+                className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingId(null)}
+                className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+              >
+                Batal
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startEdit(item)}
+              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+            >
+              Ubah Jadwal
+            </button>
+          )}
+          {item.status !== "confirmed" ? (
+            <button
+              type="button"
+              disabled={rowBusy === item.id}
+              onClick={() => onSetStatus(item, "confirmed")}
+              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+            >
+              Konfirmasi
+            </button>
+          ) : null}
+          {item.status !== "cancelled" ? (
+            <button
+              type="button"
+              disabled={rowBusy === item.id}
+              onClick={() => onSetStatus(item, "cancelled")}
+              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+            >
+              Batalkan
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={rowBusy === item.id}
+            onClick={() => onDelete(item)}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+              confirmDeleteId === item.id
+                ? "bg-red-600 text-white"
+                : "border border-red-300 text-red-700"
+            }`}
+          >
+            {rowBusy === item.id
+              ? "Menghapus…"
+              : confirmDeleteId === item.id
+                ? "Klik lagi untuk hapus"
+                : "Hapus"}
+          </button>
+        </div>
+        {rowError?.id === item.id ? (
+          <p role="alert" className="mt-2 text-xs text-red-600">
+            {rowError.message}
+          </p>
+        ) : null}
+      </li>
+    );
   }
 
   if (loading) {
@@ -423,11 +816,6 @@ export function BookingsManager() {
       {error ? (
         <p role="alert" className="text-sm text-red-600">
           {error}
-        </p>
-      ) : null}
-      {rowError ? (
-        <p role="alert" className="mt-2 text-sm text-red-600">
-          {rowError}
         </p>
       ) : null}
 
@@ -679,355 +1067,85 @@ export function BookingsManager() {
         </button>
       </form>
 
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Cari booking…"
-        aria-label="Cari booking"
-        className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-      />
-      <ul className="mt-4 space-y-2">
-        {visibleItems.map((item) => {
-          const legacyHairdo =
-            item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
-          return (
-            <li
-              key={item.id}
-              className="rounded-xl border border-neutral-200 bg-white p-3"
-            >
-              {editingId === item.id ? (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="text-sm font-medium">Tanggal</span>
-                    <input
-                      type="date"
-                      value={editFields.date}
-                      onChange={(e) =>
-                        setEditFields((f) => ({ ...f, date: e.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Status</span>
-                    <select
-                      value={editFields.status}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          status: e.target.value as BookingStatus,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {STATUS_LABEL[s]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Jam mulai</span>
-                    <input
-                      type="time"
-                      value={editFields.start_time}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          start_time: e.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Jam selesai</span>
-                    <input
-                      type="time"
-                      value={editFields.end_time}
-                      onChange={(e) =>
-                        setEditFields((f) => ({ ...f, end_time: e.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Nama klien</span>
-                    <input
-                      type="text"
-                      value={editFields.client_name}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          client_name: e.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">No. HP / WA klien</span>
-                    <input
-                      type="tel"
-                      value={editFields.client_phone}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          client_phone: e.target.value,
-                        }))
-                      }
-                      placeholder="08…"
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Jenis acara</span>
-                    <input
-                      type="text"
-                      value={editFields.event_type}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          event_type: e.target.value,
-                        }))
-                      }
-                      placeholder="Wisuda, lamaran…"
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Jumlah orang</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editFields.headcount}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          headcount: e.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Lokasi</span>
-                    <input
-                      type="text"
-                      value={editFields.venue}
-                      onChange={(e) =>
-                        setEditFields((f) => ({ ...f, venue: e.target.value }))
-                      }
-                      placeholder="Gedung / alamat"
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <fieldset className="rounded-lg border border-neutral-200 p-2 sm:col-span-2">
-                    <legend className="px-1 text-xs font-medium text-neutral-600">
-                      Gaya rambut (opsional)
-                    </legend>
-                    <div className="flex flex-wrap gap-3">
-                      {STYLE_VALUES.map((value) => (
-                        <label
-                          key={value}
-                          htmlFor={`edit-style-${item.id}-${value}`}
-                          className="flex cursor-pointer items-center gap-2 text-sm"
-                        >
-                          <input
-                            id={`edit-style-${item.id}-${value}`}
-                            type="radio"
-                            name={`edit-hairdo-${item.id}`}
-                            value={value}
-                            checked={editFields.hairdo === value}
-                            onChange={() =>
-                              setEditFields((f) => ({ ...f, hairdo: value }))
-                            }
-                            className="h-4 w-4 accent-neutral-900"
-                          />
-                          {STYLE_COPY[value].label}
-                        </label>
-                      ))}
-                    </div>
-                    {legacyHairdo ? (
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Teks lama (hanya baca): {legacyHairdo}
-                      </p>
-                    ) : null}
-                  </fieldset>
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm font-medium">
-                      Referensi{" "}
-                      <span className="font-normal text-neutral-500">
-                        (opsional)
-                      </span>
-                    </span>
-                    <input
-                      type="text"
-                      value={editFields.reference}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          reference: e.target.value,
-                        }))
-                      }
-                      placeholder="Link foto atau deskripsi singkat"
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">Total harga (Rp)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editFields.total_price}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          total_price: e.target.value,
-                        }))
-                      }
-                      placeholder="Kosongkan bila belum disepakati"
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium">DP (Rp)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editFields.dp_amount}
-                      onChange={(e) =>
-                        setEditFields((f) => ({
-                          ...f,
-                          dp_amount: e.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm font-medium">Catatan</span>
-                    <input
-                      type="text"
-                      value={editFields.notes}
-                      onChange={(e) =>
-                        setEditFields((f) => ({ ...f, notes: e.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm font-semibold">
-                    {item.date} · {item.start_time}–{item.end_time} ·{" "}
-                    {STATUS_LABEL[item.status]}
-                  </p>
-                  <p className="mt-0.5 text-xs text-neutral-500">
-                    {item.client_name} · {item.client_phone} ·{" "}
-                    {serviceName(item.service_id)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-neutral-500">
-                    {item.event_type || "—"} · {item.headcount} orang ·{" "}
-                    {item.venue || "—"}
-                  </p>
-                  <StyleReferenceFacts
-                    hairdo={item.hairdo}
-                    reference={item.reference}
-                  />
-                  {item.total_price !== null ? (
-                    <p className="mt-0.5 text-xs text-neutral-600">
-                      Total {formatIDR(item.total_price)} · DP{" "}
-                      {formatIDR(item.dp_amount)} · Sisa{" "}
-                      {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
-                    </p>
-                  ) : null}
-                  {item.notes ? (
-                    <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
-                  ) : null}
-                </div>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {editingId === item.id ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={rowBusy === item.id}
-                      onClick={() => onSaveEdit(item)}
-                      className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                    >
-                      {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-                    >
-                      Batal
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => startEdit(item)}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-                  >
-                    Ubah Jadwal
-                  </button>
-                )}
-                {item.status !== "confirmed" ? (
-                  <button
-                    type="button"
-                    disabled={rowBusy === item.id}
-                    onClick={() => onSetStatus(item, "confirmed")}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-                  >
-                    Konfirmasi
-                  </button>
-                ) : null}
-                {item.status !== "cancelled" ? (
-                  <button
-                    type="button"
-                    disabled={rowBusy === item.id}
-                    onClick={() => onSetStatus(item, "cancelled")}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-                  >
-                    Batalkan
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={rowBusy === item.id}
-                  onClick={() => onDelete(item)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                    confirmDeleteId === item.id
-                      ? "bg-red-600 text-white"
-                      : "border border-red-300 text-red-700"
-                  }`}
-                >
-                  {rowBusy === item.id
-                    ? "Menghapus…"
-                    : confirmDeleteId === item.id
-                      ? "Klik lagi untuk hapus"
-                      : "Hapus"}
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {items.length === 0 && !error ? (
-        <p className="mt-3 text-sm text-neutral-600">
-          Belum ada booking — catat hasil negosiasi WA pertama di atas.
-        </p>
-      ) : null}
-      {items.length > 0 && visibleItems.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-600">
-          {`Tidak ada hasil untuk "${query.trim()}".`}
-        </p>
-      ) : null}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setListOpen(true)}
+        aria-haspopup="dialog"
+        className="mt-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50"
+      >
+        <span>
+          <span className="block text-sm font-semibold">
+            Lihat daftar booking
+          </span>
+          <span className="mt-0.5 block text-xs text-neutral-600">
+            {upcomingCount} mendatang · {upcomingWaiting} masih menunggu
+          </span>
+        </span>
+        <span aria-hidden="true" className="ml-auto text-lg">
+          ›
+        </span>
+      </button>
+
+      <Dialog
+        open={listOpen}
+        onClose={() => setListOpen(false)}
+        title="Daftar booking"
+        returnFocusTo={triggerRef}
+      >
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => changeQuery(e.target.value)}
+          placeholder="Cari booking…"
+          aria-label="Cari booking"
+          className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+        {items.length === 0 && !error ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            Belum ada booking — catat hasil negosiasi WA pertama di atas.
+          </p>
+        ) : null}
+        {items.length > 0 && visibleItems.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            {`Tidak ada hasil untuk "${query.trim()}".`}
+          </p>
+        ) : null}
+        {upcoming.length > 0 ? (
+          <section aria-label="Booking mendatang" className="mt-4">
+            <h3 className="text-sm font-bold">Mendatang</h3>
+            <ul className="mt-2 space-y-2">
+              {upcomingWindow.visible.map(renderRow)}
+            </ul>
+            {upcomingWindow.hidden > 0 ? (
+              <button
+                type="button"
+                onClick={() => setRevealedUpcoming((n) => n + LIST_PAGE_SIZE)}
+                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+              >
+                Muat lebih banyak ({upcomingWindow.hidden} lagi)
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+        {history.length > 0 ? (
+          <section aria-label="Riwayat booking" className="mt-6">
+            <h3 className="text-sm font-bold">Riwayat</h3>
+            <ul className="mt-2 space-y-2">
+              {historyWindow.visible.map(renderRow)}
+            </ul>
+            {historyWindow.hidden > 0 ? (
+              <button
+                type="button"
+                onClick={() => setRevealedHistory((n) => n + LIST_PAGE_SIZE)}
+                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+              >
+                Muat lebih banyak ({historyWindow.hidden} lagi)
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
