@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
+  BOOKING_REQUEST_COPY_FAILURE,
   BOOKING_REQUEST_CORRECT_NOTICE,
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
@@ -10,6 +11,7 @@ import {
   BOOKING_REQUEST_REISSUE_NOTICE,
   BOOKING_REQUEST_STATUS_LABEL,
   bookingRequestCanReissue,
+  bookingRequestCanResend,
   bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
@@ -41,6 +43,18 @@ const STATUS_STYLE: Record<BookingRequestStatus, string> = {
   accepted: "bg-green-100 text-green-800",
   expired: "bg-red-100 text-red-700",
 };
+
+/**
+ * Write text to the clipboard, shared by the created-panel and per-row copy
+ * actions so one operation has one failure path. Throws when the browser has
+ * no clipboard; callers turn that into the Indonesian copy failure.
+ */
+async function writeToClipboard(text: string): Promise<void> {
+  if (!navigator.clipboard) {
+    throw new Error("Clipboard tidak tersedia");
+  }
+  await navigator.clipboard.writeText(text);
+}
 
 /** A per-row action that can be in flight, so only its button shows "…". */
 type RowAction = "edit" | "delete" | "reissue";
@@ -79,6 +93,13 @@ interface RequestsManagerProps {
  * the create path to make a fresh request carrying only the name and slot, with
  * a new token and a fresh seven-day window; the old row is left untouched as
  * history, so a dead token is never revived.
+ *
+ * A row whose link is still live (open or answered) also offers re-sending it
+ * (admin-actions ticket 06): copying it again needs no stored state, and
+ * opening WhatsApp prefills a number typed into a per-row field that is never
+ * written to the database — pre-filled from the client's own number, so an
+ * answered request is one tap. Both actions are hidden once the link is spent
+ * (accepted) or lapsed, where re-issuing is the route instead.
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -118,7 +139,21 @@ export function RequestsManager({
   const [editDate, setEditDate] = useState("");
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
+  // The per-row re-send number (ticket 06), keyed by request id. Never written
+  // to the database, mirroring the link form's "not stored" decision; an
+  // absent entry means "use the client's own number", so an answered request
+  // is one tap. A map (not a single editing id) keeps every live row's field
+  // independent.
+  const [resendNumbers, setResendNumbers] = useState<Record<string, string>>(
+    {},
+  );
   const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // The rows' live links are built from the browser origin. RequestsManager
+  // only mounts after the admin page's auth effect, so `window` is present; a
+  // guard keeps a stray server render from throwing, and one `origin` keeps
+  // every link builder reading the same value.
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
 
   // The derived state is clock-dependent, so pin one clock per list load: every
   // row's badge and state label then come from the same moment.
@@ -214,7 +249,7 @@ export function RequestsManager({
     sendTo: string,
   ): Promise<BookingRequest> {
     const row = await createBookingRequest(supabaseBrowser(), input);
-    const link = buildFormatBookingLink(window.location.origin, row.token);
+    const link = buildFormatBookingLink(origin, row.token);
     setCreated({ link, waNumber: sendTo });
     return row;
   }
@@ -254,13 +289,26 @@ export function RequestsManager({
   async function onCopy(link: string) {
     setCreateError(null);
     try {
-      if (!navigator.clipboard) {
-        throw new Error("Clipboard tidak tersedia");
-      }
-      await navigator.clipboard.writeText(link);
+      await writeToClipboard(link);
       setCopiedLink(link);
     } catch {
-      setCreateError("Gagal menyalin link — salin manual dari teks di atas.");
+      setCreateError(BOOKING_REQUEST_COPY_FAILURE);
+    }
+  }
+
+  /**
+   * Copy a live row's link again (ticket 06). It needs no stored state — no
+   * column, no saved number — so this is a plain clipboard write; a browser
+   * that refuses it reports the failure in the row, in Indonesian.
+   */
+  async function onCopyResend(item: BookingRequest) {
+    setRowError(null);
+    const link = buildFormatBookingLink(origin, item.token);
+    try {
+      await writeToClipboard(link);
+      setCopiedLink(link);
+    } catch {
+      setRowError({ id: item.id, message: BOOKING_REQUEST_COPY_FAILURE });
     }
   }
 
@@ -571,6 +619,8 @@ export function RequestsManager({
         {visibleRows.map(({ item, status }) => {
           const isEditing = editingId === item.id;
           const correctRefusal = bookingRequestCorrectRefusal(status);
+          const resendNumber = resendNumbers[item.id] ?? item.client_phone;
+          const resendLink = buildFormatBookingLink(origin, item.token);
           return (
             <li
               key={item.id}
@@ -715,6 +765,49 @@ export function RequestsManager({
                     </div>
                   )}
                 </div>
+                {bookingRequestCanResend(status) ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onCopyResend(item)}
+                      className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+                    >
+                      {copiedLink === resendLink ? "Tersalin" : "Salin link"}
+                    </button>
+                    <input
+                      type="tel"
+                      aria-label="Nomor WhatsApp untuk kirim ulang"
+                      value={resendNumber}
+                      onChange={(e) =>
+                        setResendNumbers((prev) => ({
+                          ...prev,
+                          [item.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="08… (tidak disimpan)"
+                      className="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+                    />
+                    {resendNumber.trim() ? (
+                      <a
+                        href={buildFormatBookingWaLink(resendNumber, resendLink)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
+                      >
+                        Kirim via WhatsApp
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        title="Isi nomor WhatsApp dulu"
+                        className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white opacity-50"
+                      >
+                        Kirim via WhatsApp
+                      </button>
+                    )}
+                  </div>
+                ) : null}
                 {bookingRequestCanReissue(status) ? (
                   <div>
                     <button
@@ -771,12 +864,12 @@ export function RequestsManager({
                       </p>
                     </div>
                   )}
-                  {rowError?.id === item.id ? (
-                    <p role="alert" className="mt-1 text-xs text-red-600">
-                      {rowError.message}
-                    </p>
-                  ) : null}
                 </div>
+                {rowError?.id === item.id ? (
+                  <p role="alert" className="mt-1 text-xs text-red-600">
+                    {rowError.message}
+                  </p>
+                ) : null}
               </div>
             </li>
           );

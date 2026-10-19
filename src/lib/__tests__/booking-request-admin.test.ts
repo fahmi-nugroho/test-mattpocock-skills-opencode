@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOKING_REQUEST_COPY_FAILURE,
   BOOKING_REQUEST_CORRECT_NOTICE,
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
@@ -7,6 +8,7 @@ import {
   BOOKING_REQUEST_REISSUE_NOTICE,
   BOOKING_REQUEST_STATUS_LABEL,
   bookingRequestCanReissue,
+  bookingRequestCanResend,
   bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
@@ -296,6 +298,23 @@ describe("reissue copy (single home)", () => {
     expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/isi ulang|mengisi|form lagi/i);
     expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/nama/i);
     expect(BOOKING_REQUEST_REISSUE_NOTICE).toMatch(/jadwal/i);
+  });
+});
+
+describe("resend copy (single home)", () => {
+  it("offers copying and re-sending only while the link is still live", () => {
+    // Open (waiting on the client) and answered (their number is on the row)
+    // can both be sent again; a lapsed link is re-issued, and an accepted
+    // request is spent.
+    expect(bookingRequestCanResend("open")).toBe(true);
+    expect(bookingRequestCanResend("submitted")).toBe(true);
+    expect(bookingRequestCanResend("accepted")).toBe(false);
+    expect(bookingRequestCanResend("expired")).toBe(false);
+  });
+
+  it("reports a copy failure in Indonesian", () => {
+    expect(BOOKING_REQUEST_COPY_FAILURE).toMatch(/gagal menyalin/i);
+    expect(BOOKING_REQUEST_COPY_FAILURE).toMatch(/link/i);
   });
 });
 

@@ -236,6 +236,28 @@ export const BOOKING_REQUEST_REISSUE_NOTICE =
   "Ini link baru dengan masa berlaku baru. Klien harus mengisi ulang form — hanya nama dan jadwal yang diminta yang ikut terbawa.";
 
 /**
+ * Whether the row offers re-sending its live link — copying it again or opening
+ * WhatsApp with it prefilled. A link is worth sending again while it is still
+ * live: open (waiting on the client) or answered (the client may still need it,
+ * and their own number is what makes the re-send one tap). A lapsed link is
+ * recovered by re-issuing, not re-sending, and an accepted request is spent.
+ * Copy needs no state at all; the WhatsApp number is typed per row and never
+ * stored, mirroring the link form's "not stored" decision.
+ */
+export function bookingRequestCanResend(
+  status: BookingRequestStatus,
+): boolean {
+  return status === "open" || status === "submitted";
+}
+
+/**
+ * The Indonesian failure shown in the row when the browser refuses the
+ * clipboard write. Copying holds no state, so a failure is reported rather
+ * than swallowed.
+ */
+export const BOOKING_REQUEST_COPY_FAILURE = "Gagal menyalin link. Coba lagi.";
+
+/**
  * The confirmation step's warning, shown only after the admin's first click and
  * before the destructive second one: what deleting costs.
  */
