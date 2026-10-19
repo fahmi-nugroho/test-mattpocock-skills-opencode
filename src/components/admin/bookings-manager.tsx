@@ -698,105 +698,132 @@ export function BookingsManager() {
             >
               {editingId === item.id ? (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <input
-                    type="date"
-                    aria-label="Tanggal"
-                    value={editFields.date}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, date: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <select
-                    aria-label="Status"
-                    value={editFields.status}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        status: e.target.value as BookingStatus,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABEL[s]}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="time"
-                    aria-label="Jam mulai"
-                    value={editFields.start_time}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, start_time: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    aria-label="Jam selesai"
-                    value={editFields.end_time}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, end_time: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    aria-label="Nama klien"
-                    value={editFields.client_name}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, client_name: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    aria-label="No. HP klien"
-                    value={editFields.client_phone}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        client_phone: e.target.value,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    aria-label="Jenis acara"
-                    value={editFields.event_type}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        event_type: e.target.value,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    aria-label="Jumlah orang"
-                    value={editFields.headcount}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        headcount: e.target.value,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    aria-label="Lokasi"
-                    value={editFields.venue}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, venue: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
+                  <label className="block">
+                    <span className="text-sm font-medium">Tanggal</span>
+                    <input
+                      type="date"
+                      value={editFields.date}
+                      onChange={(e) =>
+                        setEditFields((f) => ({ ...f, date: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Status</span>
+                    <select
+                      value={editFields.status}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          status: e.target.value as BookingStatus,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABEL[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Jam mulai</span>
+                    <input
+                      type="time"
+                      value={editFields.start_time}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          start_time: e.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Jam selesai</span>
+                    <input
+                      type="time"
+                      value={editFields.end_time}
+                      onChange={(e) =>
+                        setEditFields((f) => ({ ...f, end_time: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Nama klien</span>
+                    <input
+                      type="text"
+                      value={editFields.client_name}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          client_name: e.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">No. HP / WA klien</span>
+                    <input
+                      type="tel"
+                      value={editFields.client_phone}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          client_phone: e.target.value,
+                        }))
+                      }
+                      placeholder="08…"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Jenis acara</span>
+                    <input
+                      type="text"
+                      value={editFields.event_type}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          event_type: e.target.value,
+                        }))
+                      }
+                      placeholder="Wisuda, lamaran…"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Jumlah orang</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editFields.headcount}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          headcount: e.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Lokasi</span>
+                    <input
+                      type="text"
+                      value={editFields.venue}
+                      onChange={(e) =>
+                        setEditFields((f) => ({ ...f, venue: e.target.value }))
+                      }
+                      placeholder="Gedung / alamat"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
                   <fieldset className="rounded-lg border border-neutral-200 p-2 sm:col-span-2">
                     <legend className="px-1 text-xs font-medium text-neutral-600">
                       Gaya rambut (opsional)
@@ -829,51 +856,68 @@ export function BookingsManager() {
                       </p>
                     ) : null}
                   </fieldset>
-                  <input
-                    type="text"
-                    aria-label="Referensi"
-                    placeholder="Referensi (opsional)"
-                    value={editFields.reference}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, reference: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    aria-label="Total harga"
-                    value={editFields.total_price}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        total_price: e.target.value,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    aria-label="DP"
-                    value={editFields.dp_amount}
-                    onChange={(e) =>
-                      setEditFields((f) => ({
-                        ...f,
-                        dp_amount: e.target.value,
-                      }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    aria-label="Catatan"
-                    value={editFields.notes}
-                    onChange={(e) =>
-                      setEditFields((f) => ({ ...f, notes: e.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                  />
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium">
+                      Referensi{" "}
+                      <span className="font-normal text-neutral-500">
+                        (opsional)
+                      </span>
+                    </span>
+                    <input
+                      type="text"
+                      value={editFields.reference}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          reference: e.target.value,
+                        }))
+                      }
+                      placeholder="Link foto atau deskripsi singkat"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Total harga (Rp)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editFields.total_price}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          total_price: e.target.value,
+                        }))
+                      }
+                      placeholder="Kosongkan bila belum disepakati"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">DP (Rp)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editFields.dp_amount}
+                      onChange={(e) =>
+                        setEditFields((f) => ({
+                          ...f,
+                          dp_amount: e.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium">Catatan</span>
+                    <input
+                      type="text"
+                      value={editFields.notes}
+                      onChange={(e) =>
+                        setEditFields((f) => ({ ...f, notes: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
                 </div>
               ) : (
                 <div>

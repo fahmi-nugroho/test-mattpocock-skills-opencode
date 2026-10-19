@@ -690,14 +690,18 @@ export function RequestsManager({
                   {BOOKING_REQUEST_STATUS_LABEL[status]}
                 </span>
                 {isEditing ? (
-                  <input
-                    type="text"
-                    aria-label="Nama klien"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Nama klien"
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
+                  <label className="flex flex-col">
+                    <span className="text-sm font-medium">
+                      Nama klien (opsional)
+                    </span>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Nama klien"
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
                 ) : (
                   <span className="text-sm font-semibold">
                     {item.client_name || "Tanpa nama"}
@@ -717,27 +721,39 @@ export function RequestsManager({
               />
               {isEditing ? (
                 <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <input
-                    type="date"
-                    aria-label="Tanggal diminta"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    aria-label="Jam mulai diminta"
-                    value={editStart}
-                    onChange={(e) => setEditStart(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    aria-label="Jam selesai diminta"
-                    value={editEnd}
-                    onChange={(e) => setEditEnd(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
+                  <label className="block">
+                    <span className="text-sm font-medium">
+                      Tanggal (opsional)
+                    </span>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">
+                      Jam mulai (opsional)
+                    </span>
+                    <input
+                      type="time"
+                      value={editStart}
+                      onChange={(e) => setEditStart(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">
+                      Jam selesai (opsional)
+                    </span>
+                    <input
+                      type="time"
+                      value={editEnd}
+                      onChange={(e) => setEditEnd(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
                 </div>
               ) : (
                 <p className="mt-0.5 text-xs text-neutral-600">
