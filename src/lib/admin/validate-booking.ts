@@ -1,4 +1,5 @@
 import type { BookingStatus } from "../supabase/database";
+import { REFERENCE_MAX, isStyle } from "../style-reference";
 
 export interface BookingInput {
   date: string;
@@ -9,6 +10,13 @@ export interface BookingInput {
   client_phone: string;
   notes?: string;
   status: BookingStatus | string;
+  event_type?: string;
+  headcount?: number;
+  venue?: string;
+  hairdo?: string;
+  reference?: string;
+  total_price?: number | null;
+  dp_amount?: number;
 }
 
 export interface ValidatedBookingInput {
@@ -20,6 +28,13 @@ export interface ValidatedBookingInput {
   client_phone: string;
   notes: string;
   status: BookingStatus;
+  event_type: string;
+  headcount: number;
+  venue: string;
+  hairdo: string;
+  reference: string;
+  total_price: number | null;
+  dp_amount: number;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,13 +44,20 @@ const STATUSES: readonly BookingStatus[] = [
   "confirmed",
   "cancelled",
 ];
+// Caps mirror the 0015 column checks.
+const EVENT_TYPE_MAX = 100;
+const VENUE_MAX = 200;
 
 /**
- * Validate the admin booking form (ticket 07). Mirrors the SQL CHECKs
- * (0001_schema.sql: HH:MM shape, start < end, status set) so bad rows
- * are rejected before a DB write; trims names/notes and defaults
- * notes to "" (same shape as the bookings table). Overlap is checked
- * separately in booking-conflicts.ts after fetching same-day siblings.
+ * Validate the admin booking form (ticket 07, extended tickets 04 and 02).
+ * Mirrors the SQL CHECKs (0001_schema.sql + 0015 columns: HH:MM shape,
+ * start < end, status set, headcount >= 1, total/DP >= 0, field caps) so bad
+ * rows are rejected before a DB write; trims names/notes and defaults notes to
+ * "" (same shape as the bookings table). The Style is optional ('' allowed) but
+ * otherwise exactly hijabdo|hairdo, and the Reference is optional up to 300
+ * chars — the same two-value set and cap the public validator and the 0017
+ * submit function enforce. Overlap is checked separately in booking-conflicts.ts
+ * after fetching same-day siblings.
  */
 export function validateBookingInput(
   input: BookingInput,
@@ -66,6 +88,48 @@ export function validateBookingInput(
       : input.service_id.trim() === ""
         ? null
         : input.service_id.trim();
+
+  const event_type = (input.event_type ?? "").trim();
+  if (event_type.length > EVENT_TYPE_MAX) {
+    throw new Error(`Jenis acara maksimal ${EVENT_TYPE_MAX} karakter`);
+  }
+  const venue = (input.venue ?? "").trim();
+  if (venue.length > VENUE_MAX) {
+    throw new Error(`Lokasi maksimal ${VENUE_MAX} karakter`);
+  }
+  // Style is optional: '' means "not known" (a hand-typed booking may predate
+  // the client's choice). Any other value must be exactly one of the two,
+  // matching the public validator and the SQL submit function (untrimmed enum).
+  const hairdo = input.hairdo ?? "";
+  if (hairdo !== "" && !isStyle(hairdo)) {
+    throw new Error("Gaya rambut harus Hijabdo atau Hairdo");
+  }
+  const reference = (input.reference ?? "").trim();
+  if (reference.length > REFERENCE_MAX) {
+    throw new Error(`Referensi maksimal ${REFERENCE_MAX} karakter`);
+  }
+
+  const headcount = input.headcount ?? 1;
+  if (!Number.isInteger(headcount) || headcount < 1) {
+    throw new Error("Jumlah orang harus angka bulat minimal 1");
+  }
+
+  const total_price =
+    input.total_price === undefined || input.total_price === null
+      ? null
+      : input.total_price;
+  if (
+    total_price !== null &&
+    (!Number.isInteger(total_price) || total_price < 0)
+  ) {
+    throw new Error("Total harga harus angka minimal 0");
+  }
+
+  const dp_amount = input.dp_amount ?? 0;
+  if (!Number.isInteger(dp_amount) || dp_amount < 0) {
+    throw new Error("DP harus angka minimal 0");
+  }
+
   return {
     date: input.date,
     start_time: input.start_time,
@@ -75,5 +139,12 @@ export function validateBookingInput(
     client_phone,
     notes: (input.notes ?? "").trim(),
     status: input.status as BookingStatus,
+    event_type,
+    headcount,
+    venue,
+    hairdo,
+    reference,
+    total_price,
+    dp_amount,
   };
 }

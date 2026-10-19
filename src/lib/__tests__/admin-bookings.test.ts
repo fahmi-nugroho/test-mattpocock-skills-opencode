@@ -132,6 +132,13 @@ const BOOKING = {
   client_phone: "081234567890",
   notes: "",
   status: "confirmed" as const,
+  event_type: "",
+  headcount: 1,
+  venue: "",
+  hairdo: "",
+  reference: "",
+  total_price: null as number | null,
+  dp_amount: 0,
 };
 
 describe("listBookingsAdmin", () => {
