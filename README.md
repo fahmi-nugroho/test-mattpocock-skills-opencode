@@ -43,6 +43,7 @@ src/
   app/
     page.tsx            # public landing (server component, revalidate=0)
     layout.tsx          # root layout (lang="id", metadata)
+    icon.svg            # app icon (serif W on the espresso tile)
     admin/
       page.tsx          # dashboard route (server; title; renders AdminDashboard)
       login/page.tsx    # sign-in route (server; title; renders AdminLogin)

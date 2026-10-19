@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Espresso and cream match the colour tokens in globals.css. Generic
+       serif only: a document icon cannot load the app's display font. Keep
+       the letter clear of the tile edge. -->
+  <rect width="64" height="64" fill="#2E2620"/>
+  <text
+    x="32"
+    y="46"
+    fill="#FDF9F4"
+    font-family="Georgia, 'Times New Roman', Times, serif"
+    font-size="40"
+    font-weight="700"
+    text-anchor="middle"
+  >W</text>
+</svg>
