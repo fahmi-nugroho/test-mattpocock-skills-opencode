@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
+  BOOKING_REQUEST_FILTERS,
+  BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
+  filterBookingRequests,
   requestToBookingDraft,
+  type BookingRequestFilter,
   type BookingRequestStatus,
 } from "@/lib/admin/booking-request";
 import { notifyAcceptRequest } from "@/lib/admin/request-events";
@@ -45,7 +49,10 @@ interface RequestsManagerProps {
  * schedule event fires (e.g. a booking created/deleted elsewhere), so a
  * linked or released request updates its badge without a reload. Each row also
  * shows the request's Style and Reference (booking-request-style-and-reference
- * ticket 04), an empty one shown as absent.
+ * ticket 04), an empty one shown as absent. A roving-tablist row of chips
+ * (booking-request-admin-actions ticket 02) narrows the list to one derived
+ * state — reusing the same `deriveBookingRequestState` the badge and the accept
+ * guard read — and composes with the search box rather than replacing it.
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -67,39 +74,55 @@ export function RequestsManager({
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [attentionCount, setAttentionCount] = useState(0);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<BookingRequestFilter>("all");
+  const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  // The derived state is clock-dependent, so derive it once per list load and
-  // carry it with the row: the badge the admin reads and the state label the
-  // search matches can then never disagree.
-  const rows = useMemo(
-    () =>
-      items.map((item) => ({
-        item,
-        status: deriveBookingRequestState(item, new Date()),
-      })),
-    [items],
-  );
+  // The derived state is clock-dependent, so pin one clock per list load: every
+  // row's badge and state label then come from the same moment.
+  const now = useMemo(() => new Date(), [items]);
 
-  // Client-side search over the visible text fields only — the same pure
-  // substring helper and convention as the other admin lists. The requested
-  // date and the state label are included so the box finds a request by
-  // anything the admin can read on its row; the CRUD/data flow below is
-  // unchanged.
+  // The chosen chip runs first through the pure `filterBookingRequests` — which
+  // derives each request with `now` through the same `deriveBookingRequestState`
+  // the badge and the accept guard read — and the client-side search then
+  // narrows that subset, so a row must match both the chip and the query.
   const visibleRows = useMemo(
     () =>
-      filterByQuery(rows, query, (row) => [
-        row.item.client_name,
-        row.item.client_phone,
-        row.item.event_type,
-        row.item.venue,
-        row.item.hairdo,
-        row.item.reference,
-        row.item.notes,
-        row.item.date,
-        BOOKING_REQUEST_STATUS_LABEL[row.status],
-      ]),
-    [rows, query],
+      filterByQuery(
+        filterBookingRequests(items, filter, now).map((item) => ({
+          item,
+          status: deriveBookingRequestState(item, now),
+        })),
+        query,
+        (row) => [
+          row.item.client_name,
+          row.item.client_phone,
+          row.item.event_type,
+          row.item.venue,
+          row.item.hairdo,
+          row.item.reference,
+          row.item.notes,
+          row.item.date,
+          BOOKING_REQUEST_STATUS_LABEL[row.status],
+        ],
+      ),
+    [items, filter, now, query],
   );
+
+  // Roving tabindex for the chip tablist: arrow keys move the selection (and
+  // therefore the single tab stop) between chips, Home/End jump to the ends.
+  function onFilterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const last = BOOKING_REQUEST_FILTERS.length - 1;
+    const current = BOOKING_REQUEST_FILTERS.indexOf(filter);
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = current === last ? 0 : current + 1;
+    else if (e.key === "ArrowLeft") next = current === 0 ? last : current - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next === null) return;
+    e.preventDefault();
+    setFilter(BOOKING_REQUEST_FILTERS[next]);
+    filterRefs.current[next]?.focus();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -317,6 +340,37 @@ export function RequestsManager({
         </span>
       </div>
 
+      <div
+        className="mt-4 flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Filter status permintaan"
+        onKeyDown={onFilterKeyDown}
+      >
+        {BOOKING_REQUEST_FILTERS.map((value, index) => {
+          const selected = value === filter;
+          return (
+            <button
+              key={value}
+              ref={(el) => {
+                filterRefs.current[index] = el;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setFilter(value)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                selected
+                  ? "bg-stone-900 text-amber-50"
+                  : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+              }`}
+            >
+              {BOOKING_REQUEST_FILTER_LABEL[value]}
+            </button>
+          );
+        })}
+      </div>
+
       <input
         type="search"
         value={query}
@@ -398,7 +452,9 @@ export function RequestsManager({
       ) : null}
       {items.length > 0 && visibleRows.length === 0 ? (
         <p className="mt-3 text-sm text-neutral-600">
-          {`Tidak ada hasil untuk "${query.trim()}".`}
+          {query.trim()
+            ? `Tidak ada hasil untuk "${query.trim()}".`
+            : "Tidak ada permintaan dengan status ini."}
         </p>
       ) : null}
     </div>

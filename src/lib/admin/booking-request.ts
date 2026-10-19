@@ -68,6 +68,76 @@ export const BOOKING_REQUEST_STATUS_LABEL: Record<
   expired: "Kedaluwarsa",
 };
 
+/**
+ * The single vocabulary the filter chips offer: `all` (show everything),
+ * `needs_action` (the admin still has to accept it), and one per remaining
+ * derived state. The list is ordered so the chips read left to right as the
+ * section's work queue; the type is read off it so the two cannot drift.
+ */
+export const BOOKING_REQUEST_FILTERS = [
+  "all",
+  "needs_action",
+  "open",
+  "accepted",
+  "lapsed",
+] as const;
+
+export type BookingRequestFilter = (typeof BOOKING_REQUEST_FILTERS)[number];
+
+/**
+ * Chip copy. The state chips reuse the row-badge labels verbatim, and
+ * `needs_action` names what the tab badge already counts, so a chip and the
+ * badge can never tell two different stories.
+ */
+export const BOOKING_REQUEST_FILTER_LABEL: Record<
+  BookingRequestFilter,
+  string
+> = {
+  all: "Semua",
+  needs_action: "Perlu ditindak",
+  open: BOOKING_REQUEST_STATUS_LABEL.open,
+  accepted: BOOKING_REQUEST_STATUS_LABEL.accepted,
+  lapsed: BOOKING_REQUEST_STATUS_LABEL.expired,
+};
+
+/** The derived state each non-`all` filter chip selects. */
+const FILTER_STATUS: Record<
+  Exclude<BookingRequestFilter, "all">,
+  BookingRequestStatus
+> = {
+  needs_action: "submitted",
+  open: "open",
+  accepted: "accepted",
+  lapsed: "expired",
+};
+
+/** Whether an already-derived state belongs to the chosen filter. */
+function bookingRequestMatchesFilter(
+  status: BookingRequestStatus,
+  filter: BookingRequestFilter,
+): boolean {
+  if (filter === "all") return true;
+  return status === FILTER_STATUS[filter];
+}
+
+/**
+ * The pure state filter: subset the requests to one derived state, deriving
+ * each through `deriveBookingRequestState` with the injected clock so the
+ * chips, the badge, and the accept guard all read from the same rule.
+ */
+export function filterBookingRequests<T extends BookingRequestStateInput>(
+  requests: readonly T[],
+  filter: BookingRequestFilter,
+  now: Date,
+): T[] {
+  return requests.filter((request) =>
+    bookingRequestMatchesFilter(
+      deriveBookingRequestState(request, now),
+      filter,
+    ),
+  );
+}
+
 /** Why a non-submitted request cannot be accepted (Indonesian, inline). */
 export function bookingRequestRefusalHint(
   status: BookingRequestStatus,

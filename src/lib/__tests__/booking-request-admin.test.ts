@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOKING_REQUEST_FILTERS,
+  BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
+  filterBookingRequests,
   refusalMessage,
   remainingBalance,
   requestToBookingDraft,
@@ -95,6 +98,111 @@ describe("deriveBookingRequestState", () => {
         NOW,
       ),
     ).toBe("accepted");
+  });
+});
+
+describe("filterBookingRequests", () => {
+  const OPEN = { ...REQUEST, id: "req-open" };
+  const SUBMITTED = {
+    ...REQUEST,
+    id: "req-submitted",
+    submitted_at: "2026-10-17T09:00:00.000Z",
+  };
+  const ACCEPTED = {
+    ...REQUEST,
+    id: "req-accepted",
+    accepted_booking_id: "booking-9",
+    expires_at: "2026-10-01T00:00:00.000Z",
+  };
+  const LAPSED = {
+    ...REQUEST,
+    id: "req-lapsed",
+    expires_at: "2026-10-18T11:59:59.000Z",
+  };
+  const ANSWERED_LATE = {
+    ...REQUEST,
+    id: "req-answered-late",
+    submitted_at: "2026-10-17T09:00:00.000Z",
+    expires_at: "2026-10-18T11:59:59.000Z",
+  };
+  const ALL = [OPEN, SUBMITTED, ACCEPTED, LAPSED, ANSWERED_LATE];
+
+  it("names the filter vocabulary all, needs action, open, accepted, lapsed", () => {
+    expect(BOOKING_REQUEST_FILTERS).toEqual([
+      "all",
+      "needs_action",
+      "open",
+      "accepted",
+      "lapsed",
+    ]);
+  });
+
+  it("returns every request for the show-everything filter", () => {
+    expect(filterBookingRequests(ALL, "all", NOW)).toEqual(ALL);
+  });
+
+  it("narrows to the requests needing action (still submitted, not lapsed)", () => {
+    expect(filterBookingRequests(ALL, "needs_action", NOW)).toEqual([SUBMITTED]);
+  });
+
+  it("narrows to the open links still waiting on the client", () => {
+    expect(filterBookingRequests(ALL, "open", NOW)).toEqual([OPEN]);
+  });
+
+  it("narrows to the requests already turned into a booking", () => {
+    expect(filterBookingRequests(ALL, "accepted", NOW)).toEqual([ACCEPTED]);
+  });
+
+  it("narrows to the lapsed links", () => {
+    expect(filterBookingRequests(ALL, "lapsed", NOW)).toEqual([
+      LAPSED,
+      ANSWERED_LATE,
+    ]);
+  });
+
+  it("reads a request answered before its window lapsed as lapsed, matching the derivation", () => {
+    expect(deriveBookingRequestState(ANSWERED_LATE, NOW)).toBe("expired");
+    expect(filterBookingRequests([ANSWERED_LATE], "lapsed", NOW)).toEqual([
+      ANSWERED_LATE,
+    ]);
+  });
+
+  it("treats an accepted request as accepted even when its link has lapsed", () => {
+    expect(filterBookingRequests([ACCEPTED], "lapsed", NOW)).toEqual([]);
+    expect(filterBookingRequests([ACCEPTED], "accepted", NOW)).toEqual([
+      ACCEPTED,
+    ]);
+  });
+
+  it("derives each request with the injected clock, not the wall clock", () => {
+    const beforeExpiry = new Date("2026-10-18T11:00:00.000Z");
+    expect(filterBookingRequests([ANSWERED_LATE], "lapsed", beforeExpiry)).toEqual(
+      [],
+    );
+    expect(
+      filterBookingRequests([ANSWERED_LATE], "needs_action", beforeExpiry),
+    ).toEqual([ANSWERED_LATE]);
+  });
+
+  it("labels each chip so the badge story cannot differ from the chip story", () => {
+    expect(BOOKING_REQUEST_FILTER_LABEL).toEqual({
+      all: "Semua",
+      needs_action: "Perlu ditindak",
+      open: "Terbuka",
+      accepted: "Diterima",
+      lapsed: "Kedaluwarsa",
+    });
+    // The state chips are literally the row-badge labels, so a chip and the
+    // badge cannot drift apart.
+    expect(BOOKING_REQUEST_FILTER_LABEL.open).toBe(
+      BOOKING_REQUEST_STATUS_LABEL.open,
+    );
+    expect(BOOKING_REQUEST_FILTER_LABEL.accepted).toBe(
+      BOOKING_REQUEST_STATUS_LABEL.accepted,
+    );
+    expect(BOOKING_REQUEST_FILTER_LABEL.lapsed).toBe(
+      BOOKING_REQUEST_STATUS_LABEL.expired,
+    );
   });
 });
 
