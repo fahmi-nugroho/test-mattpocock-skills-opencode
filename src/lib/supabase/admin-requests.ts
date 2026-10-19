@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingRequest, Database } from "./database";
 import { insertRow } from "./admin-crud";
 import {
+  correctRefusalMessage,
   deleteRefusalMessage,
   deriveBookingRequestState,
   refusalMessage,
@@ -25,7 +26,7 @@ import { validateRequestSlot } from "../admin/validate-booking-request";
 
 type TypedClient = SupabaseClient<Database>;
 
-export interface BookingRequestCreateInput {
+export interface BookingRequestPrefillInput {
   client_name?: string;
   date?: string | null;
   start_time?: string | null;
@@ -69,7 +70,7 @@ export async function listBookingRequestsAdmin(
  */
 export async function createBookingRequest(
   client: TypedClient,
-  input: BookingRequestCreateInput,
+  input: BookingRequestPrefillInput,
 ): Promise<BookingRequest> {
   const client_name = (input.client_name ?? "").trim();
   const { date, start_time, end_time } = validateRequestSlot(input);
@@ -222,6 +223,86 @@ export async function deleteBookingRequest(
   }
   throw new Error(
     deleteRefusalMessage(
+      deriveBookingRequestState(current as BookingRequest, new Date()),
+    ),
+  );
+}
+
+/**
+ * Correct a live link's prefill (admin-actions ticket 04): patch only the
+ * admin-owned fields — the client's name and the requested date, start, and
+ * end — so a typo is fixed in the same link under the same token, and nothing
+ * already sent stops working. The write is guarded by the query itself to match
+ * only an open request — not yet answered (`submitted_at is null`), not yet
+ * lapsed (`expires_at > now`), and not yet accepted — so a stale screen can
+ * never rewrite a client's own request. The requested slot runs through the
+ * same `validateRequestSlot` the create path uses before any write. On refusal
+ * the row is read back and explained in Indonesian.
+ */
+export async function correctBookingRequest(
+  client: TypedClient,
+  requestId: string,
+  input: BookingRequestPrefillInput,
+): Promise<BookingRequest> {
+  const client_name = (input.client_name ?? "").trim();
+  const { date, start_time, end_time } = validateRequestSlot(input);
+  const nowIso = new Date().toISOString();
+
+  const loose = client as unknown as {
+    from(t: string): {
+      update(v: unknown): {
+        eq(c: string, v: string): {
+          is(c: string, v: null): {
+            is(c: string, v: null): {
+              gt(
+                c: string,
+                v: string,
+              ): {
+                select(): Promise<{
+                  data: unknown;
+                  error: { message: string } | null;
+                }>;
+              };
+            };
+          };
+        };
+      };
+      select(c: string): {
+        eq(c: string, v: string): {
+          single(): Promise<{ data: unknown; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+
+  const { data, error } = await loose
+    .from("booking_requests")
+    .update({ client_name, date, start_time, end_time })
+    .eq("id", requestId)
+    .is("submitted_at", null)
+    .is("accepted_booking_id", null)
+    .gt("expires_at", nowIso)
+    .select();
+
+  if (error) {
+    throw new Error(`Gagal memperbarui permintaan: ${error.message}`);
+  }
+
+  const rows = Array.isArray(data) ? (data as BookingRequest[]) : [];
+  if (rows.length > 0) return rows[0];
+
+  // The guard matched nothing: read the row back to say which state blocked
+  // the correction, in Indonesian.
+  const { data: current, error: readError } = await loose
+    .from("booking_requests")
+    .select("*")
+    .eq("id", requestId)
+    .single();
+  if (readError) {
+    throw new Error(`Gagal memuat permintaan: ${readError.message}`);
+  }
+  throw new Error(
+    correctRefusalMessage(
       deriveBookingRequestState(current as BookingRequest, new Date()),
     ),
   );

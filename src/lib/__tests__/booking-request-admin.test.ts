@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOKING_REQUEST_CORRECT_NOTICE,
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
+  correctRefusalMessage,
   deleteRefusalMessage,
   deriveBookingRequestState,
   filterBookingRequests,
@@ -249,6 +252,31 @@ describe("delete copy (single home)", () => {
   it("warns before the second click that deleting kills the client's link", () => {
     expect(BOOKING_REQUEST_DELETE_WARNING).toMatch(/link/i);
     expect(BOOKING_REQUEST_DELETE_WARNING).toMatch(/klien/i);
+  });
+});
+
+describe("correct copy (single home)", () => {
+  it("allows correcting only while the request is open", () => {
+    expect(bookingRequestCorrectRefusal("open")).toBeNull();
+    expect(bookingRequestCorrectRefusal("submitted")).toMatch(
+      /klien sudah mengirim/i,
+    );
+    expect(bookingRequestCorrectRefusal("accepted")).toMatch(/sudah diterima/i);
+    expect(bookingRequestCorrectRefusal("expired")).toMatch(/kedaluwarsa/i);
+  });
+
+  it("explains a correction refusal in Indonesian, and reads a non-open read-back as a lost race", () => {
+    expect(correctRefusalMessage("submitted")).toMatch(/klien sudah mengirim/i);
+    expect(correctRefusalMessage("accepted")).toMatch(/sudah diterima/i);
+    expect(correctRefusalMessage("expired")).toMatch(/kedaluwarsa/i);
+    // The guarded write only matches the open state, so an open read-back means
+    // a lost race, not a real refusal.
+    expect(correctRefusalMessage("open")).toMatch(/muat ulang/i);
+  });
+
+  it("warns that a client who already opened the form may still send the values they loaded", () => {
+    expect(BOOKING_REQUEST_CORRECT_NOTICE).toMatch(/membuka form/i);
+    expect(BOOKING_REQUEST_CORRECT_NOTICE).toMatch(/lama/i);
   });
 });
 

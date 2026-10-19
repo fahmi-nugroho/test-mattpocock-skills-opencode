@@ -174,6 +174,47 @@ export function refusalMessage(status: BookingRequestStatus): string {
 }
 
 /**
+ * Why this request's prefill cannot be corrected, or null when it can. Only an
+ * open request is correctable: once the client has answered, their own request
+ * is the record and the admin must not rewrite it; a lapsed link is recoverable
+ * only by re-issuing, not by editing.
+ */
+export function bookingRequestCorrectRefusal(
+  status: BookingRequestStatus,
+): string | null {
+  switch (status) {
+    case "open":
+      return null;
+    case "submitted":
+      return "Klien sudah mengirim jawabannya — permintaan ini tidak bisa diubah lagi.";
+    case "accepted":
+      return "Permintaan ini sudah diterima menjadi booking — tidak bisa diubah lagi.";
+    default:
+      return "Link sudah kedaluwarsa — buat link baru untuk klien ini.";
+  }
+}
+
+/**
+ * The refusal explanation after a guarded correction matched nothing, keyed by
+ * the state read back from the row. An open state here is a lost race, not a
+ * real refusal, because the guarded write only matches an open request.
+ */
+export function correctRefusalMessage(status: BookingRequestStatus): string {
+  return (
+    bookingRequestCorrectRefusal(status) ??
+    "Permintaan tidak bisa diubah saat ini — coba muat ulang."
+  );
+}
+
+/**
+ * The correction's own reminder: the link already sent keeps working, but a
+ * client who already opened the form may still send the values they loaded, so
+ * the correction reaches the next submission — not one already on its way.
+ */
+export const BOOKING_REQUEST_CORRECT_NOTICE =
+  "Klien yang sudah membuka form mungkin masih mengirim nilai lama yang sudah dimuat — perbaikan ini berlaku untuk pengiriman berikutnya.";
+
+/**
  * The confirmation step's warning, shown only after the admin's first click and
  * before the destructive second one: what deleting costs.
  */

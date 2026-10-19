@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
+  BOOKING_REQUEST_CORRECT_NOTICE,
   BOOKING_REQUEST_DELETE_WARNING,
   BOOKING_REQUEST_FILTERS,
   BOOKING_REQUEST_FILTER_LABEL,
   BOOKING_REQUEST_STATUS_LABEL,
+  bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
   bookingRequestRefusalHint,
   buildFormatBookingLink,
@@ -22,6 +24,7 @@ import { buildFormatBookingWaLink } from "@/lib/whatsapp";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  correctBookingRequest,
   createBookingRequest,
   deleteBookingRequest,
   listBookingRequestsAdmin,
@@ -60,7 +63,11 @@ interface RequestsManagerProps {
  * behind the guarded adapter that refuses a request already turned into a
  * Booking and points at deleting the Booking instead; a deleted row leaves the
  * list at once, and no schedule event is dispatched because a request never
- * occupies the calendar.
+ * owner occupies the calendar. Each row's admin-owned prefill (the client's
+ * name and the requested slot) can also be corrected in place while the row is
+ * open — behind the guarded adapter that refuses anything already answered or
+ * lapsed, so a stale screen cannot rewrite a client's own request — and the
+ * saved row keeps the same token and link (admin-actions ticket 04).
  */
 export function RequestsManager({
   onAttentionCountChange,
@@ -89,6 +96,11 @@ export function RequestsManager({
     id: string;
     message: string;
   } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
   const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // The derived state is clock-dependent, so pin one clock per list load: every
@@ -257,6 +269,56 @@ export function RequestsManager({
             : "Gagal menghapus permintaan. Coba lagi.",
       });
       setConfirmDeleteId(null);
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  /**
+   * Inline prefill correction for an open row (ticket 04): load the editable
+   * fields, save through the guarded adapter, and swap the updated row in place
+   * so the same token and link keep working. Only the open row offers this; the
+   * adapter refuses anything already answered or lapsed and its Indonesian
+   * message surfaces in the row.
+   */
+  function onStartEdit(item: BookingRequest) {
+    setRowError(null);
+    setConfirmDeleteId(null);
+    setEditingId(item.id);
+    setEditName(item.client_name);
+    setEditDate(item.date ?? "");
+    setEditStart(item.start_time ?? "");
+    setEditEnd(item.end_time ?? "");
+  }
+
+  function onCancelEdit() {
+    setEditingId(null);
+    setRowError(null);
+  }
+
+  async function onSaveEdit(item: BookingRequest) {
+    if (rowBusy) return;
+    setRowError(null);
+    setRowBusy(item.id);
+    try {
+      const updated = await correctBookingRequest(supabaseBrowser(), item.id, {
+        client_name: editName,
+        date: editDate || null,
+        start_time: editStart || null,
+        end_time: editEnd || null,
+      });
+      setItems((prev) =>
+        prev.map((row) => (row.id === item.id ? updated : row)),
+      );
+      setEditingId(null);
+    } catch (err) {
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal memperbarui permintaan. Coba lagi.",
+      });
     } finally {
       setRowBusy(null);
     }
@@ -436,6 +498,8 @@ export function RequestsManager({
 
       <ul className="mt-4 space-y-2">
         {visibleRows.map(({ item, status }) => {
+          const isEditing = editingId === item.id;
+          const correctRefusal = bookingRequestCorrectRefusal(status);
           return (
             <li
               key={item.id}
@@ -447,9 +511,20 @@ export function RequestsManager({
                 >
                   {BOOKING_REQUEST_STATUS_LABEL[status]}
                 </span>
-                <span className="text-sm font-semibold">
-                  {item.client_name || "Tanpa nama"}
-                </span>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    aria-label="Nama klien"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Nama klien"
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold">
+                    {item.client_name || "Tanpa nama"}
+                  </span>
+                )}
                 <span className="text-xs text-neutral-500">
                   {item.client_phone || "—"}
                 </span>
@@ -462,16 +537,89 @@ export function RequestsManager({
                 hairdo={item.hairdo}
                 reference={item.reference}
               />
-              <p className="mt-0.5 text-xs text-neutral-600">
-                Diminta:{" "}
-                {item.date
-                  ? `${item.date} · ${item.start_time ?? "—"}–${item.end_time ?? "—"}`
-                  : "belum ditentukan"}
-              </p>
+              {isEditing ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <input
+                    type="date"
+                    aria-label="Tanggal diminta"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="time"
+                    aria-label="Jam mulai diminta"
+                    value={editStart}
+                    onChange={(e) => setEditStart(e.target.value)}
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    type="time"
+                    aria-label="Jam selesai diminta"
+                    value={editEnd}
+                    onChange={(e) => setEditEnd(e.target.value)}
+                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+              ) : (
+                <p className="mt-0.5 text-xs text-neutral-600">
+                  Diminta:{" "}
+                  {item.date
+                    ? `${item.date} · ${item.start_time ?? "—"}–${item.end_time ?? "—"}`
+                    : "belum ditentukan"}
+                </p>
+              )}
               {item.notes ? (
                 <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
               ) : null}
               <div className="mt-3 flex flex-wrap items-start gap-3">
+                <div>
+                  {correctRefusal === null ? (
+                    isEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={rowBusy === item.id}
+                          onClick={() => onSaveEdit(item)}
+                          className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onCancelEdit}
+                          className="ml-2 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                        >
+                          Batal
+                        </button>
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {BOOKING_REQUEST_CORRECT_NOTICE}
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onStartEdit(item)}
+                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                      >
+                        Ubah
+                      </button>
+                    )
+                  ) : (
+                    <div>
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
+                      >
+                        Ubah
+                      </button>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {correctRefusal}
+                      </p>
+                    </div>
+                  )}
+                </div>
                 <div>
                   {status === "submitted" ? (
                     <button

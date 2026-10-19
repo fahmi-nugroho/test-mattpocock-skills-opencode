@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  correctBookingRequest,
   createBookingRequest,
   deleteBookingRequest,
   linkBookingRequest,
@@ -27,8 +28,10 @@ function requestClient(opts: {
   listError?: string;
   inserted?: unknown;
   insertError?: string;
-  linkRows?: unknown[];
-  linkError?: string;
+  // Both guarded update adapters (link, correct) share one terminal, so one
+  // pair of knobs serves both.
+  updateRows?: unknown[];
+  updateError?: string;
   deletedRows?: unknown[];
   deleteError?: string;
   current?: unknown;
@@ -90,9 +93,9 @@ function requestClient(opts: {
             calls.push(["update.gt", col, val]);
             return {
               select: async () =>
-                opts.linkError
-                  ? fail(opts.linkError)
-                  : ok(opts.linkRows ?? []),
+                opts.updateError
+                  ? fail(opts.updateError)
+                  : ok(opts.updateRows ?? []),
             };
           };
           return chain;
@@ -255,7 +258,7 @@ describe("linkBookingRequest", () => {
       submitted_at: "2026-10-17T09:00:00.000Z",
       accepted_booking_id: "b-1",
     };
-    const { client } = requestClient({ linkRows: [accepted], calls });
+    const { client } = requestClient({ updateRows: [accepted], calls });
     await expect(
       linkBookingRequest(client, "req-1", "b-1"),
     ).resolves.toMatchObject({ accepted_booking_id: "b-1" });
@@ -276,7 +279,7 @@ describe("linkBookingRequest", () => {
       submitted_at: "2026-10-17T09:00:00.000Z",
       accepted_booking_id: "b-9",
     };
-    const { client } = requestClient({ linkRows: [], current });
+    const { client } = requestClient({ updateRows: [], current });
     await expect(linkBookingRequest(client, "req-1", "b-1")).rejects.toThrow(
       /sudah diterima/i,
     );
@@ -284,14 +287,14 @@ describe("linkBookingRequest", () => {
 
   it("refuses an expired request in Indonesian", async () => {
     const current = { ...REQUEST_ROW, expires_at: "2020-01-01T00:00:00.000Z" };
-    const { client } = requestClient({ linkRows: [], current });
+    const { client } = requestClient({ updateRows: [], current });
     await expect(linkBookingRequest(client, "req-1", "b-1")).rejects.toThrow(
       /kedaluwarsa/i,
     );
   });
 
   it("refuses a request the client never submitted", async () => {
-    const { client } = requestClient({ linkRows: [], current: REQUEST_ROW });
+    const { client } = requestClient({ updateRows: [], current: REQUEST_ROW });
     await expect(linkBookingRequest(client, "req-1", "b-1")).rejects.toThrow(
       /belum dikirim/i,
     );
@@ -299,7 +302,8 @@ describe("linkBookingRequest", () => {
 
   it("translates a unique-violation race into the same refusal", async () => {
     const { client } = requestClient({
-      linkError: 'duplicate key value violates unique constraint "booking_requests_accepted_booking_id_key"',
+      updateError:
+        'duplicate key value violates unique constraint "booking_requests_accepted_booking_id_key"',
     });
     await expect(linkBookingRequest(client, "req-1", "b-1")).rejects.toThrow(
       /sudah diterima/i,
@@ -344,5 +348,98 @@ describe("deleteBookingRequest", () => {
     await expect(deleteBookingRequest(client, "req-1")).rejects.toThrow(
       /gagal menghapus/i,
     );
+  });
+});
+
+describe("correctBookingRequest", () => {
+  it("patches only the admin-owned prefill behind not-answered + not-lapsed + not-accepted guards", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const corrected = {
+      ...REQUEST_ROW,
+      client_name: "Sinta",
+      date: "2026-11-01",
+      start_time: "09:00",
+      end_time: "11:00",
+    };
+    const { client } = requestClient({ updateRows: [corrected], calls });
+    await expect(
+      correctBookingRequest(client, "req-1", {
+        client_name: "  Sinta  ",
+        date: "2026-11-01",
+        start_time: "09:00",
+        end_time: "11:00",
+      }),
+    ).resolves.toMatchObject({ client_name: "Sinta" });
+    expect(calls).toContainEqual(["from", "booking_requests"]);
+    expect(calls).toContainEqual([
+      "update",
+      {
+        client_name: "Sinta",
+        date: "2026-11-01",
+        start_time: "09:00",
+        end_time: "11:00",
+      },
+    ]);
+    expect(calls).toContainEqual(["update.eq", "id", "req-1"]);
+    expect(calls).toContainEqual(["update.is", "submitted_at", null]);
+    expect(calls).toContainEqual(["update.is", "accepted_booking_id", null]);
+    expect(calls).toContainEqual(["update.gt", "expires_at", expect.any(String)]);
+  });
+
+  it("validates the requested slot with the create path's rule before any write", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const { client } = requestClient({ calls });
+    await expect(
+      correctBookingRequest(client, "req-1", {
+        start_time: "11:00",
+        end_time: "09:00",
+      }),
+    ).rejects.toThrow(/jam mulai/i);
+    expect(calls.some(([name]) => name === "update")).toBe(false);
+  });
+
+  it("refuses correcting a request the client has already answered, in Indonesian", async () => {
+    const current = {
+      ...REQUEST_ROW,
+      submitted_at: "2026-10-17T09:00:00.000Z",
+    };
+    const { client } = requestClient({ updateRows: [], current });
+    await expect(
+      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+    ).rejects.toThrow(/klien sudah mengirim/i);
+  });
+
+  it("refuses correcting an accepted request, in Indonesian", async () => {
+    const current = {
+      ...REQUEST_ROW,
+      submitted_at: "2026-10-17T09:00:00.000Z",
+      accepted_booking_id: "b-9",
+    };
+    const { client } = requestClient({ updateRows: [], current });
+    await expect(
+      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+    ).rejects.toThrow(/sudah diterima/i);
+  });
+
+  it("refuses correcting a lapsed request, in Indonesian", async () => {
+    const current = { ...REQUEST_ROW, expires_at: "2020-01-01T00:00:00.000Z" };
+    const { client } = requestClient({ updateRows: [], current });
+    await expect(
+      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+    ).rejects.toThrow(/kedaluwarsa/i);
+  });
+
+  it("explains a lost-race refusal in Indonesian without pretending the row changed", async () => {
+    const { client } = requestClient({ updateRows: [], current: REQUEST_ROW });
+    await expect(
+      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+    ).rejects.toThrow(/muat ulang/i);
+  });
+
+  it("surfaces a write failure instead of pretending the row changed", async () => {
+    const { client } = requestClient({ updateError: "db down" });
+    await expect(
+      correctBookingRequest(client, "req-1", { client_name: "Sinta" }),
+    ).rejects.toThrow(/gagal memperbarui/i);
   });
 });
