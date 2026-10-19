@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import { RequestForm } from "@/components/request-form";
 import { BUSINESS_NAME } from "@/lib/brand";
+
+export const metadata: Metadata = {
+  title: "Format Booking",
+};
 
 /**
  * Public Format Booking page (booking-request-intake ticket 03).

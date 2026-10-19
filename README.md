@@ -44,14 +44,15 @@ src/
     page.tsx            # public landing (server component, revalidate=0)
     layout.tsx          # root layout (lang="id", metadata)
     admin/
-      page.tsx          # dashboard (client, session-guarded)
-      login/page.tsx    # sign-in
+      page.tsx          # dashboard route (server; title; renders AdminDashboard)
+      login/page.tsx    # sign-in route (server; title; renders AdminLogin)
   components/
     portfolio-grid.tsx
     price-list.tsx
     availability-calendar.tsx
     wa-float.tsx
     admin/
+      admin-dashboard.tsx admin-login.tsx
       admin-calendar.tsx  bookings-manager.tsx  blocks-manager.tsx
       portfolio-manager.tsx services-manager.tsx
   lib/
