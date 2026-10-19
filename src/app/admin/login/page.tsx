@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { mapSignInError } from "@/lib/login-errors";
+import { BUSINESS_NAME } from "@/lib/brand";
 
 /**
  * Admin login (ticket 05): single-admin email+password via Supabase Auth.
@@ -69,7 +70,7 @@ export default function AdminLoginPage() {
   return (
     <main className="mx-auto max-w-sm bg-cream px-4 py-20 text-espresso">
       <p className="text-center text-sm font-medium uppercase tracking-widest text-gold">
-        Makeup Artist
+        {BUSINESS_NAME}
       </p>
       <h1 className="mt-2 text-center font-display text-2xl font-bold">
         Login Admin
