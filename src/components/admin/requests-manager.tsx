@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   BOOKING_REQUEST_COPY_FAILURE,
@@ -100,12 +100,23 @@ interface RequestsManagerProps {
  * written to the database — pre-filled from the client's own number, so an
  * answered request is one tap. Both actions are hidden once the link is spent
  * (accepted) or lapsed, where re-issuing is the route instead.
+ *
+ * The load is hoisted out of its effect (admin-actions ticket 07) so the
+ * section's own "Muat ulang" button can pull in a request that arrived while
+ * the tab stayed open, without a page reload. The in-flight flag is separate
+ * from the initial load, so a refresh keeps the list readable instead of
+ * blanking it behind a loading message, and the badge count is recomputed from
+ * the same rows, so it can never disagree with the list. No realtime and no
+ * background polling: the refresh stays a manual decision, and the existing
+ * cross-panel schedule signal keeps refetching through the same load.
  */
 export function RequestsManager({
   onAttentionCountChange,
 }: RequestsManagerProps) {
   const [items, setItems] = useState<BookingRequest[]>([]);
+  // First load only — a reload flips `refreshing` instead, so it never blanks.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [waNumber, setWaNumber] = useState("");
@@ -202,38 +213,65 @@ export function RequestsManager({
     filterRefs.current[next]?.focus();
   }
 
+  // A load that finishes after unmount must not touch state — the guard the
+  // effect held before `load` was hoisted out so the refresh button could call
+  // it.
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const rows = await listBookingRequestsAdmin(supabaseBrowser());
-        if (cancelled) return;
-        setItems(rows);
-        // "Needs action" is the chip vocabulary's own name for what the badge
-        // counts, so reuse the filter rather than re-deriving the predicate.
-        const count = filterBookingRequests(rows, "needs_action", new Date())
-          .length;
-        setAttentionCount(count);
-        onAttentionCountChange?.(count);
-        setError(null);
-      } catch {
-        if (!cancelled) setError("Gagal memuat permintaan. Coba lagi.");
-      } finally {
-        if (!cancelled) setLoading(false);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * Load the list through the admin adapter and update everything derived from
+   * it in one pass (ticket 07): the mount, the section's "Muat ulang" button,
+   * and the cross-panel schedule signal all share this one path, so the badge
+   * count is always recomputed from the same rows that fill the list and the
+   * two can never disagree. `loading` is the one-time first load and never
+   * turns back on; `refreshing` is the in-flight flag a reload sets, so the
+   * list never blanks behind a loading message.
+   */
+  const load = useCallback(async () => {
+    try {
+      const rows = await listBookingRequestsAdmin(supabaseBrowser());
+      if (!mountedRef.current) return;
+      setItems(rows);
+      // "Needs action" is the chip vocabulary's own name for what the badge
+      // counts, so reuse the filter rather than re-deriving the predicate.
+      const count = filterBookingRequests(rows, "needs_action", new Date())
+        .length;
+      setAttentionCount(count);
+      onAttentionCountChange?.(count);
+      setError(null);
+    } catch {
+      if (mountedRef.current) setError("Gagal memuat permintaan. Coba lagi.");
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
       }
     }
+  }, [onAttentionCountChange]);
+
+  useEffect(() => {
     load();
     // A booking created/deleted elsewhere changes accepted_booking_id (the
     // FK is on delete set null), so refetch to show accepted / released.
-    const onChange = () => {
-      if (!cancelled) load();
-    };
+    const onChange = () => load();
     window.addEventListener(SCHEDULE_CHANGED_EVENT, onChange);
     return () => {
-      cancelled = true;
       window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
     };
-  }, [onAttentionCountChange]);
+  }, [load]);
+
+  /** Pull in anything that arrived while the tab was open, without a reload. */
+  function onRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    load();
+  }
 
   /** Whether the row's given action is the one currently in flight. */
   const busyOn = (id: string, action: RowAction) =>
@@ -573,6 +611,14 @@ export function RequestsManager({
         >
           {attentionCount} perlu ditindak
         </span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="ml-auto rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+        >
+          {refreshing ? "Memuat…" : "Muat ulang"}
+        </button>
       </div>
 
       <div
