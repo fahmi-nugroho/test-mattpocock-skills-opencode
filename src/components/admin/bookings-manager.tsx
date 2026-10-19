@@ -436,213 +436,235 @@ export function BookingsManager() {
         className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
       >
         <h3 className="text-sm font-bold">Tambah booking</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">Tanggal</span>
-            <input
-              type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Layanan</span>
-            <select
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            >
-              <option value="">Tanpa layanan</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jam mulai</span>
-            <input
-              type="time"
-              required
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jam selesai</span>
-            <input
-              type="time"
-              required
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Nama klien</span>
-            <input
-              type="text"
-              required
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Nama klien"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">No. HP / WA klien</span>
-            <input
-              type="tel"
-              required
-              value={clientPhone}
-              onChange={(e) => setClientPhone(e.target.value)}
-              placeholder="08…"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jenis acara</span>
-            <input
-              type="text"
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              placeholder="Wisuda, lamaran…"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jumlah orang</span>
-            <input
-              type="number"
-              min={1}
-              value={headcount}
-              onChange={(e) => setHeadcount(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Lokasi</span>
-            <input
-              type="text"
-              value={venue}
-              onChange={(e) => setVenue(e.target.value)}
-              placeholder="Gedung / alamat"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <fieldset className="block sm:col-span-2">
-            <legend className="text-sm font-medium">
-              Gaya rambut{" "}
-              <span className="font-normal text-neutral-500">(opsional)</span>
-            </legend>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {STYLE_VALUES.map((value) => {
-                const option = STYLE_COPY[value];
-                const selected = hairdo === value;
-                return (
-                  <label
-                    key={value}
-                    htmlFor={`create-style-${value}`}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${
-                      selected
-                        ? "border-neutral-900 bg-neutral-50"
-                        : "border-neutral-300 bg-white"
-                    }`}
-                  >
-                    <input
-                      id={`create-style-${value}`}
-                      type="radio"
-                      name="create-hairdo"
-                      value={value}
-                      checked={selected}
-                      onChange={() => {
-                        setHairdo(value);
-                        setLegacyPrefillHairdo("");
-                      }}
-                      className="h-4 w-4 accent-neutral-900"
-                    />
-                    <span className="text-sm font-medium">{option.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {legacyPrefillHairdo ? (
-              <p className="mt-1 text-xs text-neutral-500">
-                Teks gaya lama (hanya baca): {legacyPrefillHairdo}
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">Jadwal</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Tanggal</span>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam mulai</span>
+              <input
+                type="time"
+                required
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam selesai</span>
+              <input
+                type="time"
+                required
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Status</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as BookingStatus)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">Klien</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Nama klien</span>
+              <input
+                type="text"
+                required
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Nama klien"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">No. HP / WA klien</span>
+              <input
+                type="tel"
+                required
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+                placeholder="08…"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Layanan dan detail acara
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Layanan</span>
+              <select
+                value={serviceId}
+                onChange={(e) => setServiceId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              >
+                <option value="">Tanpa layanan</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jenis acara</span>
+              <input
+                type="text"
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value)}
+                placeholder="Wisuda, lamaran…"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jumlah orang</span>
+              <input
+                type="number"
+                min={1}
+                value={headcount}
+                onChange={(e) => setHeadcount(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Lokasi</span>
+              <input
+                type="text"
+                value={venue}
+                onChange={(e) => setVenue(e.target.value)}
+                placeholder="Gedung / alamat"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <fieldset className="min-w-0">
+              <legend className="text-sm font-medium">
+                Gaya rambut{" "}
+                <span className="font-normal text-neutral-500">(opsional)</span>
+              </legend>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {STYLE_VALUES.map((value) => {
+                  const option = STYLE_COPY[value];
+                  const selected = hairdo === value;
+                  return (
+                    <label
+                      key={value}
+                      htmlFor={`create-style-${value}`}
+                      className={`flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 ${
+                        selected
+                          ? "border-neutral-900 bg-neutral-50"
+                          : "border-neutral-300 bg-white"
+                      }`}
+                    >
+                      <input
+                        id={`create-style-${value}`}
+                        type="radio"
+                        name="create-hairdo"
+                        value={value}
+                        checked={selected}
+                        onChange={() => {
+                          setHairdo(value);
+                          setLegacyPrefillHairdo("");
+                        }}
+                        className="h-4 w-4 accent-neutral-900"
+                      />
+                      <span className="text-sm font-medium">{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {legacyPrefillHairdo ? (
+                <p className="mt-1 text-xs text-neutral-500">
+                  Teks gaya lama (hanya baca): {legacyPrefillHairdo}
+                </p>
+              ) : null}
+            </fieldset>
+            <label className="block">
+              <span className="text-sm font-medium">
+                Referensi{" "}
+                <span className="font-normal text-neutral-500">(opsional)</span>
+              </span>
+              <input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Link foto atau deskripsi singkat"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Pembayaran dan catatan
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Total harga (Rp)</span>
+              <input
+                type="number"
+                min={0}
+                value={totalPrice}
+                onChange={(e) => {
+                  setTotalPrice(e.target.value);
+                  setTotalTouched(true);
+                }}
+                placeholder="Kosongkan bila belum disepakati"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">DP (Rp)</span>
+              <input
+                type="number"
+                min={0}
+                value={dpAmount}
+                onChange={(e) => setDpAmount(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            {createRemaining !== null ? (
+              <p className="text-sm text-neutral-600 sm:col-span-2">
+                Sisa pembayaran: {formatIDR(createRemaining)}
               </p>
             ) : null}
-          </fieldset>
-          <label className="block">
-            <span className="text-sm font-medium">
-              Referensi{" "}
-              <span className="font-normal text-neutral-500">(opsional)</span>
-            </span>
-            <input
-              type="text"
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="Link foto atau deskripsi singkat"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Total harga (Rp)</span>
-            <input
-              type="number"
-              min={0}
-              value={totalPrice}
-              onChange={(e) => {
-                setTotalPrice(e.target.value);
-                setTotalTouched(true);
-              }}
-              placeholder="Kosongkan bila belum disepakati"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">DP (Rp)</span>
-            <input
-              type="number"
-              min={0}
-              value={dpAmount}
-              onChange={(e) => setDpAmount(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-sm font-medium">Catatan</span>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Hasil negosiasi WA, permintaan khusus…"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Status</span>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as BookingStatus)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {createRemaining !== null ? (
-          <p className="text-sm text-neutral-600">
-            Sisa pembayaran: {formatIDR(createRemaining)}
-          </p>
-        ) : null}
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium">Catatan</span>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Hasil negosiasi WA, permintaan khusus…"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
         {formError ? (
           <p role="alert" className="text-sm text-red-600">
             {formError}

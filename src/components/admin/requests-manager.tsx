@@ -498,58 +498,69 @@ export function RequestsManager({
         className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
       >
         <h3 className="text-sm font-bold">Buat link Format Booking</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">Nama klien (opsional)</span>
-            <input
-              type="text"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Nama klien"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">
-              No. WhatsApp untuk kirim (opsional)
-            </span>
-            <input
-              type="tel"
-              value={waNumber}
-              onChange={(e) => setWaNumber(e.target.value)}
-              placeholder="08… (tidak disimpan)"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Tanggal (opsional)</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <span className="hidden sm:block" />
-          <label className="block">
-            <span className="text-sm font-medium">Jam mulai (opsional)</span>
-            <input
-              type="time"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Jam selesai (opsional)</span>
-            <input
-              type="time"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-        </div>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Klien dan pengiriman
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Nama klien (opsional)</span>
+              <input
+                type="text"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Nama klien"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">
+                No. WhatsApp untuk kirim (opsional)
+              </span>
+              <input
+                type="tel"
+                value={waNumber}
+                onChange={(e) => setWaNumber(e.target.value)}
+                placeholder="08… (tidak disimpan)"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-semibold">
+            Jadwal opsional
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium">Tanggal (opsional)</span>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam mulai (opsional)</span>
+              <input
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Jam selesai (opsional)</span>
+              <input
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </fieldset>
         <p className="text-xs text-neutral-500">
           Tanggal dan jam bersifat opsional dan boleh diisi sebagian saja —
           klien bisa menyesuaikan sendiri. Nomor WhatsApp hanya dipakai untuk
