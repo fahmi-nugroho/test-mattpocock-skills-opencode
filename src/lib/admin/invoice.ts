@@ -8,9 +8,55 @@
  * screen can see (there is one admin and no concurrent editor).
  */
 
-import type { Booking, Invoice } from "../supabase/database";
+import { BUSINESS_NAME } from "../brand";
+import type { Booking, Invoice, Settings } from "../supabase/database";
 
 const DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** The payment details the Invoice picture prints under one heading. */
+export interface InvoiceBankDetails {
+  name: string;
+  accountName: string;
+  accountNumber: string;
+}
+
+/** The non-snapshot details an Invoice prints from settings. */
+export interface InvoiceBusiness {
+  name: string;
+  whatsapp: string;
+  instagram: string;
+  bank: InvoiceBankDetails;
+}
+
+type BusinessSettings = Pick<
+  Settings,
+  | "wa_number"
+  | "instagram_handle"
+  | "bank_name"
+  | "account_name"
+  | "account_number"
+>;
+
+/**
+ * Read the printable business details from the settings row. A failed or
+ * missing read still gives the business name and empty payment fields, so a
+ * caller can print em dashes rather than blocking the picture. The caller
+ * decides whether a failed read needs a visible notice.
+ */
+export function invoiceBusiness(
+  settings: BusinessSettings | null,
+): InvoiceBusiness {
+  return {
+    name: BUSINESS_NAME,
+    whatsapp: settings?.wa_number ?? "",
+    instagram: settings?.instagram_handle ?? "",
+    bank: {
+      name: settings?.bank_name ?? "",
+      accountName: settings?.account_name ?? "",
+      accountNumber: settings?.account_number ?? "",
+    },
+  };
+}
 
 /** The year encoded in an Invoice number, read from its issue date. */
 export function invoiceYear(issuedOn: string): number {

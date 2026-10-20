@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   indexInvoicesByBooking,
+  invoiceBusiness,
   invoiceSentLabel,
 } from "@/lib/admin/invoice";
 import {
@@ -33,6 +34,7 @@ import {
 } from "@/lib/supabase/admin-bookings";
 import { listInvoicesAdmin } from "@/lib/supabase/admin-invoices";
 import { linkBookingRequest } from "@/lib/supabase/admin-requests";
+import { getSettings } from "@/lib/supabase/admin-settings";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { Dialog } from "@/components/dialog";
@@ -43,6 +45,7 @@ import type {
   BookingStatus,
   Invoice,
   Service,
+  Settings,
 } from "@/lib/supabase/database";
 import { getTodayKey } from "@/lib/calendar";
 
@@ -158,6 +161,10 @@ export function BookingsManager() {
   // Invoices are loaded with the bookings so a row can show its count and
   // newest number without opening anything. The dialog reads the same rows.
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // Business name and payment details for the Invoice picture. A failed read
+  // still prints the business name and em dashes, so it never blocks bookings.
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [businessLoadFailed, setBusinessLoadFailed] = useState(false);
   const [invoiceBookingId, setInvoiceBookingId] = useState<string | null>(null);
   // The row action is the invoice dialog's trigger: after the dialog closes
   // and the booking list reopens, focus returns to it.
@@ -192,6 +199,12 @@ export function BookingsManager() {
   const invoiceServiceName = invoiceBooking?.service_id
     ? (serviceNames.get(invoiceBooking.service_id) ?? "")
     : "";
+  // One stable object for the preview: the picture redraws when settings load
+  // or change, not on every render of the booking list.
+  const invoiceBusinessDetails = useMemo(
+    () => invoiceBusiness(settings),
+    [settings],
+  );
 
   // Client-side search over visible text fields only; CRUD/data flow
   // below is unchanged.
@@ -281,15 +294,22 @@ export function BookingsManager() {
     async function load() {
       try {
         const supabase = supabaseBrowser();
-        const [bookings, serviceRows, invoiceRows] = await Promise.all([
-          listBookingsAdmin(supabase),
-          listServicesAdmin(supabase),
-          listInvoicesAdmin(supabase),
-        ]);
+        const [bookings, serviceRows, invoiceRows, businessResult] =
+          await Promise.all([
+            listBookingsAdmin(supabase),
+            listServicesAdmin(supabase),
+            listInvoicesAdmin(supabase),
+            getSettings(supabase).then(
+              (row) => ({ row, failed: false }),
+              () => ({ row: null, failed: true }),
+            ),
+          ]);
         if (!cancelled) {
           setItems(bookings);
           setServices(serviceRows);
           setInvoices(invoiceRows);
+          setSettings(businessResult.row);
+          setBusinessLoadFailed(businessResult.failed);
         }
       } catch {
         if (!cancelled) setError("Gagal memuat booking. Coba lagi.");
@@ -1263,6 +1283,8 @@ export function BookingsManager() {
         booking={invoiceBooking}
         serviceName={invoiceServiceName}
         invoices={invoiceBookingInvoices}
+        business={invoiceBusinessDetails}
+        businessLoadFailed={businessLoadFailed}
         onCreated={onInvoiceCreated}
         onUpdated={onInvoiceUpdated}
         onDeleted={onInvoiceDeleted}

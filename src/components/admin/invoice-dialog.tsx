@@ -9,8 +9,10 @@ import {
   invoiceIssueRefusal,
   invoiceSentLabel,
   paymentPosition,
+  type InvoiceBusiness,
 } from "@/lib/admin/invoice";
 import { formatIDR } from "@/lib/format";
+import { InvoicePreview } from "./invoice-preview";
 import {
   createInvoice,
   deleteInvoice,
@@ -27,6 +29,10 @@ interface InvoiceDialogProps {
   serviceName: string;
   /** Every loaded Invoice for this Booking, newest first. */
   invoices: readonly Invoice[];
+  /** Business name and the payment details printed on the picture. */
+  business: InvoiceBusiness;
+  /** Settings read failed, so the picture falls back to em dashes. */
+  businessLoadFailed?: boolean;
   /** The new Invoice, so the manager's row summary updates without a reload. */
   onCreated: (invoice: Invoice) => void;
   /** A marked/unmarked or re-dated Invoice, so the list and row follow at once. */
@@ -57,6 +63,8 @@ export function InvoiceDialog({
   booking,
   serviceName,
   invoices,
+  business,
+  businessLoadFailed = false,
   onCreated,
   onUpdated,
   onDeleted,
@@ -357,6 +365,29 @@ export function InvoiceDialog({
               </ul>
             )}
           </section>
+
+          {selected ? (
+            <section
+              aria-label={`Pratinjau ${selected.number}`}
+              className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:p-4"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-sm font-bold">Pratinjau {selected.number}</h3>
+                <p className="text-xs text-neutral-600">
+                  Dari invoice tersimpan, bukan booking saat ini.
+                </p>
+              </div>
+              {businessLoadFailed ? (
+                <p role="status" className="mt-2 text-xs text-amber-800">
+                  Detail pembayaran gagal dimuat. Pratinjau memakai tanda —
+                  sampai halaman dimuat ulang.
+                </p>
+              ) : null}
+              <div className="mt-3">
+                <InvoicePreview invoice={selected} business={business} />
+              </div>
+            </section>
+          ) : null}
 
           {selected ? (
             <section
