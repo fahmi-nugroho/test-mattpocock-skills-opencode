@@ -75,6 +75,35 @@ export interface BookingRequest {
   end_time: string | null; // "HH:MM"
 }
 
+/**
+ * A frozen invoice snapshot (0018). Every snapshot column is copied from the
+ * Booking when the Invoice is issued, so later Booking edits never change a
+ * saved Invoice. Only `sent_at` and — while unsent — the two dates may move.
+ */
+export interface Invoice {
+  id: string;
+  created_at: string;
+  booking_id: string;
+  year: number;
+  seq: number;
+  number: string;
+  issued_on: string; // "YYYY-MM-DD"
+  due_on: string; // "YYYY-MM-DD"
+  sent_at: string | null;
+  client_name: string;
+  client_phone: string;
+  service_name: string;
+  event_type: string;
+  headcount: number;
+  venue: string;
+  hairdo: string;
+  booking_date: string; // "YYYY-MM-DD"
+  start_time: string; // "HH:MM"
+  end_time: string; // "HH:MM"
+  subtotal: number;
+  dp_amount: number;
+}
+
 export interface Block {
   id: string;
   date: string; // "YYYY-MM-DD"
@@ -91,6 +120,10 @@ export interface Settings {
   headline: string; // max 120 chars (see 0013 migration)
   subcopy: string; // max 300 chars (see 0013 migration)
   portrait_url: string | null; // admin portrait, null falls back to portfolio cover
+  bank_name: string; // "" when not configured; invoice prints an em dash (0018)
+  account_name: string; // "" when not configured (0018)
+  account_number: string; // "" when not configured (0018)
+  instagram_handle: string; // "" when not configured (0018)
 }
 
 export interface TestimonialRow {
@@ -140,6 +173,7 @@ export interface Database {
       testimonials: Table<TestimonialRow>;
       profile_stats: Table<ProfileStatRow>;
       booking_requests: Table<BookingRequest>;
+      invoices: Table<Invoice>;
     };
     Functions: {
       get_month_availability: {
@@ -169,6 +203,14 @@ export interface Database {
       submit_booking_request: {
         Args: { p_token: string; p_payload: Record<string, unknown> };
         Returns: unknown;
+      };
+      create_invoice: {
+        Args: {
+          p_booking_id: string;
+          p_issued_on: string;
+          p_due_on: string;
+        };
+        Returns: Invoice;
       };
     };
   };
