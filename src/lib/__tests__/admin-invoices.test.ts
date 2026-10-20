@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createInvoice,
+  deleteInvoice,
   listInvoicesAdmin,
+  setInvoiceSent,
+  updateInvoiceDates,
 } from "../supabase/admin-invoices";
 import type { Database, Invoice } from "../supabase/database";
 
@@ -147,6 +150,160 @@ describe("listInvoicesAdmin", () => {
   it("throws instead of rendering a stale list on error", async () => {
     const { client } = listClient({ error: "db down" });
     await expect(listInvoicesAdmin(client)).rejects.toThrow(/db down/);
+  });
+});
+
+function updateClient(
+  opts: {
+    row?: Invoice;
+    error?: string;
+    calls?: Array<[string, ...unknown[]]>;
+  } = {},
+) {
+  const calls = opts.calls ?? [];
+  const client = {
+    from: (table: string) => {
+      calls.push(["from", table]);
+      return {
+        update: (patch: unknown) => {
+          calls.push([`${table}.update`, patch]);
+          return {
+            eq: (col: string, val: unknown) => {
+              calls.push([`${table}.eq`, col, val]);
+              return {
+                select: () => {
+                  calls.push([`${table}.select`]);
+                  return {
+                    single: async () => {
+                      calls.push([`${table}.single`]);
+                      return opts.error
+                        ? fail(opts.error)
+                        : ok(opts.row ?? ROW);
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { client: asClient(client), calls };
+}
+
+describe("setInvoiceSent", () => {
+  it("writes a sent timestamp when the admin marks an Invoice sent", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const before = Date.now();
+    const { client } = updateClient({ calls });
+
+    await expect(setInvoiceSent(client, "i1", true)).resolves.toEqual(ROW);
+
+    const patch = calls.find(([name]) => name === "invoices.update")?.[1] as {
+      sent_at: string | null;
+    };
+    expect(Object.keys(patch)).toEqual(["sent_at"]);
+    expect(patch.sent_at).not.toBeNull();
+    expect(new Date(patch.sent_at as string).getTime()).toBeGreaterThanOrEqual(
+      before,
+    );
+    expect(calls).toContainEqual(["invoices.eq", "id", "i1"]);
+    expect(calls).toContainEqual(["from", "invoices"]);
+  });
+
+  it("clears the sent timestamp when the admin unmarks it", async () => {
+    const { client, calls } = updateClient({
+      row: { ...ROW, sent_at: null },
+    });
+    await expect(setInvoiceSent(client, "i1", false)).resolves.toEqual({
+      ...ROW,
+      sent_at: null,
+    });
+    expect(calls).toContainEqual(["invoices.update", { sent_at: null }]);
+  });
+
+  it("surfaces a refusal unchanged instead of pretending it was marked", async () => {
+    const { client } = updateClient({ error: "Invoice tidak ditemukan." });
+    await expect(setInvoiceSent(client, "i1", true)).rejects.toThrow(
+      /tidak ditemukan/i,
+    );
+  });
+});
+
+describe("updateInvoiceDates", () => {
+  it("writes both dates through the invoices table", async () => {
+    const { client, calls } = updateClient({
+      row: { ...ROW, issued_on: "2026-10-21", due_on: "2026-11-01" },
+    });
+    await expect(
+      updateInvoiceDates(client, "i1", {
+        issuedOn: "2026-10-21",
+        dueOn: "2026-11-01",
+      }),
+    ).resolves.toEqual({
+      ...ROW,
+      issued_on: "2026-10-21",
+      due_on: "2026-11-01",
+    });
+    expect(calls).toContainEqual(["from", "invoices"]);
+    expect(calls).toContainEqual([
+      "invoices.update",
+      { issued_on: "2026-10-21", due_on: "2026-11-01" },
+    ]);
+    expect(calls).toContainEqual(["invoices.eq", "id", "i1"]);
+  });
+
+  it("surfaces the database's date refusal unchanged", async () => {
+    const { client } = updateClient({
+      error: "Tanggal terbit harus tetap di tahun 2026.",
+    });
+    await expect(
+      updateInvoiceDates(client, "i1", {
+        issuedOn: "2027-01-01",
+        dueOn: "2027-01-02",
+      }),
+    ).rejects.toThrow(/tahun 2026/i);
+  });
+});
+
+describe("deleteInvoice", () => {
+  it("deletes the Invoice row by id", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const client = {
+      from: (table: string) => {
+        calls.push(["from", table]);
+        return {
+          delete: () => {
+            calls.push([`${table}.delete`]);
+            return {
+              eq: async (col: string, val: unknown) => {
+                calls.push([`${table}.eq`, col, val]);
+                return ok(null);
+              },
+            };
+          },
+        };
+      },
+    };
+
+    await expect(deleteInvoice(asClient(client), "i1")).resolves.toBeUndefined();
+    expect(calls).toContainEqual(["from", "invoices"]);
+    expect(calls).toContainEqual(["invoices.delete"]);
+    expect(calls).toContainEqual(["invoices.eq", "id", "i1"]);
+  });
+
+  it("surfaces a refusal unchanged", async () => {
+    const client = {
+      from: () => ({
+        delete: () => ({
+          eq: async () => fail("Invoice yang sudah dikirim tidak dapat dihapus."),
+        }),
+      }),
+    };
+    await expect(deleteInvoice(asClient(client), "i1")).rejects.toThrow(
+      /tidak dapat dihapus/i,
+    );
   });
 });
 

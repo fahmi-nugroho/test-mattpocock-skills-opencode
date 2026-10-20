@@ -251,6 +251,18 @@ export function BookingsManager() {
     ]);
   }
 
+  /** A sent mark or date correction replaces the row the dialog and list read. */
+  function onInvoiceUpdated(invoice: Invoice) {
+    setInvoices((prev) =>
+      prev.map((row) => (row.id === invoice.id ? invoice : row)),
+    );
+  }
+
+  /** A deleted Invoice leaves at once, so the booking row's count follows. */
+  function onInvoiceDeleted(invoiceId: string) {
+    setInvoices((prev) => prev.filter((row) => row.id !== invoiceId));
+  }
+
   // The trigger's summary reuses the overview summariser the Ringkasan cards
   // already use, so the number on the button cannot drift from the counts.
   const summary = useMemo(
@@ -1252,6 +1264,8 @@ export function BookingsManager() {
         serviceName={invoiceServiceName}
         invoices={invoiceBookingInvoices}
         onCreated={onInvoiceCreated}
+        onUpdated={onInvoiceUpdated}
+        onDeleted={onInvoiceDeleted}
         onClose={closeInvoices}
         returnFocusTo={triggerRef}
         restoreFocus={false}

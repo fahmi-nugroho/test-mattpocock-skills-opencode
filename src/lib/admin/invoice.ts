@@ -67,6 +67,45 @@ export function invoiceSentLabel(invoice: Invoice): string {
   return invoiceIsSent(invoice) ? "Terkirim" : "Belum dikirim";
 }
 
+export interface InvoiceDates {
+  issuedOn: string;
+  dueOn: string;
+}
+
+/** The one date-order rule both issuing and correction print. */
+function dueDateRefusal(issuedOn: string, dueOn: string): string | null {
+  return dueOn < issuedOn
+    ? "Tanggal jatuh tempo tidak boleh sebelum tanggal terbit."
+    : null;
+}
+
+/**
+ * Why both dates cannot be changed on this Invoice, in plain Indonesian, or
+ * null when they can. A sent Invoice is frozen: the dates may only move after
+ * an explicit unmark. While unsent, the issue date must stay inside the year
+ * already encoded in the number, and the due date may not precede it. Mirrors
+ * the table CHECKs in 0018; the UI uses this to explain the refusal before a
+ * write.
+ */
+export function invoiceDateEditRefusal(
+  invoice: Invoice,
+  dates: InvoiceDates,
+): string | null {
+  if (invoiceIsSent(invoice)) {
+    return "Invoice yang sudah dikirim tidak dapat diubah. Terbitkan invoice baru untuk koreksi, atau batalkan tanda terkirim bila invoice ini belum benar-benar dikirim.";
+  }
+  if (!DATE_KEY_RE.test(dates.issuedOn)) {
+    return "Tanggal terbit tidak valid.";
+  }
+  if (!DATE_KEY_RE.test(dates.dueOn)) {
+    return "Tanggal jatuh tempo tidak valid.";
+  }
+  if (invoiceYear(dates.issuedOn) !== invoice.year) {
+    return `Tanggal terbit harus tetap di tahun ${invoice.year} agar sesuai dengan ${invoice.number}.`;
+  }
+  return dueDateRefusal(dates.issuedOn, dates.dueOn);
+}
+
 /** Newest first within the one series: later year, then higher sequence. */
 export function sortInvoicesNewestFirst(
   invoices: readonly Invoice[],
@@ -210,9 +249,8 @@ export function invoiceIssueRefusal(
   if (booking.dp_amount > booking.total_price) {
     return "DP tidak boleh melebihi total yang disepakati.";
   }
-  if (dueOn < issuedOn) {
-    return "Tanggal jatuh tempo tidak boleh sebelum tanggal terbit.";
-  }
+  const dateRefusal = dueDateRefusal(issuedOn, dueOn);
+  if (dateRefusal) return dateRefusal;
 
   if (newest) {
     const prospective = buildInvoiceSnapshot(

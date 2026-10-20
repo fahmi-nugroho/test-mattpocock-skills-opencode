@@ -3,6 +3,7 @@ import {
   buildInvoiceSnapshot,
   formatInvoiceNumber,
   indexInvoicesByBooking,
+  invoiceDateEditRefusal,
   invoiceIsSent,
   invoiceIssueRefusal,
   invoiceSentLabel,
@@ -184,6 +185,48 @@ describe("invoice issuing guard", () => {
         NEWEST,
       ),
     ).toBeNull();
+  });
+});
+
+// Seam 1 (pure): the date-edit guard on an unsent Invoice. Catches a screen
+// that lets the issue date leave the number's year or accepts a due date
+// before the issue date, and a sent Invoice that still offers editing.
+// Misses the table CHECKs and the freeze trigger (0018/0019).
+describe("invoice date editing guard", () => {
+  it("accepts both dates while the Invoice is unsent and the year holds", () => {
+    expect(
+      invoiceDateEditRefusal(NEWEST, {
+        issuedOn: "2026-01-02",
+        dueOn: "2026-01-31",
+      }),
+    ).toBeNull();
+  });
+
+  it("refuses any date edit once the Invoice has been sent", () => {
+    expect(
+      invoiceDateEditRefusal(
+        { ...NEWEST, sent_at: "2026-10-20T09:00:00.000Z" },
+        { issuedOn: "2026-10-21", dueOn: "2026-11-14" },
+      ),
+    ).toMatch(/sudah dikirim/i);
+  });
+
+  it("refuses an issue date outside the number's year", () => {
+    expect(
+      invoiceDateEditRefusal(NEWEST, {
+        issuedOn: "2027-01-02",
+        dueOn: "2027-01-31",
+      }),
+    ).toMatch(/tahun 2026/i);
+  });
+
+  it("still refuses a due date before the issue date", () => {
+    expect(
+      invoiceDateEditRefusal(NEWEST, {
+        issuedOn: "2026-10-20",
+        dueOn: "2026-10-19",
+      }),
+    ).toMatch(/jatuh tempo.*sebelum tanggal terbit/i);
   });
 });
 

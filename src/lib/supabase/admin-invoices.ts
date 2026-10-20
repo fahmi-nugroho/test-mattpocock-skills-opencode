@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { InvoiceDates } from "../admin/invoice";
+import { deleteRowById, updateRowById } from "./admin-crud";
 import type { Database, Invoice } from "./database";
 
 type TypedClient = SupabaseClient<Database>;
@@ -53,6 +55,58 @@ export async function createInvoice(
   });
   if (error) throw new Error(error.message);
   return data as Invoice;
+}
+
+/**
+ * Mark an Invoice sent, or take the mark back. `sent_at` is the only stored
+ * state: writing the timestamp and clearing it are two explicit admin
+ * actions, never a side effect of sharing or opening the picture. 0019
+ * freezes every other field once the timestamp is present.
+ */
+export async function setInvoiceSent(
+  client: TypedClient,
+  id: string,
+  sent: boolean,
+): Promise<Invoice> {
+  return updateRowById<Invoice>(
+    client,
+    "invoices",
+    id,
+    { sent_at: sent ? new Date().toISOString() : null },
+    "Gagal memperbarui status kirim invoice",
+  );
+}
+
+/**
+ * Correct the two dates of an unsent Invoice. The issue date's year and
+ * `due_on >= issued_on` are checked by the table (0018) and the freeze trigger
+ * (0019), so an invalid write is refused rather than silently renumbered.
+ */
+export async function updateInvoiceDates(
+  client: TypedClient,
+  id: string,
+  dates: InvoiceDates,
+): Promise<Invoice> {
+  return updateRowById<Invoice>(
+    client,
+    "invoices",
+    id,
+    { issued_on: dates.issuedOn, due_on: dates.dueOn },
+    "Gagal memperbarui tanggal invoice",
+  );
+}
+
+/**
+ * Delete a mistaken Invoice. 0019 refuses the delete while it is marked sent,
+ * so a document the client already received cannot leave the history; unmark
+ * it first. Deleting the newest unsent row frees its sequence because
+ * `create_invoice` allocates `max(seq) + 1` (0018).
+ */
+export async function deleteInvoice(
+  client: TypedClient,
+  id: string,
+): Promise<void> {
+  await deleteRowById(client, "invoices", id, "Gagal menghapus invoice");
 }
 
 async function listInvoices(

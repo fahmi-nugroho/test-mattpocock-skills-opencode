@@ -198,3 +198,43 @@ describe("0018 invoice data contract (local SQL verify, no live DB)", () => {
     expect(code).not.toMatch(/get_public_[a-z_]*\(/);
   });
 });
+
+// Seam 3 (declarative SQL verify): the lifecycle invariants a sent Invoice
+// must never break. Catches a freeze rule that would let a sent row be edited
+// or deleted (and so let its number be reused). Misses live trigger behaviour.
+describe("0019 invoice lifecycle contract (local SQL verify, no live DB)", () => {
+  const sql = readMigration("0019_invoice_lifecycle.sql");
+  const code = codeOnly(sql).toLowerCase();
+  const guard =
+    code.match(
+      /create or replace function\s+guard_invoice_lifecycle[\s\S]*?\$\$;/,
+    )?.[0] ?? "";
+
+  it("guards every update and delete on the invoices table", () => {
+    expect(guard).not.toBe("");
+    expect(guard).toMatch(/language plpgsql/);
+    expect(guard).toMatch(/set search_path\s*=\s*public/);
+    expect(code).toMatch(
+      /create trigger\s+invoices_guard_lifecycle\s+before update or delete on invoices\s+for each row\s+execute function\s+guard_invoice_lifecycle\s*\(\s*\)/,
+    );
+  });
+
+  it("refuses a direct delete of a sent Invoice but lets its Booking cascade remove it", () => {
+    expect(guard).toMatch(/if old\.sent_at is not null then/);
+    expect(guard).toMatch(/tg_op\s*=\s*'delete'/);
+    // A direct delete is depth 1; the Booking's FK cascade arrives at depth 2.
+    expect(guard).toMatch(/pg_trigger_depth\(\)\s*<=\s*1/);
+    expect(guard).toMatch(
+      /raise exception 'invoice yang sudah dikirim tidak dapat dihapus\.'/,
+    );
+  });
+
+  it("freezes every field except sent_at while the mark is present", () => {
+    expect(guard).toMatch(
+      /\(\s*to_jsonb\s*\(\s*new\s*\)\s*-\s*'sent_at'\s*\)\s*is distinct from\s*\(\s*to_jsonb\s*\(\s*old\s*\)\s*-\s*'sent_at'\s*\)/,
+    );
+    expect(guard).toMatch(
+      /raise exception 'invoice yang sudah dikirim tidak dapat diubah\.'/,
+    );
+  });
+});
