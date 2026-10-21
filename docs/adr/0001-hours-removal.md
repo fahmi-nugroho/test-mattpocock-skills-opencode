@@ -50,6 +50,17 @@ the column drop (0012), so no live function ever references a missing
 column. Dropping first would leave the old window-reading RPC broken
 until the redefine lands.
 
+## Update
+
+Status: accepted; the settings clause is superseded in part.
+
+The invoice feature (migration `0018_invoices_schema.sql`; ticket
+`.scratch/invoice-and-booking-filter/issues/07-payment-settings-fields.md`)
+added `bank_name`, `account_name`, `account_number` and `instagram_handle` to
+`settings` and to the admin settings form. The decision clause "carry
+`wa_number` only" above therefore no longer holds. No operating-hours window
+or coverage derivation returned.
+
 ## Consequences
 
 - Days with any timed occupancy now read `available` with the occupied

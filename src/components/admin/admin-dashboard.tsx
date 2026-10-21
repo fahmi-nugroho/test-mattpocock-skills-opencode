@@ -39,6 +39,10 @@ export function AdminDashboard() {
   const [summary, setSummary] = useState<OverviewSummary>(EMPTY_SUMMARY);
   const [requestCount, setRequestCount] = useState(0);
   const [waNumber, setWaNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [instagramHandle, setInstagramHandle] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -75,6 +79,10 @@ export function AdminDashboard() {
         if (cancelled) return;
         setSummary(summarizeBookings(bookings, today));
         setWaNumber(settings.wa_number);
+        setBankName(settings.bank_name);
+        setAccountName(settings.account_name);
+        setAccountNumber(settings.account_number);
+        setInstagramHandle(settings.instagram_handle);
         setSettingsReady(true);
       } catch {
         if (!cancelled) setLoadError("Gagal memuat data admin. Coba lagi.");
@@ -137,6 +145,10 @@ export function AdminDashboard() {
     try {
       validated = validateSettingsInput({
         wa_number: waNumber,
+        bank_name: bankName,
+        account_name: accountName,
+        account_number: accountNumber,
+        instagram_handle: instagramHandle,
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Input tidak valid");
@@ -146,6 +158,10 @@ export function AdminDashboard() {
     try {
       await updateSettings(supabaseBrowser(), validated);
       setWaNumber(validated.wa_number);
+      setBankName(validated.bank_name);
+      setAccountName(validated.account_name);
+      setAccountNumber(validated.account_number);
+      setInstagramHandle(validated.instagram_handle);
       setSaved(true);
     } catch {
       setFormError("Gagal menyimpan pengaturan. Coba lagi.");
@@ -331,8 +347,9 @@ export function AdminDashboard() {
       <section id="pengaturan" aria-label="Pengaturan operasional" className="mt-8 scroll-mt-24">
         <h2 className="font-display text-lg font-bold">Pengaturan Operasional</h2>
         <p className="mt-1 text-sm text-neutral-600">
-          Nomor WA dipakai link WhatsApp. Kalender publik membaca jadwal
-          langsung tanpa batasan jam operasional.
+          Nomor WA dipakai link WhatsApp. Data bank dan Instagram dicetak di
+          invoice. Kalender publik membaca jadwal langsung tanpa batasan jam
+          operasional.
         </p>
         <form onSubmit={onSave} className="mt-4 space-y-4">
           <label className="block">
@@ -347,6 +364,57 @@ export function AdminDashboard() {
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Nama Bank</span>
+              <input
+                type="text"
+                disabled={!settingsReady}
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="BCA"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Nama Pemilik Rekening</span>
+              <input
+                type="text"
+                disabled={!settingsReady}
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="Nama pemilik rekening"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Nomor Rekening</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                disabled={!settingsReady}
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="1234567890"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Instagram</span>
+              <input
+                type="text"
+                disabled={!settingsReady}
+                value={instagramHandle}
+                onChange={(e) => setInstagramHandle(e.target.value)}
+                placeholder="wandanamakeup"
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <p className="text-xs text-neutral-500">
+            Bank, nama pemilik, nomor rekening, dan Instagram boleh dikosongkan
+            — invoice mencetak tanda — pada bagian yang kosong.
+          </p>
           {formError ? (
             <p role="alert" className="text-sm text-red-600">
               {formError}

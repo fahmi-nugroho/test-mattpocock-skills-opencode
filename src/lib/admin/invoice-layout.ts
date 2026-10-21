@@ -14,6 +14,7 @@
  */
 
 import { formatDateEn, formatDateId, formatIDR } from "../format";
+import { normaliseInstagramHandle } from "../instagram";
 import { isStyle, STYLE_COPY } from "../style-reference";
 import type { Invoice } from "../supabase/database";
 import { paymentPosition, type InvoiceBusiness } from "./invoice";
@@ -90,7 +91,7 @@ function valueOrDash(value: string): string {
 }
 
 function instagramValue(handle: string): string {
-  const clean = handle.trim().replace(/^@+/, "");
+  const clean = normaliseInstagramHandle(handle);
   return clean === "" ? EM_DASH : `@${clean}`;
 }
 
