@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BOOKING_FILTERS,
+  BOOKING_FILTER_LABEL,
+  BOOKING_STATUSES,
+  BOOKING_STATUS_LABEL,
+  filterBookings,
+  type BookingFilter,
+} from "@/lib/admin/booking-filter";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   indexInvoicesByBooking,
@@ -49,13 +57,6 @@ import type {
 } from "@/lib/supabase/database";
 import { getTodayKey } from "@/lib/calendar";
 
-const STATUSES: readonly BookingStatus[] = ["pending", "confirmed", "cancelled"];
-const STATUS_LABEL: Record<BookingStatus, string> = {
-  pending: "Menunggu",
-  confirmed: "Terkonfirmasi",
-  cancelled: "Dibatalkan",
-};
-
 /**
  * Parse a numeric form field: "" → fallback (a blank total stays null, a
  * blank headcount/DP keeps its default), otherwise the number.
@@ -90,7 +91,10 @@ function parseIntField(value: string, fallback: number | null): number | null {
  * The list itself lives in a dialog (form-layout-polish ticket 03): the
  * section keeps the create form and shows a summary plus a trigger, and the
  * dialog splits the rows it already loaded into Mendatang and Riwayat, ten at
- * a time. Opening it fetches nothing.
+ * a time. Opening it fetches nothing. Status chips (invoice-and-booking-filter
+ * ticket 06) narrow those rows before the search, so a Booking must match
+ * both; the split and its paging then run on the filtered set while the
+ * trigger's counts stay computed from every Booking.
  */
 export function BookingsManager() {
   const [items, setItems] = useState<Booking[]>([]);
@@ -150,14 +154,17 @@ export function BookingsManager() {
   } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The chosen status chip; `all` shows every Booking.
+  const [filter, setFilter] = useState<BookingFilter>("all");
   // The list lives in a dialog (form-layout-polish ticket 03); the section
   // keeps the create form and shows a summary plus this trigger.
   const [listOpen, setListOpen] = useState(false);
-  // How many rows each group has revealed; reset on every search change so a
-  // narrowed list always opens at one page.
+  // How many rows each group has revealed; reset on every chip or search
+  // change so a narrowed list always opens at one page.
   const [revealedUpcoming, setRevealedUpcoming] = useState(LIST_PAGE_SIZE);
   const [revealedHistory, setRevealedHistory] = useState(LIST_PAGE_SIZE);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Invoices are loaded with the bookings so a row can show its count and
   // newest number without opening anything. The dialog reads the same rows.
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -206,19 +213,23 @@ export function BookingsManager() {
     [settings],
   );
 
-  // Client-side search over visible text fields only; CRUD/data flow
-  // below is unchanged.
+  // The chosen chip runs first through the pure `filterBookings`, then the
+  // client-side search narrows that subset, so a Booking must match both.
   const visibleItems = useMemo(
     () =>
-      filterByQuery(items, query, (item) => [
-        item.date,
-        item.client_name,
-        item.client_phone,
-        serviceName(item.service_id),
-        item.notes,
-        STATUS_LABEL[item.status],
-      ]),
-    [items, query, serviceName],
+      filterByQuery(
+        filterBookings(items, filter),
+        query,
+        (item) => [
+          item.date,
+          item.client_name,
+          item.client_phone,
+          serviceName(item.service_id),
+          item.notes,
+          BOOKING_STATUS_LABEL[item.status],
+        ],
+      ),
+    [items, filter, query, serviceName],
   );
 
   // The dialog reads the rows the section already loaded — opening it fetches
@@ -232,11 +243,38 @@ export function BookingsManager() {
   const upcomingWindow = windowRows(upcoming, revealedUpcoming);
   const historyWindow = windowRows(history, revealedHistory);
 
+  /** Both groups open at one page whenever the chip or search changes. */
+  function resetReveals() {
+    setRevealedUpcoming(LIST_PAGE_SIZE);
+    setRevealedHistory(LIST_PAGE_SIZE);
+  }
+
+  /** Changing the chip opens both groups at one page again. */
+  function changeFilter(next: BookingFilter) {
+    setFilter(next);
+    resetReveals();
+  }
+
   /** Changing the search text opens both groups at one page again. */
   function changeQuery(next: string) {
     setQuery(next);
-    setRevealedUpcoming(LIST_PAGE_SIZE);
-    setRevealedHistory(LIST_PAGE_SIZE);
+    resetReveals();
+  }
+
+  // Roving tabindex for the chip tablist: arrow keys move the selection (and
+  // therefore the single tab stop) between chips, Home/End jump to the ends.
+  function onFilterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const last = BOOKING_FILTERS.length - 1;
+    const current = BOOKING_FILTERS.indexOf(filter);
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = current === last ? 0 : current + 1;
+    else if (e.key === "ArrowLeft") next = current === 0 ? last : current - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next === null) return;
+    e.preventDefault();
+    changeFilter(BOOKING_FILTERS[next]);
+    filterRefs.current[next]?.focus();
   }
 
   /**
@@ -623,9 +661,9 @@ export function BookingsManager() {
                 }
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
               >
-                {STATUSES.map((s) => (
+                {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {BOOKING_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>
@@ -825,7 +863,7 @@ export function BookingsManager() {
           <div>
             <p className="text-sm font-semibold">
               {item.date} · {item.start_time}–{item.end_time} ·{" "}
-              {STATUS_LABEL[item.status]}
+              {BOOKING_STATUS_LABEL[item.status]}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
               {item.client_name} · {item.client_phone} ·{" "}
@@ -996,9 +1034,9 @@ export function BookingsManager() {
                 onChange={(e) => setStatus(e.target.value as BookingStatus)}
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
-                {STATUSES.map((s) => (
+                {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {BOOKING_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>
@@ -1225,13 +1263,43 @@ export function BookingsManager() {
         title="Daftar booking"
         returnFocusTo={triggerRef}
       >
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Filter status booking"
+          onKeyDown={onFilterKeyDown}
+        >
+          {BOOKING_FILTERS.map((value, index) => {
+            const selected = value === filter;
+            return (
+              <button
+                key={value}
+                ref={(el) => {
+                  filterRefs.current[index] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => changeFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  selected
+                    ? "bg-stone-900 text-amber-50"
+                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {BOOKING_FILTER_LABEL[value]}
+              </button>
+            );
+          })}
+        </div>
         <input
           type="search"
           value={query}
           onChange={(e) => changeQuery(e.target.value)}
           placeholder="Cari booking…"
           aria-label="Cari booking"
-          className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
         />
         {items.length === 0 && !error ? (
           <p className="mt-3 text-sm text-neutral-600">
@@ -1240,7 +1308,11 @@ export function BookingsManager() {
         ) : null}
         {items.length > 0 && visibleItems.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-600">
-            {`Tidak ada hasil untuk "${query.trim()}".`}
+            {query.trim()
+              ? filter === "all"
+                ? `Tidak ada hasil untuk "${query.trim()}".`
+                : `Tidak ada hasil untuk "${query.trim()}" dengan status ${BOOKING_FILTER_LABEL[filter]}.`
+              : "Tidak ada booking dengan status ini."}
           </p>
         ) : null}
         {upcoming.length > 0 ? (
