@@ -8,6 +8,8 @@ import {
   buildFormatBookingWaLink,
   buildFormatBookingWaMessage,
   buildGeneralWaLink,
+  buildInvoiceWaLink,
+  buildInvoiceWaMessage,
   buildServiceWaLink,
   buildServiceWaMessage,
 } from "../whatsapp";
@@ -105,6 +107,24 @@ describe("Format Booking WA message (ticket 04, admin sends the link)", () => {
     expect(buildFormatBookingWaLink("+62 812-3456-7890", LINK)).toBe(
       `https://wa.me/6281234567890?text=${encodeURIComponent(
         `Halo, silakan isi format booking lewat link ini: ${LINK}`,
+      )}`,
+    );
+  });
+});
+
+describe("Invoice WA message (ticket 05, share the invoice picture)", () => {
+  it("names the client and the invoice number", () => {
+    expect(buildInvoiceWaMessage("Sari Dewi", "invc-05/2026")).toBe(
+      "Halo Sari Dewi, berikut invoice invc-05/2026 untuk booking Anda.",
+    );
+  });
+
+  it("opens the client's conversation with the encoded invoice message", () => {
+    expect(
+      buildInvoiceWaLink("+62 812-3456-7890", "Sari Dewi", "invc-05/2026"),
+    ).toBe(
+      `https://wa.me/6281234567890?text=${encodeURIComponent(
+        "Halo Sari Dewi, berikut invoice invc-05/2026 untuk booking Anda.",
       )}`,
     );
   });

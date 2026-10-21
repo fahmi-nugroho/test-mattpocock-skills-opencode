@@ -12,6 +12,12 @@ import {
   type InvoiceBusiness,
 } from "@/lib/admin/invoice";
 import { formatIDR } from "@/lib/format";
+import {
+  invoicePngFileName,
+  shareInvoicePng,
+  type InvoiceShareOutcome,
+} from "@/lib/invoice-share";
+import { buildInvoiceWaLink } from "@/lib/whatsapp";
 import { InvoicePreview } from "./invoice-preview";
 import {
   createInvoice,
@@ -21,6 +27,18 @@ import {
 } from "@/lib/supabase/admin-invoices";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Booking, Invoice } from "@/lib/supabase/database";
+
+/** Compare printable settings by value: the parent may rebuild the object. */
+function sameBusiness(a: InvoiceBusiness, b: InvoiceBusiness): boolean {
+  return (
+    a.name === b.name &&
+    a.whatsapp === b.whatsapp &&
+    a.instagram === b.instagram &&
+    a.bank.name === b.bank.name &&
+    a.bank.accountName === b.bank.accountName &&
+    a.bank.accountNumber === b.bank.accountNumber
+  );
+}
 
 interface InvoiceDialogProps {
   /** The Booking whose Invoices are shown; null while the dialog is closed. */
@@ -87,14 +105,26 @@ export function InvoiceDialog({
   const [editIssuedOn, setEditIssuedOn] = useState("");
   const [editDueOn, setEditDueOn] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // The PNG the preview drew for this Invoice and these business details.
+  // Sharing reuses exactly that Blob instead of drawing a second picture.
+  const [previewPng, setPreviewPng] = useState<{
+    invoiceId: string;
+    business: InvoiceBusiness;
+    blob: Blob;
+  } | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const open = booking !== null;
 
-  /** Abandon a half-started correction or delete confirmation. */
+  /** Abandon a half-started correction, delete confirmation or share notice. */
   const resetActions = useCallback(() => {
     setActionError(null);
     setDateEditId(null);
     setConfirmDeleteId(null);
+    setShareNotice(null);
+    setShareError(null);
   }, []);
 
   // Every opening starts from the two defaults; reopening the same Booking
@@ -129,6 +159,15 @@ export function InvoiceDialog({
   const newest = rows[0] ?? null;
   const selected = rows.find((invoice) => invoice.id === selectedId) ?? null;
   const selectedSent = selected ? invoiceIsSent(selected) : false;
+  // Only the preview's own Blob for this Invoice and these settings may be
+  // shared, so the file is literally the picture on screen.
+  const readyPng =
+    selected &&
+    previewPng &&
+    previewPng.invoiceId === selected.id &&
+    sameBusiness(previewPng.business, business)
+      ? previewPng.blob
+      : null;
   const datesRefusal =
     selected && dateEditId === selected.id
       ? invoiceDateEditRefusal(selected, {
@@ -204,6 +243,34 @@ export function InvoiceDialog({
         resetActions();
       },
     );
+  }
+
+  /**
+   * Share the previewed PNG through the phone's sheet, or download it where
+   * file sharing is unavailable. No upload and no sent mark: the toggle
+   * below stays the only thing that records delivery.
+   */
+  async function onShare(invoice: Invoice, blob: Blob | null) {
+    if (!blob || sharing) return;
+    setSharing(true);
+    setShareNotice(null);
+    setShareError(null);
+    try {
+      const outcome: InvoiceShareOutcome = await shareInvoicePng(
+        blob,
+        invoicePngFileName(invoice.number),
+        `Invoice ${invoice.number}`,
+      );
+      if (outcome === "downloaded") {
+        setShareNotice(
+          "PNG diunduh. Lampirkan berkasnya ke chat WhatsApp lewat tombol Buka WhatsApp.",
+        );
+      }
+    } catch {
+      setShareError("Gagal membagikan invoice. Coba lagi.");
+    } finally {
+      setSharing(false);
+    }
   }
 
   function beginDateEdit(invoice: Invoice) {
@@ -384,7 +451,17 @@ export function InvoiceDialog({
                 </p>
               ) : null}
               <div className="mt-3">
-                <InvoicePreview invoice={selected} business={business} />
+                <InvoicePreview
+                  invoice={selected}
+                  business={business}
+                  onRendered={(blob) =>
+                    setPreviewPng({
+                      invoiceId: selected.id,
+                      business,
+                      blob,
+                    })
+                  }
+                />
               </div>
             </section>
           ) : null}
@@ -413,6 +490,50 @@ export function InvoiceDialog({
                   ? "Invoice yang sudah dikirim terkunci sebagai riwayat. Untuk koreksi, terbitkan invoice baru; batalkan tanda terkirim hanya bila invoice ini benar-benar belum dikirim."
                   : "Invoice belum dikirim. Tanggal masih dapat dikoreksi, dan invoice yang salah dapat dihapus."}
               </p>
+
+              <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-neutral-600">
+                  Kirim ke klien
+                </h4>
+                <p className="mt-1 text-xs text-neutral-600">
+                  Di ponsel, Bagikan membuka lembar berbagi dengan PNG ini. Di
+                  desktop, berkas yang sama diunduh untuk dilampirkan sendiri.
+                  Tidak ada yang diunggah dan tidak ada yang menandai invoice
+                  terkirim.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!readyPng || sharing}
+                    onClick={() => onShare(selected, readyPng)}
+                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+                  >
+                    {sharing ? "Menyiapkan…" : "Bagikan"}
+                  </button>
+                  <a
+                    href={buildInvoiceWaLink(
+                      selected.client_phone,
+                      selected.client_name,
+                      selected.number,
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+                  >
+                    Buka WhatsApp
+                  </a>
+                </div>
+                {shareNotice ? (
+                  <p role="status" className="mt-2 text-xs text-neutral-700">
+                    {shareNotice}
+                  </p>
+                ) : null}
+                {shareError ? (
+                  <p role="alert" className="mt-2 text-xs text-red-600">
+                    {shareError}
+                  </p>
+                ) : null}
+              </div>
 
               {!selectedSent && dateEditId === selected.id ? (
                 <form onSubmit={onSaveDates} className="mt-3 space-y-2">
