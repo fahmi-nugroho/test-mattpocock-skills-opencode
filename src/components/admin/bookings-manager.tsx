@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BOOKING_FILTERS,
+  BOOKING_FILTER_LABEL,
+  BOOKING_STATUSES,
+  BOOKING_STATUS_LABEL,
+  filterBookings,
+  type BookingFilter,
+} from "@/lib/admin/booking-filter";
 import { filterByQuery } from "@/lib/admin/filter-items";
+import {
+  indexInvoicesByBooking,
+  invoiceBusiness,
+  invoiceSentLabel,
+} from "@/lib/admin/invoice";
 import {
   LIST_PAGE_SIZE,
   splitByToday,
@@ -27,20 +40,22 @@ import {
   setBookingStatus,
   updateBooking,
 } from "@/lib/supabase/admin-bookings";
+import { listInvoicesAdmin } from "@/lib/supabase/admin-invoices";
 import { linkBookingRequest } from "@/lib/supabase/admin-requests";
+import { getSettings } from "@/lib/supabase/admin-settings";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { Dialog } from "@/components/dialog";
+import { InvoiceDialog } from "./invoice-dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
-import type { Booking, BookingStatus, Service } from "@/lib/supabase/database";
+import type {
+  Booking,
+  BookingStatus,
+  Invoice,
+  Service,
+  Settings,
+} from "@/lib/supabase/database";
 import { getTodayKey } from "@/lib/calendar";
-
-const STATUSES: readonly BookingStatus[] = ["pending", "confirmed", "cancelled"];
-const STATUS_LABEL: Record<BookingStatus, string> = {
-  pending: "Menunggu",
-  confirmed: "Terkonfirmasi",
-  cancelled: "Dibatalkan",
-};
 
 /**
  * Parse a numeric form field: "" → fallback (a blank total stays null, a
@@ -76,7 +91,10 @@ function parseIntField(value: string, fallback: number | null): number | null {
  * The list itself lives in a dialog (form-layout-polish ticket 03): the
  * section keeps the create form and shows a summary plus a trigger, and the
  * dialog splits the rows it already loaded into Mendatang and Riwayat, ten at
- * a time. Opening it fetches nothing.
+ * a time. Opening it fetches nothing. Status chips (invoice-and-booking-filter
+ * ticket 06) narrow those rows before the search, so a Booking must match
+ * both; the split and its paging then run on the filtered set while the
+ * trigger's counts stay computed from every Booking.
  */
 export function BookingsManager() {
   const [items, setItems] = useState<Booking[]>([]);
@@ -136,34 +154,82 @@ export function BookingsManager() {
   } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The chosen status chip; `all` shows every Booking.
+  const [filter, setFilter] = useState<BookingFilter>("all");
   // The list lives in a dialog (form-layout-polish ticket 03); the section
   // keeps the create form and shows a summary plus this trigger.
   const [listOpen, setListOpen] = useState(false);
-  // How many rows each group has revealed; reset on every search change so a
-  // narrowed list always opens at one page.
+  // How many rows each group has revealed; reset on every chip or search
+  // change so a narrowed list always opens at one page.
   const [revealedUpcoming, setRevealedUpcoming] = useState(LIST_PAGE_SIZE);
   const [revealedHistory, setRevealedHistory] = useState(LIST_PAGE_SIZE);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // Invoices are loaded with the bookings so a row can show its count and
+  // newest number without opening anything. The dialog reads the same rows.
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // Business name and payment details for the Invoice picture. A failed read
+  // still prints the business name and em dashes, so it never blocks bookings.
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [businessLoadFailed, setBusinessLoadFailed] = useState(false);
+  const [invoiceBookingId, setInvoiceBookingId] = useState<string | null>(null);
+  // The row action is the invoice dialog's trigger: after the dialog closes
+  // and the booking list reopens, focus returns to it.
+  const invoiceButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const pendingInvoiceFocusRef = useRef<string | null>(null);
 
-  const serviceName = useMemo(() => {
+  const serviceNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of services) map.set(s.id, s.name);
-    return (id: string | null) => (id ? (map.get(id) ?? "Layanan dihapus") : "—");
+    return map;
   }, [services]);
+  const serviceName = useMemo(
+    () => (id: string | null) =>
+      id ? (serviceNames.get(id) ?? "Layanan dihapus") : "—",
+    [serviceNames],
+  );
 
-  // Client-side search over visible text fields only; CRUD/data flow
-  // below is unchanged.
+  // One newest-first group per Booking: the row summary and the dialog list
+  // read the same order, and neither reads the live Booking.
+  const invoicesByBooking = useMemo(
+    () => indexInvoicesByBooking(invoices),
+    [invoices],
+  );
+  const invoiceBooking = invoiceBookingId
+    ? (items.find((item) => item.id === invoiceBookingId) ?? null)
+    : null;
+  const invoiceBookingInvoices = invoiceBookingId
+    ? (invoicesByBooking.get(invoiceBookingId) ?? [])
+    : [];
+  // 0018 stores "" when the service is gone; mirror that in the snapshot so
+  // the duplicate guard compares what the database would actually save.
+  const invoiceServiceName = invoiceBooking?.service_id
+    ? (serviceNames.get(invoiceBooking.service_id) ?? "")
+    : "";
+  // One stable object for the preview: the picture redraws when settings load
+  // or change, not on every render of the booking list.
+  const invoiceBusinessDetails = useMemo(
+    () => invoiceBusiness(settings),
+    [settings],
+  );
+
+  // The chosen chip runs first through the pure `filterBookings`, then the
+  // client-side search narrows that subset, so a Booking must match both.
   const visibleItems = useMemo(
     () =>
-      filterByQuery(items, query, (item) => [
-        item.date,
-        item.client_name,
-        item.client_phone,
-        serviceName(item.service_id),
-        item.notes,
-        STATUS_LABEL[item.status],
-      ]),
-    [items, query, serviceName],
+      filterByQuery(
+        filterBookings(items, filter),
+        query,
+        (item) => [
+          item.date,
+          item.client_name,
+          item.client_phone,
+          serviceName(item.service_id),
+          item.notes,
+          BOOKING_STATUS_LABEL[item.status],
+        ],
+      ),
+    [items, filter, query, serviceName],
   );
 
   // The dialog reads the rows the section already loaded — opening it fetches
@@ -177,11 +243,75 @@ export function BookingsManager() {
   const upcomingWindow = windowRows(upcoming, revealedUpcoming);
   const historyWindow = windowRows(history, revealedHistory);
 
+  /** Both groups open at one page whenever the chip or search changes. */
+  function resetReveals() {
+    setRevealedUpcoming(LIST_PAGE_SIZE);
+    setRevealedHistory(LIST_PAGE_SIZE);
+  }
+
+  /** Changing the chip opens both groups at one page again. */
+  function changeFilter(next: BookingFilter) {
+    setFilter(next);
+    resetReveals();
+  }
+
   /** Changing the search text opens both groups at one page again. */
   function changeQuery(next: string) {
     setQuery(next);
-    setRevealedUpcoming(LIST_PAGE_SIZE);
-    setRevealedHistory(LIST_PAGE_SIZE);
+    resetReveals();
+  }
+
+  // Roving tabindex for the chip tablist: arrow keys move the selection (and
+  // therefore the single tab stop) between chips, Home/End jump to the ends.
+  function onFilterKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const last = BOOKING_FILTERS.length - 1;
+    const current = BOOKING_FILTERS.indexOf(filter);
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = current === last ? 0 : current + 1;
+    else if (e.key === "ArrowLeft") next = current === 0 ? last : current - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next === null) return;
+    e.preventDefault();
+    changeFilter(BOOKING_FILTERS[next]);
+    filterRefs.current[next]?.focus();
+  }
+
+  /**
+   * Open a Booking's invoices. The shared dialog is single-instance, so the
+   * booking list closes in the same update; two stacked overlays would share
+   * one Escape handler.
+   */
+  function openInvoices(item: Booking) {
+    setListOpen(false);
+    setInvoiceBookingId(item.id);
+  }
+
+  /** Close the invoice dialog back onto the booking list, at its row trigger. */
+  function closeInvoices() {
+    pendingInvoiceFocusRef.current = invoiceBookingId;
+    setInvoiceBookingId(null);
+    setListOpen(true);
+  }
+
+  /** A just-issued Invoice joins the loaded rows; its row summary updates. */
+  function onInvoiceCreated(invoice: Invoice) {
+    setInvoices((prev) => [
+      invoice,
+      ...prev.filter((row) => row.id !== invoice.id),
+    ]);
+  }
+
+  /** A sent mark or date correction replaces the row the dialog and list read. */
+  function onInvoiceUpdated(invoice: Invoice) {
+    setInvoices((prev) =>
+      prev.map((row) => (row.id === invoice.id ? invoice : row)),
+    );
+  }
+
+  /** A deleted Invoice leaves at once, so the booking row's count follows. */
+  function onInvoiceDeleted(invoiceId: string) {
+    setInvoices((prev) => prev.filter((row) => row.id !== invoiceId));
   }
 
   // The trigger's summary reuses the overview summariser the Ringkasan cards
@@ -202,13 +332,22 @@ export function BookingsManager() {
     async function load() {
       try {
         const supabase = supabaseBrowser();
-        const [bookings, serviceRows] = await Promise.all([
-          listBookingsAdmin(supabase),
-          listServicesAdmin(supabase),
-        ]);
+        const [bookings, serviceRows, invoiceRows, businessResult] =
+          await Promise.all([
+            listBookingsAdmin(supabase),
+            listServicesAdmin(supabase),
+            listInvoicesAdmin(supabase),
+            getSettings(supabase).then(
+              (row) => ({ row, failed: false }),
+              () => ({ row: null, failed: true }),
+            ),
+          ]);
         if (!cancelled) {
           setItems(bookings);
           setServices(serviceRows);
+          setInvoices(invoiceRows);
+          setSettings(businessResult.row);
+          setBusinessLoadFailed(businessResult.failed);
         }
       } catch {
         if (!cancelled) setError("Gagal memuat booking. Coba lagi.");
@@ -228,6 +367,19 @@ export function BookingsManager() {
       window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
     };
   }, []);
+
+  // Closing the invoice dialog reopens the booking list in the same update.
+  // The list's own effect has already moved focus into its panel by now, so the
+  // dialog's trigger (the row's invoice action) takes focus back afterwards.
+  useEffect(() => {
+    if (!listOpen) return;
+    const bookingId = pendingInvoiceFocusRef.current;
+    if (!bookingId) return;
+    pendingInvoiceFocusRef.current = null;
+    invoiceButtonRefs.current
+      .get(bookingId)
+      ?.focus({ preventScroll: true });
+  }, [listOpen]);
 
   // "Jadikan Booking" hand-off: the Permintaan section dispatches the request
   // draft, this always-mounted form fills itself in (client/event fields
@@ -458,6 +610,8 @@ export function BookingsManager() {
     try {
       await deleteBooking(supabaseBrowser(), item.id);
       setItems((prev) => prev.filter((p) => p.id !== item.id));
+      // The FK cascades in the database; the loaded list follows at once.
+      setInvoices((prev) => prev.filter((row) => row.booking_id !== item.id));
       notifyScheduleChanged();
       setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
@@ -475,6 +629,8 @@ export function BookingsManager() {
   function renderRow(item: Booking) {
     const legacyHairdo =
       item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
+    const bookingInvoices = invoicesByBooking.get(item.id) ?? [];
+    const newestInvoice = bookingInvoices[0] ?? null;
     return (
       <li
         key={item.id}
@@ -505,9 +661,9 @@ export function BookingsManager() {
                 }
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
               >
-                {STATUSES.map((s) => (
+                {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {BOOKING_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>
@@ -707,7 +863,7 @@ export function BookingsManager() {
           <div>
             <p className="text-sm font-semibold">
               {item.date} · {item.start_time}–{item.end_time} ·{" "}
-              {STATUS_LABEL[item.status]}
+              {BOOKING_STATUS_LABEL[item.status]}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
               {item.client_name} · {item.client_phone} ·{" "}
@@ -734,6 +890,20 @@ export function BookingsManager() {
           </div>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            ref={(el) => {
+              if (el) invoiceButtonRefs.current.set(item.id, el);
+              else invoiceButtonRefs.current.delete(item.id);
+            }}
+            type="button"
+            onClick={() => openInvoices(item)}
+            aria-haspopup="dialog"
+            className="rounded-full border border-neutral-900 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+          >
+            {newestInvoice
+              ? `Invoice (${bookingInvoices.length}) · ${newestInvoice.number} · ${invoiceSentLabel(newestInvoice)}`
+              : "Buat invoice"}
+          </button>
           {editingId === item.id ? (
             <>
               <button
@@ -864,9 +1034,9 @@ export function BookingsManager() {
                 onChange={(e) => setStatus(e.target.value as BookingStatus)}
                 className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
-                {STATUSES.map((s) => (
+                {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {BOOKING_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>
@@ -1093,13 +1263,43 @@ export function BookingsManager() {
         title="Daftar booking"
         returnFocusTo={triggerRef}
       >
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Filter status booking"
+          onKeyDown={onFilterKeyDown}
+        >
+          {BOOKING_FILTERS.map((value, index) => {
+            const selected = value === filter;
+            return (
+              <button
+                key={value}
+                ref={(el) => {
+                  filterRefs.current[index] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => changeFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  selected
+                    ? "bg-stone-900 text-amber-50"
+                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {BOOKING_FILTER_LABEL[value]}
+              </button>
+            );
+          })}
+        </div>
         <input
           type="search"
           value={query}
           onChange={(e) => changeQuery(e.target.value)}
           placeholder="Cari booking…"
           aria-label="Cari booking"
-          className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
         />
         {items.length === 0 && !error ? (
           <p className="mt-3 text-sm text-neutral-600">
@@ -1108,7 +1308,11 @@ export function BookingsManager() {
         ) : null}
         {items.length > 0 && visibleItems.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-600">
-            {`Tidak ada hasil untuk "${query.trim()}".`}
+            {query.trim()
+              ? filter === "all"
+                ? `Tidak ada hasil untuk "${query.trim()}".`
+                : `Tidak ada hasil untuk "${query.trim()}" dengan status ${BOOKING_FILTER_LABEL[filter]}.`
+              : "Tidak ada booking dengan status ini."}
           </p>
         ) : null}
         {upcoming.length > 0 ? (
@@ -1146,6 +1350,20 @@ export function BookingsManager() {
           </section>
         ) : null}
       </Dialog>
+
+      <InvoiceDialog
+        booking={invoiceBooking}
+        serviceName={invoiceServiceName}
+        invoices={invoiceBookingInvoices}
+        business={invoiceBusinessDetails}
+        businessLoadFailed={businessLoadFailed}
+        onCreated={onInvoiceCreated}
+        onUpdated={onInvoiceUpdated}
+        onDeleted={onInvoiceDeleted}
+        onClose={closeInvoices}
+        returnFocusTo={triggerRef}
+        restoreFocus={false}
+      />
     </div>
   );
 }

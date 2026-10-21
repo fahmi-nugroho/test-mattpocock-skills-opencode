@@ -98,3 +98,28 @@ export function buildFormatBookingWaLink(
 ): string {
   return buildWaLink(number, buildFormatBookingWaMessage(link));
 }
+
+/**
+ * Invoice chat starter (ticket 05 of invoice-and-booking-filter): the admin
+ * opens the client's existing WhatsApp conversation with a message naming
+ * the client and the invoice number, so the client knows which picture to
+ * look for. The PNG itself is attached or shared separately; nothing here
+ * uploads or marks the Invoice sent.
+ */
+export function buildInvoiceWaMessage(
+  clientName: string,
+  invoiceNumber: string,
+): string {
+  return `Halo ${clientName}, berikut invoice ${invoiceNumber} untuk booking Anda.`;
+}
+
+export function buildInvoiceWaLink(
+  number: string,
+  clientName: string,
+  invoiceNumber: string,
+): string {
+  return buildWaLink(
+    number,
+    buildInvoiceWaMessage(clientName, invoiceNumber),
+  );
+}

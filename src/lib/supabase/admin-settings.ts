@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Settings } from "./database";
-import type { SettingsInput } from "../admin/validate-settings";
+import type { ValidatedSettingsInput } from "../admin/validate-settings";
 import type { ProfileInput } from "../admin/validate-profile";
 
 type TypedClient = SupabaseClient<Database>;
@@ -34,15 +34,16 @@ export async function getSettings(client: TypedClient): Promise<Settings> {
 }
 
 /**
- * Admin settings write (hours-removal contract). Persists wa_number only
- * on row id = 1. The operating-hours columns were dropped (see migration
- * 0012); the public month/day RPCs read full_dates live, so the calendar
- * derivation reflects full-toggle edits without extra wiring. Caller
- * validates via validateSettingsInput first.
+ * Admin settings write (ticket 07). Persists the WA number and the four
+ * payment details on row id = 1. The operating-hours columns were dropped
+ * (see migration 0012); the public month/day RPCs read full_dates live, so the
+ * calendar derivation reflects full-toggle edits without extra wiring. Empty
+ * payment fields are saved as `''` — the Invoice picture prints an em dash.
+ * Caller validates via validateSettingsInput first.
  */
 export async function updateSettings(
   client: TypedClient,
-  input: SettingsInput,
+  input: ValidatedSettingsInput,
 ): Promise<void> {
   const loose = client as unknown as {
     from(t: string): {
@@ -55,6 +56,10 @@ export async function updateSettings(
     .from("settings")
     .update({
       wa_number: input.wa_number,
+      bank_name: input.bank_name,
+      account_name: input.account_name,
+      account_number: input.account_number,
+      instagram_handle: input.instagram_handle,
     })
     .eq("id", 1);
   if (error) throw new Error(`Failed to save settings: ${error.message}`);

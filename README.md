@@ -149,7 +149,7 @@ npm run test       # vitest run
 npm run typecheck  # tsc --noEmit
 ```
 
-30 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, WA link builders, all admin validators, and Supabase query wrappers (mocked client).
+61 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, list filters, WA link builders, all admin validators, and Supabase query wrappers (mocked client).
 
 ## Deployment
 
