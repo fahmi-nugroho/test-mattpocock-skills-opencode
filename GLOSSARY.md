@@ -24,9 +24,30 @@ and the time they are asking for. A Request never occupies the calendar and neve
 carries a price; the admin accepts it by turning it into a Booking.
 _Avoid_: Inquiry, ask, quote, reservation.
 
+**Invoice**:
+A dated, numbered, frozen record of a Booking's details and payment position at the
+moment it was issued, delivered to the client as a picture. A Booking can hold
+several Invoices, each keeping what the client was told at that point; an Invoice is
+never a live view of the Booking.
+_Avoid_: Bill, receipt, kwitansi, tagihan.
+
+**Invoice Number**:
+The number, drawn from the one business-wide `invc-NN/YYYY` series, that identifies an
+Invoice. The series restarts every January and takes its year from the issue date;
+the admin never types it because the next number is allocated when the Invoice is
+issued.
+_Avoid_: Reference number, document number.
+
+**Payment Status**:
+The payment position an Invoice records: `Lunas` when the DP is at least the agreed
+total, otherwise `DP diterima`. It is derived from the Invoice's own copied amounts,
+never stored and never set by hand.
+_Avoid_: Payment state, paid flag.
+
 **Headcount**:
 The number of people to be made up in one booking. One service per booking, and the
-price is multiplied by the headcount.
+price is multiplied by the headcount; an Invoice still prints the agreed total, not
+price × headcount.
 _Avoid_: Guest count, pax, quantity.
 
 **Style**:
