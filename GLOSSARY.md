@@ -24,6 +24,13 @@ and the time they are asking for. A Request never occupies the calendar and neve
 carries a price; the admin accepts it by turning it into a Booking.
 _Avoid_: Inquiry, ask, quote, reservation.
 
+**Calendar Mirror**:
+The one-way copy of confirmed Bookings into a dedicated Google Calendar, kept by
+the app. It is a projection of confirmed client work, not the availability
+calendar: Blocks and full dates never appear in it, and changing anything there
+changes nothing in the app.
+_Avoid_: Sync, two-way sync, calendar integration.
+
 **Invoice**:
 A dated, numbered, frozen record of a Booking's details and payment position at the
 moment it was issued, delivered to the client as a picture. A Booking can hold
