@@ -28,3 +28,12 @@ export function formatDateEn(dateStr: string): string {
     year: "numeric",
   }).format(date);
 }
+
+/** Format a server ISO timestamp in WIB, e.g. "22 Okt 2026, 10.04". */
+export function formatDateTimeId(iso: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(iso));
+}

@@ -10,6 +10,10 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { getOverviewBookings } from "@/lib/supabase/admin-overview";
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { getSettings, updateSettings } from "@/lib/supabase/admin-settings";
+import {
+  isMirrorStatusUnhealthy,
+  type GoogleCalendarStatus,
+} from "@/lib/google/connection-status";
 import { PortfolioManager } from "@/components/admin/portfolio-manager";
 import { ServicesManager } from "@/components/admin/services-manager";
 import { ProfileForm } from "@/components/admin/profile-form";
@@ -19,6 +23,7 @@ import { BookingsManager } from "@/components/admin/bookings-manager";
 import { RequestsManager } from "@/components/admin/requests-manager";
 import { BlocksManager } from "@/components/admin/blocks-manager";
 import { AdminCalendar } from "@/components/admin/admin-calendar";
+import { GoogleCalendarSettings } from "@/components/admin/google-calendar-settings";
 
 const EMPTY_SUMMARY: OverviewSummary = {
   todayConfirmed: 0,
@@ -38,6 +43,8 @@ export function AdminDashboard() {
   const [authed, setAuthed] = useState(false);
   const [summary, setSummary] = useState<OverviewSummary>(EMPTY_SUMMARY);
   const [requestCount, setRequestCount] = useState(0);
+  const [googleStatus, setGoogleStatus] =
+    useState<GoogleCalendarStatus | null>(null);
   const [waNumber, setWaNumber] = useState("");
   const [bankName, setBankName] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -226,6 +233,28 @@ export function AdminDashboard() {
           ))}
         </ul>
       </nav>
+
+      {isMirrorStatusUnhealthy(googleStatus) ? (
+        <div
+          role="alert"
+          className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4"
+        >
+          <p className="text-sm font-semibold text-amber-900">
+            Google Calendar tidak menerima pembaruan terbaru.
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            Mirror aktif, tetapi pembaruan terakhir gagal
+            {googleStatus?.connection.last_error
+              ? `: ${googleStatus.connection.last_error}`
+              : "."}{" "}
+            Periksa koneksi di{" "}
+            <a href="#pengaturan" className="font-semibold underline">
+              Pengaturan
+            </a>
+            .
+          </p>
+        </div>
+      ) : null}
 
       {loadError ? (
         <p role="alert" className="mt-4 text-sm text-red-600">
@@ -433,6 +462,8 @@ export function AdminDashboard() {
             {saving ? "Menyimpan…" : "Simpan pengaturan"}
           </button>
         </form>
+
+        <GoogleCalendarSettings onStatusChange={setGoogleStatus} />
       </section>
     </main>
   );

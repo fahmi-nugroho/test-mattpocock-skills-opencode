@@ -34,7 +34,7 @@ Guarded by Supabase Auth browser session — unauthenticated visits redirect to 
 | Backend | Supabase (Postgres + Auth + Storage + RPC) |
 | Client lib | `@supabase/supabase-js` v2 |
 | Language | TypeScript (strict) |
-| Tests | Vitest (30 suites under `src/lib/__tests__/`) |
+| Tests | Vitest (65 suites under `src/lib/__tests__/`) |
 
 ## Project Structure
 
@@ -47,6 +47,8 @@ src/
     admin/
       page.tsx          # dashboard route (server; title; renders AdminDashboard)
       login/page.tsx    # sign-in route (server; title; renders AdminLogin)
+    api/admin/
+      google-calendar/route.ts  # authenticated connection status/test/connect/disconnect
   components/
     portfolio-grid.tsx
     price-list.tsx
@@ -60,16 +62,17 @@ src/
     availability.ts / calendar.ts / day-schedule.ts / month-availability.ts
     format.ts / whatsapp.ts / portfolio.ts
     admin/              # validation, overview, conflicts, schedule-events
+    google/             # config, Google port, connection adapter, REST client
     supabase/           # client.ts, server.ts, queries.ts, database.ts,
                         # admin-*.ts, public-settings.ts
 supabase/
   migrations/
-    0001_schema.sql .. 0009_day_schedule_free.sql
+    0001_schema.sql .. 0020_google_calendar_connection.sql
     (schema, RLS, storage, seed, RPCs: get_month_availability,
      get_day_schedule, get_public_wa_number)
 ```
 
-Key domain types (`src/lib/supabase/database.ts`): `Service`, `PortfolioItem`, `Booking (pending|confirmed|cancelled)`, `Block`, `Settings`, `MonthAvailabilityRow`, `DayScheduleRow`.
+Key domain types (`src/lib/supabase/database.ts`): `Service`, `PortfolioItem`, `Booking (pending|confirmed|cancelled)`, `Block`, `Settings`, `GoogleCalendarConnection`, `MonthAvailabilityRow`, `DayScheduleRow`.
 
 ## Prerequisites
 
@@ -107,6 +110,13 @@ Create an admin user in Supabase Dashboard → Authentication → Users, then si
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | yes | public anon key (RLS applies) |
 | `NEXT_PUBLIC_WA_NUMBER` | browser | no | WA fallback (e.g. `6280000000000`) when settings RPC unreachable; admin-managed `wa_number` wins at runtime |
 | `SUPABASE_SERVICE_ROLE_KEY` | server-only | yes (local/ops) | apply migrations + backfills. **Never** prefix with `NEXT_PUBLIC_`, never commit |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | server-only | yes (mirror) | Service account shared with the dedicated **MUA — Booking** calendar |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | server-only | yes (mirror) | Service-account key; escaped `\n` is normalised before signing |
+| `GOOGLE_CALENDAR_ID` | server-only | yes (mirror) | Dedicated secondary Google Calendar id |
+| `GOOGLE_CALENDAR_CRON_SECRET` | server-only | yes (cron) | Shared secret for the daily reconcile route |
+
+The four Google values are **server-only**: never prefix them with `NEXT_PUBLIC_`.
+Setup steps live in [docs/google-calendar-setup.md](docs/google-calendar-setup.md).
 
 `.env.local` is gitignored — never commit real keys.
 
@@ -123,7 +133,7 @@ npm run typecheck  # tsc --noEmit
 
 ## Supabase Backend
 
-- **Tables:** `services`, `portfolio_items`, `bookings`, `blocks`, `settings` (single row `id=1`) — see `0001_schema.sql`.
+- **Tables:** `services`, `portfolio_items`, `bookings`, `blocks`, `settings` (single row `id=1`) — see `0001_schema.sql`; `booking_requests` (0015), `invoices` (0018), and the single-row `google_calendar_connection` (0020).
 - **RLS:** public read on active/visible rows + public RPCs; writes restricted to `authenticated` (admin) — see `0002_rls.sql`.
 - **Storage:** portfolio / service covers bucket — see `0003_storage.sql`.
 - **RPCs:**
@@ -149,7 +159,7 @@ npm run test       # vitest run
 npm run typecheck  # tsc --noEmit
 ```
 
-61 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, list filters, WA link builders, all admin validators, and Supabase query wrappers (mocked client).
+65 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, list filters, WA link builders, all admin validators, Google Calendar connection/config, and Supabase query wrappers (mocked client).
 
 ## Deployment
 

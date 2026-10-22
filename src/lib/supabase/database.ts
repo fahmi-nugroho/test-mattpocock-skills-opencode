@@ -142,6 +142,20 @@ export interface ProfileStatRow {
   visible: boolean;
 }
 
+/**
+ * The single-row Calendar Mirror connection (0020). `enabled` is the master
+ * switch; `last_error` is the latest concrete failure and is pinned to '' when
+ * the connection is healthy. Google credentials never live in this row.
+ */
+export interface GoogleCalendarConnection {
+  id: number; // always 1 (single-row table)
+  enabled: boolean;
+  calendar_id: string;
+  last_verified_at: string | null; // ISO timestamp
+  last_error: string; // "" when healthy
+  updated_at: string; // ISO timestamp
+}
+
 export interface MonthAvailabilityRow {
   date: string; // "YYYY-MM-DD"
   status: "available" | "fully_booked" | "blocked";
@@ -174,6 +188,7 @@ export interface Database {
       profile_stats: Table<ProfileStatRow>;
       booking_requests: Table<BookingRequest>;
       invoices: Table<Invoice>;
+      google_calendar_connection: Table<GoogleCalendarConnection>;
     };
     Functions: {
       get_month_availability: {
