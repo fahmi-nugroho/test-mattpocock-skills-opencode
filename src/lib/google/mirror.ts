@@ -8,14 +8,17 @@ import type {
   Service,
 } from "../supabase/database";
 import {
+  getConnection,
   getEnabledConnection,
   setConnectionError,
   type MirrorRuntimeFactory,
 } from "./calendar-connection";
+import type { MirrorReconcileSummary } from "./mirror-summary";
 import {
   buildMirrorEvent,
   mirrorTodayKey,
   planBackfill,
+  planMirrorWork,
 } from "./mirror-projection";
 import type { GoogleCalendarPort } from "./port";
 import { enqueueMirrorWork } from "../supabase/admin-mirror";
@@ -23,12 +26,14 @@ import { enqueueMirrorWork } from "../supabase/admin-mirror";
 type TypedClient = SupabaseClient<Database>;
 
 /**
- * The Calendar Mirror adapter (ticket 02).
+ * The Calendar Mirror adapter (tickets 02-03).
  *
  * A Booking save only leaves an intent in `google_calendar_work`; this module
- * is what a Node-runtime admin route calls to turn those intents into Google
- * events. The Google port is injected, so every decision — create, update,
- * delete, retry, backfill — is testable without credentials or network.
+ * is what a Node-runtime admin or cron route calls to turn those intents into
+ * Google events. Reconcile plans the whole today-forward desired state and
+ * drains it through the same path. The Google port is injected, so every
+ * decision — create, update, delete, retry, backfill — is testable without
+ * credentials or network.
  *
  * Guarantees:
  * - one event per Booking: the tracked row stores the Google id immediately
@@ -42,6 +47,10 @@ type TypedClient = SupabaseClient<Database>;
 const EVENTS_TABLE = "google_calendar_events";
 const WORK_TABLE = "google_calendar_work";
 const RETRY_DELAY_MS = 5 * 60_000;
+// The queue's next_attempt_at comes from the database clock, while a drain
+// compares it with the Node clock. A small grace keeps a just-enqueued row
+// from looking "not due yet" when the database clock is a second ahead.
+const DUE_GRACE_MS = 60_000;
 
 export type MirrorWorkOutcome =
   | "created"
@@ -66,11 +75,63 @@ export interface MirrorDrainResult {
   error: string | null;
 }
 
+export type { MirrorReconcileSummary };
+
+interface DrainOptions {
+  /**
+   * Reconcile sets false: ownership is the tracked row's event id, so it never
+   * lists marker-only Google events and cannot touch an event a human made.
+   */
+  adoptOwned?: boolean;
+  /**
+   * Reconcile sets true: leave open work for a past Booking alone. An orphaned
+   * work row has no Booking date, so it is still processed.
+   */
+  onlyTodayForward?: boolean;
+}
+
+function emptySummary(
+  overrides: Partial<MirrorReconcileSummary> = {},
+): MirrorReconcileSummary {
+  return {
+    ok: true,
+    disabled: false,
+    created: 0,
+    updated: 0,
+    deleted: 0,
+    skipped: 0,
+    failed: 0,
+    error: null,
+    ...overrides,
+  };
+}
+
 function errorText(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim() !== "") {
     return error.message;
   }
   return fallback;
+}
+
+/**
+ * Google answers a hand-deleted mirrored event with 404. That is not a mirror
+ * failure: reconcile recreates the event for a confirmed Booking, and treats
+ * the delete as done when the Booking should no longer be mirrored.
+ */
+function isMissingEventError(error: unknown): boolean {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { status?: unknown }).status === 404
+  ) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("tidak ditemukan") ||
+    message.includes("not found") ||
+    message.includes("status 404")
+  );
 }
 
 async function listRows<T>(client: TypedClient, table: string): Promise<T[]> {
@@ -253,6 +314,27 @@ async function updateWork(
   if (error) throw new Error(`Gagal menyimpan antrean Google: ${error.message}`);
 }
 
+async function deleteWorkRow(
+  client: TypedClient,
+  bookingId: string,
+): Promise<void> {
+  const loose = client as unknown as {
+    from(name: string): {
+      delete(): {
+        eq(
+          column: string,
+          value: string,
+        ): Promise<{ error: { message: string } | null }>;
+      };
+    };
+  };
+  const { error } = await loose
+    .from(WORK_TABLE)
+    .delete()
+    .eq("booking_id", bookingId);
+  if (error) throw new Error(`Gagal menghapus antrean Google: ${error.message}`);
+}
+
 async function getWorkRow(
   client: TypedClient,
   bookingId: string,
@@ -319,12 +401,21 @@ async function deleteMirrorEvent(
   calendarId: string,
   bookingId: string,
   tracked: GoogleCalendarEventRow | null,
+  adoptOwned: boolean,
 ): Promise<boolean> {
   if (tracked) {
-    await port.deleteEvent(calendarId, tracked.google_event_id);
+    try {
+      await port.deleteEvent(calendarId, tracked.google_event_id);
+    } catch (error) {
+      // Already gone in Google is exactly the state we wanted.
+      if (!isMissingEventError(error)) throw error;
+    }
     await removeTrackedEvent(client, bookingId);
     return true;
   }
+  // A write-path retry may still look for an event that reached Google before
+  // its id was stored. Reconcile does not: only the tracked id defines ownership.
+  if (!adoptOwned) return false;
   const owned = await port.listOwnedEvents(calendarId, bookingId);
   if (owned.length === 0) return false;
   for (const event of owned) {
@@ -346,6 +437,7 @@ async function runWork(
   operation: GoogleCalendarOperation,
   tracked: GoogleCalendarEventRow | null,
   now: Date,
+  adoptOwned: boolean,
 ): Promise<WorkOutcome> {
   if (operation === "delete") {
     const deleted = await deleteMirrorEvent(
@@ -354,6 +446,7 @@ async function runWork(
       calendarId,
       bookingId,
       tracked,
+      adoptOwned,
     );
     return { outcome: deleted ? "deleted" : "skipped", error: null };
   }
@@ -366,6 +459,7 @@ async function runWork(
       calendarId,
       bookingId,
       tracked,
+      adoptOwned,
     );
     return { outcome: deleted ? "deleted" : "skipped", error: null };
   }
@@ -376,7 +470,15 @@ async function runWork(
   const draft = buildMirrorEvent(booking, serviceName);
 
   if (tracked) {
-    await port.updateEvent(calendarId, tracked.google_event_id, draft);
+    try {
+      await port.updateEvent(calendarId, tracked.google_event_id, draft);
+    } catch (error) {
+      if (!isMissingEventError(error)) throw error;
+      // Hand-deleted in Google: recreate it and replace the stale tracked id.
+      const created = await port.createEvent(calendarId, draft);
+      await storeTrackedEvent(client, bookingId, created.id, now);
+      return { outcome: "created", error: null };
+    }
     await storeTrackedEvent(
       client,
       bookingId,
@@ -388,13 +490,16 @@ async function runWork(
 
   // A previous create may have reached Google before its id could be stored.
   // The private marker finds that event so a retry updates it instead of
-  // creating a duplicate.
-  const owned = await port.listOwnedEvents(calendarId, bookingId);
-  if (owned.length > 0) {
-    const eventId = owned[0].id;
-    await port.updateEvent(calendarId, eventId, draft);
-    await storeTrackedEvent(client, bookingId, eventId, now);
-    return { outcome: "updated", error: null };
+  // creating a duplicate. Reconcile pauses this adoption: a hand-created
+  // event must never be treated as owned.
+  if (adoptOwned) {
+    const owned = await port.listOwnedEvents(calendarId, bookingId);
+    if (owned.length > 0) {
+      const eventId = owned[0].id;
+      await port.updateEvent(calendarId, eventId, draft);
+      await storeTrackedEvent(client, bookingId, eventId, now);
+      return { outcome: "updated", error: null };
+    }
   }
 
   const created = await port.createEvent(calendarId, draft);
@@ -414,7 +519,9 @@ export async function drainMirrorQueue(
   client: TypedClient,
   makeRuntime: MirrorRuntimeFactory,
   now: Date = new Date(),
+  options: DrainOptions = {},
 ): Promise<MirrorDrainResult> {
+  const adoptOwned = options.adoptOwned ?? true;
   await getEnabledConnection(client);
 
   let runtime: ReturnType<MirrorRuntimeFactory>;
@@ -432,6 +539,8 @@ export async function drainMirrorQueue(
   // failed retry keep its backoff instead of being reset by every drain.
   let workRows: GoogleCalendarWorkRow[];
   let planned: ReturnType<typeof planBackfill>;
+  let bookingDates = new Map<string, string>();
+  const todayKey = mirrorTodayKey(now);
   try {
     const [bookings, tracked, work] = await Promise.all([
       listRows<Booking>(client, "bookings"),
@@ -439,7 +548,8 @@ export async function drainMirrorQueue(
       listRows<GoogleCalendarWorkRow>(client, WORK_TABLE),
     ]);
     workRows = work;
-    planned = planBackfill(bookings, tracked, mirrorTodayKey(now));
+    bookingDates = new Map(bookings.map((row) => [row.id, row.date] as const));
+    planned = planBackfill(bookings, tracked, todayKey);
   } catch (error) {
     const message = errorText(error, "Gagal merencanakan sinkronisasi Google.");
     await setConnectionError(client, message, now);
@@ -465,9 +575,17 @@ export async function drainMirrorQueue(
   let due: GoogleCalendarWorkRow[];
   try {
     due = (await listRows<GoogleCalendarWorkRow>(client, WORK_TABLE)).filter(
-      (row) =>
-        row.processed_at === null &&
-        Date.parse(row.next_attempt_at) <= now.getTime(),
+      (row) => {
+        if (row.processed_at !== null) return false;
+        if (Date.parse(row.next_attempt_at) > now.getTime() + DUE_GRACE_MS) {
+          return false;
+        }
+        if (!options.onlyTodayForward) return true;
+        const date = bookingDates.get(row.booking_id);
+        // No Booking date means a hard-deleted orphan; removing its event is
+        // the whole point, so it stays in scope.
+        return date === undefined || date >= todayKey;
+      },
     );
   } catch (error) {
     const message = errorText(error, "Gagal memuat antrean Google.");
@@ -507,6 +625,7 @@ export async function drainMirrorQueue(
         operation,
         tracked,
         now,
+        adoptOwned,
       );
       const superseded = await hasNewerIntent(
         client,
@@ -579,4 +698,128 @@ export async function drainMirrorQueue(
     failed: failed.length,
     error: firstError,
   };
+}
+
+/**
+ * Repair the whole today-forward mirror: enqueue the planner's desired state
+ * (create missing events, update tracked ones, delete events whose Booking is
+ * gone or no longer confirmed), drain those intents with the same retry and
+ * error bookkeeping as a Booking save, then remove queue rows left behind by a
+ * successful delete.
+ *
+ * Past Bookings and their tracked rows are outside the plan, so history is
+ * never rewritten by a reconcile. Ownership is only the tracked event id: a
+ * Google event nobody tracked is not listed for update or deletion.
+ */
+export async function reconcileMirror(
+  client: TypedClient,
+  makeRuntime: MirrorRuntimeFactory,
+  now: Date = new Date(),
+): Promise<MirrorReconcileSummary> {
+  // The master switch is checked before any Google port exists. Disconnecting
+  // must make a scheduled or manual reconcile a true no-op.
+  const connection = await getConnection(client);
+  if (!connection.enabled) return emptySummary({ disabled: true });
+
+  let bookings: Booking[];
+  let trackedRows: GoogleCalendarEventRow[];
+  try {
+    [bookings, trackedRows] = await Promise.all([
+      listRows<Booking>(client, "bookings"),
+      listRows<GoogleCalendarEventRow>(client, EVENTS_TABLE),
+    ]);
+  } catch (error) {
+    const message = errorText(error, "Gagal merencanakan rekonsiliasi Google.");
+    await setConnectionError(client, message, now);
+    return emptySummary({ ok: false, failed: 1, error: message });
+  }
+
+  const planned = planMirrorWork(bookings, trackedRows, mirrorTodayKey(now));
+
+  let enqueueFailed = 0;
+  let enqueueError: string | null = null;
+  for (const item of planned) {
+    try {
+      await enqueueMirrorWork(
+        client,
+        item.bookingId,
+        item.action === "delete" ? "delete" : "upsert",
+      );
+    } catch (error) {
+      // One unreadable Booking must not stop the rest of the reconcile.
+      enqueueFailed += 1;
+      enqueueError ??= errorText(error, "Gagal menjadwalkan rekonsiliasi Google.");
+    }
+  }
+
+  let drain: MirrorDrainResult;
+  try {
+    drain = await drainMirrorQueue(client, makeRuntime, now, {
+      adoptOwned: false,
+      onlyTodayForward: true,
+    });
+  } catch (error) {
+    const message = errorText(error, "Rekonsiliasi Google gagal.");
+    try {
+      await setConnectionError(client, message, now);
+    } catch {
+      // The summary still carries the concrete error.
+    }
+    return emptySummary({
+      ok: false,
+      failed: enqueueFailed + 1,
+      error: enqueueError ?? message,
+    });
+  }
+
+  // A successful delete is the moment its queue row becomes an orphan. A row
+  // that failed stays open and keeps its retry for the next drain.
+  let cleanupError: string | null = null;
+  try {
+    const [freshBookings, freshTracked, freshWork] = await Promise.all([
+      listRows<Booking>(client, "bookings"),
+      listRows<GoogleCalendarEventRow>(client, EVENTS_TABLE),
+      listRows<GoogleCalendarWorkRow>(client, WORK_TABLE),
+    ]);
+    const bookingById = new Map(
+      freshBookings.map((row) => [row.id, row] as const),
+    );
+    const trackedIds = new Set(freshTracked.map((row) => row.booking_id));
+    for (const row of freshWork) {
+      if (row.processed_at === null) continue;
+      const booking = bookingById.get(row.booking_id);
+      const orphaned = !booking && !trackedIds.has(row.booking_id);
+      const finishedDelete =
+        row.operation === "delete" &&
+        (!booking || booking.status !== "confirmed");
+      if (orphaned || finishedDelete) {
+        await deleteWorkRow(client, row.booking_id);
+      }
+    }
+  } catch (error) {
+    cleanupError = errorText(error, "Gagal membersihkan antrean Google.");
+  }
+
+  const summary = emptySummary();
+  for (const result of drain.results) {
+    if (result.outcome === "created") summary.created += 1;
+    else if (result.outcome === "updated") summary.updated += 1;
+    else if (result.outcome === "deleted") summary.deleted += 1;
+    else if (result.outcome === "skipped") summary.skipped += 1;
+    else summary.failed += 1;
+  }
+  summary.failed += enqueueFailed + (cleanupError ? 1 : 0);
+  // A drain-level failure (config, unreadable queue, backfill scheduling) has
+  // no per-Booking result to count; still show it as one failed reconcile.
+  if (drain.error && drain.failed === 0) summary.failed += 1;
+  summary.error = enqueueError ?? drain.error ?? cleanupError;
+  summary.ok = summary.error === null;
+
+  try {
+    await setConnectionError(client, summary.error ?? "", now);
+  } catch {
+    // The returned summary is still the source of truth for this run.
+  }
+
+  return summary;
 }

@@ -1,18 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { notifyScheduleChanged } from "@/lib/admin/schedule-events";
 import { formatDateTimeId } from "@/lib/format";
 import {
   isMirrorStatusUnhealthy,
   type GoogleCalendarStatus,
 } from "@/lib/google/connection-status";
+import type { MirrorReconcileSummary } from "@/lib/google/mirror-summary";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
-type Action = "test" | "connect" | "disconnect";
+type Action = "test" | "connect" | "disconnect" | "resync";
 
 interface Notice {
   kind: "success" | "error";
   text: string;
+}
+
+function resyncSummaryText(summary: MirrorReconcileSummary): string {
+  const counts = `${summary.created} dibuat, ${summary.updated} diperbarui, ${summary.deleted} dihapus, ${summary.skipped} dilewati, ${summary.failed} gagal`;
+  return summary.ok
+    ? `Resync selesai: ${counts}.`
+    : `Resync selesai dengan kegagalan: ${counts}. ${
+        summary.error ?? "Periksa error terakhir di atas."
+      }`;
 }
 
 interface Props {
@@ -147,6 +158,67 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
     }
   }
 
+  /**
+   * Rebuild the today-forward mirror from the dashboard. The backend is the
+   * same reconcile routine as the daily cron; this button only confirms,
+   * shows progress, and refreshes the Booking badges afterwards.
+   */
+  async function performResync() {
+    if (busy) return;
+    const confirmed = window.confirm(
+      "Resync semua Booking hari ini dan ke depan? Event Google yang diubah atau dihapus manual akan diperbaiki, dan event untuk Booking yang tidak lagi terkonfirmasi akan dihapus. Riwayat yang sudah lewat tidak disentuh.",
+    );
+    if (!confirmed) return;
+
+    setBusy("resync");
+    setNotice(null);
+    try {
+      const response = await adminRequest("/api/admin/google-calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resync" }),
+      });
+      const body = (await response.json().catch(() => ({}))) as Partial<
+        MirrorReconcileSummary & { error?: string }
+      >;
+      if (!response.ok) {
+        throw new Error(
+          body.error ?? "Resync Kalender Google gagal. Coba lagi.",
+        );
+      }
+      const summary: MirrorReconcileSummary = {
+        ok: body.ok === true,
+        disabled: body.disabled === true,
+        created: body.created ?? 0,
+        updated: body.updated ?? 0,
+        deleted: body.deleted ?? 0,
+        skipped: body.skipped ?? 0,
+        failed: body.failed ?? 0,
+        error: typeof body.error === "string" ? body.error : null,
+      };
+      setNotice({
+        kind: summary.ok ? "success" : "error",
+        text: summary.disabled
+          ? "Mirror nonaktif. Hubungkan kalender dulu sebelum Resync."
+          : resyncSummaryText(summary),
+      });
+      // Booking badges derive from the mirror tables, so nudge the other
+      // panels to reread them instead of waiting for a reload.
+      notifyScheduleChanged();
+      await load();
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Resync Kalender Google gagal. Coba lagi.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const connection = status?.connection ?? null;
   const unhealthy = isMirrorStatusUnhealthy(status);
 
@@ -257,6 +329,16 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
           className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
         >
           {busy === "connect" ? "Menghubungkan…" : "Hubungkan"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void performResync()}
+          disabled={
+            busy !== null || !status?.configured || !status.connection.enabled
+          }
+          className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+        >
+          {busy === "resync" ? "Menyinkronkan…" : "Resync semua"}
         </button>
         <button
           type="button"

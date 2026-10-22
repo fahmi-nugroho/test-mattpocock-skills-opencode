@@ -25,6 +25,24 @@ export const supabaseServerWithToken = (accessToken: string) =>
   );
 
 /**
+ * Service-role client for jobs that have no admin session, such as the daily
+ * Google Calendar cron. The key is server-only and must never be prefixed
+ * `NEXT_PUBLIC_`; it bypasses RLS, so this is only for trusted route code.
+ */
+export function supabaseAdminServer() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Konfigurasi server Supabase belum lengkap untuk tugas terjadwal.",
+    );
+  }
+  return createClient<Database>(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/**
  * Verify the request's bearer access token and return an RLS-bound client.
  * Returns null for a missing, expired, or invalid admin session.
  */

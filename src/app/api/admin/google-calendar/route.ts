@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
-import { createGoogleCalendarPort } from "@/lib/google/calendar-api";
 import {
   connectCalendar,
   disconnectCalendar,
   getConnection,
   testCalendarConnection,
   MIRROR_DISABLED_ERROR,
-  type MirrorRuntimeFactory,
 } from "@/lib/google/calendar-connection";
-import {
-  GOOGLE_CONFIG_ERROR,
-  GoogleCalendarConfigError,
-  loadGoogleCalendarConfig,
-  type GoogleCalendarConfig,
-} from "@/lib/google/config";
 import type { GoogleCalendarStatus } from "@/lib/google/connection-status";
-import { drainMirrorQueue } from "@/lib/google/mirror";
+import { drainMirrorQueue, reconcileMirror } from "@/lib/google/mirror";
+import {
+  createMirrorRuntimeFactory,
+  readMirrorConfig,
+} from "@/lib/google/runtime";
 import { requireAdminClient } from "@/lib/supabase/server";
 
 // node:crypto signs the service-account JWT, so this route must stay on the
@@ -23,34 +19,6 @@ import { requireAdminClient } from "@/lib/supabase/server";
 // the browser never receives a Google credential.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type ConfigResult =
-  | { ok: true; config: GoogleCalendarConfig }
-  | { ok: false; error: string };
-
-function readConfig(): ConfigResult {
-  try {
-    return { ok: true, config: loadGoogleCalendarConfig() };
-  } catch (error) {
-    return {
-      ok: false,
-      error:
-        error instanceof Error && error.message.trim() !== ""
-          ? error.message
-          : GOOGLE_CONFIG_ERROR,
-    };
-  }
-}
-
-function runtimeFactory(configResult: ConfigResult): MirrorRuntimeFactory {
-  return () => {
-    if (!configResult.ok) {
-      throw new GoogleCalendarConfigError(configResult.error);
-    }
-    const { config } = configResult;
-    return { config, port: createGoogleCalendarPort(config) };
-  };
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() !== ""
@@ -71,7 +39,7 @@ export async function GET(request: Request) {
 
   try {
     const connection = await getConnection(client);
-    const config = readConfig();
+    const config = readMirrorConfig();
     const status: GoogleCalendarStatus = config.ok
       ? { configured: true, configError: null, connection }
       : { configured: false, configError: config.error, connection };
@@ -96,7 +64,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, error: null });
     }
 
-    const makeRuntime = runtimeFactory(readConfig());
+    const makeRuntime = createMirrorRuntimeFactory(readMirrorConfig());
 
     if (action === "drain") {
       try {
@@ -111,6 +79,12 @@ export async function POST(request: Request) {
         }
         throw error;
       }
+    }
+
+    // "Resync semua": the same reconcile routine the daily cron runs.
+    if (action === "resync") {
+      const summary = await reconcileMirror(client, makeRuntime);
+      return NextResponse.json(summary);
     }
 
     if (action !== "test" && action !== "connect") {

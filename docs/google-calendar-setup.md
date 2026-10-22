@@ -57,6 +57,29 @@ create it for you.
 Rotating credentials means replacing the environment values and redeploying;
 there is no OAuth consent screen, refresh token, or testing-mode expiry.
 
+## 5. Daily reconcile and Resync
+
+The mirror repairs itself every day and whenever the owner presses **Resync
+semua** in **Pengaturan → Google Calendar**. Both run the same reconcile:
+
+- confirmed Bookings from today forward get a missing Google event;
+- tracked events are updated from current Booking data, overwriting hand edits;
+- events whose Booking was hard-deleted or is no longer confirmed are removed,
+  then their tracked row and finished queue row are cleaned up;
+- leftover queue work is drained with the normal retry-and-error behaviour;
+- past events and past tracked rows are left as history;
+- Google events the app did not track are never listed, updated, or deleted.
+
+The only scheduled entry point is `/api/cron/google-calendar`, declared in
+`vercel.json` at `0 17 * * *` UTC (midnight WIB). It authenticates with
+`GOOGLE_CALENDAR_CRON_SECRET`. On Vercel, set `CRON_SECRET` to the same value so
+Vercel adds its automatic `Authorization: Bearer …` header; the route also
+accepts `x-cron-secret` for a manual run. Because the cron has no admin session,
+the host also needs `SUPABASE_SERVICE_ROLE_KEY` (server-only) to read the
+admin-only mirror tables. The route is safe to call at any time and twice in a
+row: a successful second pass updates rather than duplicates, and a disabled
+mirror makes it a no-op.
+
 ## Environment summary
 
 | Variable | Required | Purpose |
