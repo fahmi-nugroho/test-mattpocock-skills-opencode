@@ -93,6 +93,22 @@ export function ensureMirrorEnabled(
   if (!connection.enabled) throw new Error(MIRROR_DISABLED_ERROR);
 }
 
+/**
+ * Record the latest mirror failure (or clear it with "") on the one connection
+ * row, so the settings section and dashboard banner read the same fact the
+ * drain used.
+ */
+export async function setConnectionError(
+  client: TypedClient,
+  message: string,
+  now: Date = new Date(),
+): Promise<void> {
+  await updateConnection(client, {
+    last_error: message,
+    updated_at: now.toISOString(),
+  });
+}
+
 /** Read the connection and refuse to continue while it is disconnected. */
 export async function getEnabledConnection(
   client: TypedClient,

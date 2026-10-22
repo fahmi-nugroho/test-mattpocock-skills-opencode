@@ -54,7 +54,7 @@ function createAssertion(
 
 async function responseMessage(
   response: Response,
-  action: "read" | "create" | "delete",
+  action: "read" | "create" | "update" | "delete" | "list",
 ): Promise<string> {
   const status = response.status;
   if (action === "read") {
@@ -71,6 +71,18 @@ async function responseMessage(
       return "Akun layanan tidak memiliki izin menulis ke kalender Google. Bagikan kalender dengan akses 'Make changes to events'.";
     }
     return `Google Calendar gagal membuat event (status ${status}).`;
+  }
+  if (action === "update") {
+    if (status === 404) {
+      return "Event Google Calendar tidak ditemukan. Resync akan membuatnya kembali.";
+    }
+    if (status === 403) {
+      return "Akun layanan tidak memiliki izin mengubah event di kalender Google.";
+    }
+    return `Google Calendar gagal memperbarui event (status ${status}).`;
+  }
+  if (action === "list") {
+    return `Google Calendar gagal membaca daftar event (status ${status}).`;
   }
   if (status === 403) {
     return "Akun layanan tidak memiliki izin menghapus event di kalender Google.";
@@ -123,7 +135,7 @@ export function createGoogleCalendarPort(
   async function request(
     path: string,
     init: RequestInit,
-    action: "read" | "create" | "delete",
+    action: "read" | "create" | "update" | "delete" | "list",
   ): Promise<Response> {
     const token = await accessToken(Date.now());
     const response = await fetchImpl(`${API_ROOT}${path}`, {
@@ -167,12 +179,40 @@ export function createGoogleCalendarPort(
       return { id: body.id };
     },
 
+    async updateEvent(calendarId, eventId, event: GoogleCalendarEventDraft) {
+      await request(
+        `${calendarPath(calendarId)}/events/${encodeURIComponent(eventId)}`,
+        { method: "PUT", body: JSON.stringify(event) },
+        "update",
+      );
+    },
+
     async deleteEvent(calendarId, eventId) {
       await request(
         `${calendarPath(calendarId)}/events/${encodeURIComponent(eventId)}`,
         { method: "DELETE" },
         "delete",
       );
+    },
+
+    async listOwnedEvents(calendarId, bookingId) {
+      const query = new URLSearchParams({
+        privateExtendedProperty: `muaBookingId=${bookingId}`,
+        maxResults: "10",
+        singleEvents: "true",
+      });
+      const response = await request(
+        `${calendarPath(calendarId)}/events?${query.toString()}`,
+        { method: "GET" },
+        "list",
+      );
+      const body = (await response.json()) as { items?: unknown };
+      if (!Array.isArray(body.items)) return [];
+      return body.items.flatMap((item) => {
+        if (typeof item !== "object" || item === null) return [];
+        const id = (item as { id?: unknown }).id;
+        return typeof id === "string" && id !== "" ? [{ id }] : [];
+      });
     },
   };
 }

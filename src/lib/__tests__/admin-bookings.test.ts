@@ -31,9 +31,18 @@ function bookingClient(opts: {
   inserted?: unknown;
   updated?: unknown;
   calls?: Array<[string, ...unknown[]]>;
+  rpcError?: string;
 }) {
   const calls = opts.calls ?? [];
   const client = {
+    rpc: (name: string, args: unknown) => {
+      calls.push(["rpc", name, args]);
+      return Promise.resolve(
+        opts.rpcError
+          ? { data: null, error: { message: opts.rpcError } }
+          : ok(null),
+      );
+    },
     from: (table: string) => {
       calls.push(["from", table]);
       if (table === "settings") {
@@ -305,5 +314,80 @@ describe("deleteBooking", () => {
     const { client, calls } = bookingClient({});
     await expect(deleteBooking(client, "b1")).resolves.toBeUndefined();
     expect(calls).toContainEqual(["delete.eq", "id", "b1"]);
+  });
+});
+
+// Seam 2 (adapter): every successful Booking write leaves exactly one mirror
+// intent behind. Catches a confirmed save Google never hears about, or a
+// pending/cancelled/delete that leaves an event in Google. Misses the drain.
+describe("mirror intent after a successful Booking write", () => {
+  it("enqueues an upsert when a new Booking is confirmed", async () => {
+    const { client, calls } = bookingClient({
+      inserted: { ...BOOKING, id: "9" },
+    });
+    await createBooking(client, BOOKING);
+    expect(calls).toContainEqual([
+      "rpc",
+      "enqueue_google_calendar_work",
+      { p_booking_id: "9", p_operation: "upsert" },
+    ]);
+  });
+
+  it("enqueues a delete when a new Booking stays pending", async () => {
+    const { client, calls } = bookingClient({ inserted: { id: "10" } });
+    await createBooking(client, { ...BOOKING, status: "pending" });
+    expect(calls).toContainEqual([
+      "rpc",
+      "enqueue_google_calendar_work",
+      { p_booking_id: "10", p_operation: "delete" },
+    ]);
+  });
+
+  it("enqueues an upsert when an edit leaves the Booking confirmed", async () => {
+    const { client, calls } = bookingClient({
+      bookingRow: { ...BOOKING, id: "b1" },
+      updated: { ...BOOKING, id: "b1" },
+    });
+    await updateBooking(client, "b1", { venue: "Rumah" });
+    expect(calls).toContainEqual([
+      "rpc",
+      "enqueue_google_calendar_work",
+      { p_booking_id: "b1", p_operation: "upsert" },
+    ]);
+  });
+
+  it("enqueues a delete when cancelling a confirmed Booking", async () => {
+    const { client, calls } = bookingClient({
+      bookingRow: { ...BOOKING, id: "b1" },
+      updated: { ...BOOKING, id: "b1", status: "cancelled" },
+    });
+    await setBookingStatus(client, "b1", "cancelled");
+    expect(calls).toContainEqual([
+      "rpc",
+      "enqueue_google_calendar_work",
+      { p_booking_id: "b1", p_operation: "delete" },
+    ]);
+  });
+
+  it("enqueues a delete after a hard delete, so the Google event can still go", async () => {
+    const { client, calls } = bookingClient({});
+    await deleteBooking(client, "b1");
+    expect(calls).toContainEqual([
+      "rpc",
+      "enqueue_google_calendar_work",
+      { p_booking_id: "b1", p_operation: "delete" },
+    ]);
+    // The Booking row is already gone: the queue row must not depend on it.
+    expect(calls).toContainEqual(["delete.eq", "id", "b1"]);
+  });
+
+  it("never fails the local save because the mirror queue is unavailable", async () => {
+    const { client } = bookingClient({
+      inserted: { ...BOOKING, id: "9" },
+      rpcError: "queue down",
+    });
+    await expect(createBooking(client, BOOKING)).resolves.toMatchObject({
+      id: "9",
+    });
   });
 });

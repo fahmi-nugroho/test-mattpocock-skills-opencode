@@ -57,9 +57,19 @@ function fakePort(opts: {
       if (opts.createError) throw opts.createError;
       return { id: "probe-1" };
     },
+    async updateEvent(
+      calendarId: string,
+      eventId: string,
+      event: GoogleCalendarEventDraft,
+    ) {
+      calls.push(["update", calendarId, eventId, event]);
+    },
     async deleteEvent(calendarId, eventId) {
       calls.push(["delete", calendarId, eventId]);
       if (opts.deleteError) throw opts.deleteError;
+    },
+    async listOwnedEvents() {
+      return [];
     },
   };
 }

@@ -5,6 +5,7 @@ import {
   disconnectCalendar,
   getConnection,
   testCalendarConnection,
+  MIRROR_DISABLED_ERROR,
   type MirrorRuntimeFactory,
 } from "@/lib/google/calendar-connection";
 import {
@@ -14,6 +15,7 @@ import {
   type GoogleCalendarConfig,
 } from "@/lib/google/config";
 import type { GoogleCalendarStatus } from "@/lib/google/connection-status";
+import { drainMirrorQueue } from "@/lib/google/mirror";
 import { requireAdminClient } from "@/lib/supabase/server";
 
 // node:crypto signs the service-account JWT, so this route must stay on the
@@ -94,6 +96,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, error: null });
     }
 
+    const makeRuntime = runtimeFactory(readConfig());
+
+    if (action === "drain") {
+      try {
+        const result = await drainMirrorQueue(client, makeRuntime);
+        return NextResponse.json(result);
+      } catch (error) {
+        if (errorMessage(error) === MIRROR_DISABLED_ERROR) {
+          return NextResponse.json(
+            { ok: false, error: MIRROR_DISABLED_ERROR },
+            { status: 409 },
+          );
+        }
+        throw error;
+      }
+    }
+
     if (action !== "test" && action !== "connect") {
       return NextResponse.json(
         { error: "Aksi Kalender Google tidak dikenal." },
@@ -101,11 +120,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const makeRuntime = runtimeFactory(readConfig());
     const result =
       action === "test"
         ? await testCalendarConnection(client, makeRuntime)
         : await connectCalendar(client, makeRuntime);
+
+    // Connecting starts the mirror: the first successful drain backfills every
+    // confirmed Booking from today forward. A failure here leaves the queue
+    // open for the next drain and must not turn a successful connect into an
+    // error, so it is best effort and its outcome is returned alongside.
+    if (action === "connect" && result.ok) {
+      try {
+        const mirror = await drainMirrorQueue(client, makeRuntime);
+        return NextResponse.json({ ...result, mirror });
+      } catch {
+        return NextResponse.json(result);
+      }
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ ok: false, error: errorMessage(error) }, { status: 500 });

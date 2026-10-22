@@ -49,8 +49,10 @@ create it for you.
 4. Press **Tes koneksi**: it reads the calendar, creates a clearly labelled
    probe event, and deletes it. A read-only share or missing write permission
    is reported as a failure.
-5. Press **Hubungkan** to enable the mirror. **Putuskan** disables it
-   immediately and leaves existing Google events untouched.
+5. Press **Hubungkan** to enable the mirror; the first successful drain
+   immediately backfills confirmed Bookings dated today or later in WIB.
+   **Putuskan** disables it immediately and leaves existing Google events
+   untouched.
 
 Rotating credentials means replacing the environment values and redeploying;
 there is no OAuth consent screen, refresh token, or testing-mode expiry.

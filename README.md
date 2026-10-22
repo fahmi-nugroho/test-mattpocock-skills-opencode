@@ -19,7 +19,7 @@ Guarded by Supabase Auth browser session — unauthenticated visits redirect to 
 
 - **Ringkasan Booking** — today / upcoming counts (confirmed + pending)
 - **Kalender Booking** — same status derivation as public calendar
-- **Booking manager** — record WA negotiation results, confirm / cancel (drives public calendar status)
+- **Booking manager** — record WA negotiation results, confirm / cancel (drives public calendar status), and see each Booking's Google mirror state (Tersinkron / Menunggu / Gagal) with retry
 - **Blokir & Tanggal Penuh** — all-day or time-range blocks + manual full-date toggles, with conflict rejection vs confirmed bookings
 - **Portfolio manager** — CRUD + visibility toggle, Supabase Storage uploads with validation
 - **Services manager** — CRUD + active toggle, price / duration validation
@@ -34,7 +34,7 @@ Guarded by Supabase Auth browser session — unauthenticated visits redirect to 
 | Backend | Supabase (Postgres + Auth + Storage + RPC) |
 | Client lib | `@supabase/supabase-js` v2 |
 | Language | TypeScript (strict) |
-| Tests | Vitest (65 suites under `src/lib/__tests__/`) |
+| Tests | Vitest (69 suites under `src/lib/__tests__/`) |
 
 ## Project Structure
 
@@ -48,7 +48,7 @@ src/
       page.tsx          # dashboard route (server; title; renders AdminDashboard)
       login/page.tsx    # sign-in route (server; title; renders AdminLogin)
     api/admin/
-      google-calendar/route.ts  # authenticated connection status/test/connect/disconnect
+      google-calendar/route.ts  # authenticated status/test/connect/disconnect/drain
   components/
     portfolio-grid.tsx
     price-list.tsx
@@ -62,17 +62,18 @@ src/
     availability.ts / calendar.ts / day-schedule.ts / month-availability.ts
     format.ts / whatsapp.ts / portfolio.ts
     admin/              # validation, overview, conflicts, schedule-events
-    google/             # config, Google port, connection adapter, REST client
+    google/             # config, Google port, connection adapter, REST client,
+                        # mirror projection/planner, drain adapter, queue, state
     supabase/           # client.ts, server.ts, queries.ts, database.ts,
                         # admin-*.ts, public-settings.ts
 supabase/
   migrations/
-    0001_schema.sql .. 0020_google_calendar_connection.sql
+    0001_schema.sql .. 0021_google_calendar_mirror.sql
     (schema, RLS, storage, seed, RPCs: get_month_availability,
      get_day_schedule, get_public_wa_number)
 ```
 
-Key domain types (`src/lib/supabase/database.ts`): `Service`, `PortfolioItem`, `Booking (pending|confirmed|cancelled)`, `Block`, `Settings`, `GoogleCalendarConnection`, `MonthAvailabilityRow`, `DayScheduleRow`.
+Key domain types (`src/lib/supabase/database.ts`): `Service`, `PortfolioItem`, `Booking (pending|confirmed|cancelled)`, `Block`, `Settings`, `GoogleCalendarConnection`, `GoogleCalendarEventRow`, `GoogleCalendarWorkRow`, `MonthAvailabilityRow`, `DayScheduleRow`.
 
 ## Prerequisites
 
@@ -133,13 +134,15 @@ npm run typecheck  # tsc --noEmit
 
 ## Supabase Backend
 
-- **Tables:** `services`, `portfolio_items`, `bookings`, `blocks`, `settings` (single row `id=1`) — see `0001_schema.sql`; `booking_requests` (0015), `invoices` (0018), and the single-row `google_calendar_connection` (0020).
+- **Tables:** `services`, `portfolio_items`, `bookings`, `blocks`, `settings` (single row `id=1`) — see `0001_schema.sql`; `booking_requests` (0015), `invoices` (0018), the single-row `google_calendar_connection` (0020), and the mirror's `google_calendar_events` / `google_calendar_work` (0021).
 - **RLS:** public read on active/visible rows + public RPCs; writes restricted to `authenticated` (admin) — see `0002_rls.sql`.
 - **Storage:** portfolio / service covers bucket — see `0003_storage.sql`.
 - **RPCs:**
   - `get_public_wa_number() → text`
   - `get_month_availability(p_year, p_month) → [{date, status}]` where `status ∈ available|fully_booked|blocked`
   - `get_day_schedule(p_date) → {status, all_day_blocked, occupied[], free[]}`
+  - `enqueue_google_calendar_work(p_booking_id, p_operation)` — coalesces one mirror intent per Booking (admin only)
+  - `claim_google_calendar_work(p_booking_id) → google_calendar_work` — per-Booking lock for a drain, with stale-lock recovery (admin only)
 - **Seed:** placeholder settings row — see `0004_seed_rpc.sql`.
 
 Day columns stay `date + "HH:MM"` text (no timestamptz) — the shared seam between `Booking`/`Block` rows and the `BookingForDay`/`BlockForDay` logic in `src/lib/availability.ts`.
@@ -159,7 +162,7 @@ npm run test       # vitest run
 npm run typecheck  # tsc --noEmit
 ```
 
-65 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, list filters, WA link builders, all admin validators, Google Calendar connection/config, and Supabase query wrappers (mocked client).
+69 test files under `src/lib/__tests__/` cover: availability derivation, calendar helpers, list filters, WA link builders, all admin validators, Google Calendar connection/config, the mirror projection/planner/adapter/state and its SQL contract, and Supabase query wrappers (mocked client).
 
 ## Deployment
 
