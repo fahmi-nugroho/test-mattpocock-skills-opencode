@@ -142,6 +142,46 @@ export interface ProfileStatRow {
   visible: boolean;
 }
 
+/**
+ * The single-row Calendar Mirror connection (0020). `enabled` is the master
+ * switch; `last_error` is the latest concrete failure and is pinned to '' when
+ * the connection is healthy. Google credentials never live in this row.
+ */
+export interface GoogleCalendarConnection {
+  id: number; // always 1 (single-row table)
+  enabled: boolean;
+  calendar_id: string;
+  last_verified_at: string | null; // ISO timestamp
+  last_error: string; // "" when healthy
+  updated_at: string; // ISO timestamp
+}
+
+/** One mirrored Google event per Booking (0021). Survives a Booking delete. */
+export interface GoogleCalendarEventRow {
+  booking_id: string;
+  google_event_id: string;
+  last_synced_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
+}
+
+export type GoogleCalendarOperation = "upsert" | "delete";
+
+/**
+ * One coalesced mirror intent per Booking (0021). `processed_at = null` means
+ * open; a non-empty `last_error` means the last attempt failed.
+ */
+export interface GoogleCalendarWorkRow {
+  booking_id: string;
+  operation: GoogleCalendarOperation;
+  attempt_count: number;
+  next_attempt_at: string; // ISO timestamp
+  last_error: string; // "" until an attempt fails
+  processed_at: string | null; // null while the intent is open
+  locked_at: string | null; // set while a drain owns this Booking
+  created_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
+}
+
 export interface MonthAvailabilityRow {
   date: string; // "YYYY-MM-DD"
   status: "available" | "fully_booked" | "blocked";
@@ -174,6 +214,9 @@ export interface Database {
       profile_stats: Table<ProfileStatRow>;
       booking_requests: Table<BookingRequest>;
       invoices: Table<Invoice>;
+      google_calendar_connection: Table<GoogleCalendarConnection>;
+      google_calendar_events: Table<GoogleCalendarEventRow>;
+      google_calendar_work: Table<GoogleCalendarWorkRow>;
     };
     Functions: {
       get_month_availability: {
@@ -211,6 +254,14 @@ export interface Database {
           p_due_on: string;
         };
         Returns: Invoice;
+      };
+      enqueue_google_calendar_work: {
+        Args: { p_booking_id: string; p_operation: GoogleCalendarOperation };
+        Returns: undefined;
+      };
+      claim_google_calendar_work: {
+        Args: { p_booking_id: string };
+        Returns: GoogleCalendarWorkRow[];
       };
     };
   };

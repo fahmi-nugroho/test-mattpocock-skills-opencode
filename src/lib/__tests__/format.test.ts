@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateId, formatIDR } from "../format";
+import { formatDateId, formatDateTimeId, formatIDR } from "../format";
 
 describe("formatIDR", () => {
   it("formats an amount in IDR without decimals", () => {
@@ -20,5 +20,15 @@ describe("formatDateId", () => {
     expect(out).toMatch(/12/);
     expect(out).toMatch(/Oktober/i);
     expect(out).toMatch(/2026/);
+  });
+});
+
+describe("formatDateTimeId", () => {
+  it("renders a server timestamp in WIB", () => {
+    const out = formatDateTimeId("2026-10-22T03:04:05.000Z");
+    expect(out).toMatch(/22/);
+    expect(out).toMatch(/Okt/i);
+    expect(out).toMatch(/2026/);
+    expect(out).toMatch(/10[.:]04/);
   });
 });

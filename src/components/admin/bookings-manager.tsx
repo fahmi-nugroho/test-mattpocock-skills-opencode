@@ -34,6 +34,14 @@ import { formatIDR } from "@/lib/format";
 import { isStyle, STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  enqueueMirrorWork,
+  listMirrorSnapshot,
+} from "@/lib/supabase/admin-mirror";
+import {
+  indexMirrorStates,
+  MIRROR_STATE_LABEL,
+} from "@/lib/google/mirror-state";
+import {
   createBooking,
   deleteBooking,
   listBookingsAdmin,
@@ -51,6 +59,8 @@ import { StyleReferenceFacts } from "./style-reference-facts";
 import type {
   Booking,
   BookingStatus,
+  GoogleCalendarEventRow,
+  GoogleCalendarWorkRow,
   Invoice,
   Service,
   Settings,
@@ -173,6 +183,13 @@ export function BookingsManager() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [businessLoadFailed, setBusinessLoadFailed] = useState(false);
   const [invoiceBookingId, setInvoiceBookingId] = useState<string | null>(null);
+  // Calendar Mirror rows: derived state per Booking, never hand-set. A failed
+  // read leaves both empty so bookings still load when Google bookkeeping is
+  // unavailable.
+  const [mirrorTracked, setMirrorTracked] = useState<GoogleCalendarEventRow[]>(
+    [],
+  );
+  const [mirrorWork, setMirrorWork] = useState<GoogleCalendarWorkRow[]>([]);
   // The row action is the invoice dialog's trigger: after the dialog closes
   // and the booking list reopens, focus returns to it.
   const invoiceButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
@@ -194,6 +211,12 @@ export function BookingsManager() {
   const invoicesByBooking = useMemo(
     () => indexInvoicesByBooking(invoices),
     [invoices],
+  );
+  // Tersinkron / Menunggu / Gagal come from the tracked row and the open queue
+  // row, so the badge cannot drift from what Google actually knows.
+  const mirrorStates = useMemo(
+    () => indexMirrorStates(items, mirrorTracked, mirrorWork),
+    [items, mirrorTracked, mirrorWork],
   );
   const invoiceBooking = invoiceBookingId
     ? (items.find((item) => item.id === invoiceBookingId) ?? null)
@@ -327,12 +350,77 @@ export function BookingsManager() {
     summary.upcomingPending;
   const upcomingWaiting = summary.todayPending + summary.upcomingPending;
 
+  /** Re-read the two mirror tables after a save or a manual retry. */
+  async function refreshMirrorRows() {
+    try {
+      const snapshot = await listMirrorSnapshot(supabaseBrowser());
+      setMirrorTracked(snapshot.tracked);
+      setMirrorWork(snapshot.work);
+    } catch {
+      // The Booking list stays usable even if mirror bookkeeping is unreadable.
+    }
+  }
+
+  /**
+   * Ask the Node route to drain. The browser never holds a Google credential;
+   * a failure here stays invisible to the Booking save and is reflected by the
+   * Gagal badge instead.
+   */
+  async function requestMirrorDrain() {
+    try {
+      const { data } = await supabaseBrowser().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      await fetch("/api/admin/google-calendar", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: "drain" }),
+      });
+    } catch {
+      // Left queued for the next drain.
+    }
+  }
+
+  async function drainAndRefreshMirror() {
+    await requestMirrorDrain();
+    await refreshMirrorRows();
+  }
+
+  /** One-tap retry for a Gagal row: refresh the intent, then drain at once. */
+  async function onRetryMirror(item: Booking) {
+    if (rowBusy) return;
+    setRowBusy(item.id);
+    setRowError(null);
+    try {
+      await enqueueMirrorWork(
+        supabaseBrowser(),
+        item.id,
+        item.status === "confirmed" ? "upsert" : "delete",
+      );
+      await drainAndRefreshMirror();
+    } catch (err) {
+      setRowError({
+        id: item.id,
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal mencoba ulang sinkronisasi Google.",
+      });
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
         const supabase = supabaseBrowser();
-        const [bookings, serviceRows, invoiceRows, businessResult] =
+        const [bookings, serviceRows, invoiceRows, businessResult, mirror] =
           await Promise.all([
             listBookingsAdmin(supabase),
             listServicesAdmin(supabase),
@@ -341,6 +429,10 @@ export function BookingsManager() {
               (row) => ({ row, failed: false }),
               () => ({ row: null, failed: true }),
             ),
+            listMirrorSnapshot(supabase).catch(() => ({
+              tracked: [] as GoogleCalendarEventRow[],
+              work: [] as GoogleCalendarWorkRow[],
+            })),
           ]);
         if (!cancelled) {
           setItems(bookings);
@@ -348,6 +440,8 @@ export function BookingsManager() {
           setInvoices(invoiceRows);
           setSettings(businessResult.row);
           setBusinessLoadFailed(businessResult.failed);
+          setMirrorTracked(mirror.tracked);
+          setMirrorWork(mirror.work);
         }
       } catch {
         if (!cancelled) setError("Gagal memuat booking. Coba lagi.");
@@ -497,6 +591,9 @@ export function BookingsManager() {
         }
       }
       notifyScheduleChanged();
+      // Google work happens after the local save has fully succeeded and is
+      // never awaited by this form, so a slow or broken Google cannot block it.
+      void drainAndRefreshMirror();
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "Gagal menyimpan booking. Coba lagi.",
@@ -567,6 +664,7 @@ export function BookingsManager() {
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
       setEditingId(null);
       notifyScheduleChanged();
+      void drainAndRefreshMirror();
     } catch (err) {
       setRowError({
         id: item.id,
@@ -588,6 +686,7 @@ export function BookingsManager() {
       const row = await setBookingStatus(supabaseBrowser(), item.id, next);
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
       notifyScheduleChanged();
+      void drainAndRefreshMirror();
     } catch (err) {
       setRowError({
         id: item.id,
@@ -613,6 +712,9 @@ export function BookingsManager() {
       // The FK cascades in the database; the loaded list follows at once.
       setInvoices((prev) => prev.filter((row) => row.booking_id !== item.id));
       notifyScheduleChanged();
+      // The Booking row is gone; its tracked row survives so the drain can
+      // still delete the Google event.
+      void drainAndRefreshMirror();
       setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
     } catch {
@@ -631,6 +733,7 @@ export function BookingsManager() {
       item.hairdo !== "" && !isStyle(item.hairdo) ? item.hairdo : "";
     const bookingInvoices = invoicesByBooking.get(item.id) ?? [];
     const newestInvoice = bookingInvoices[0] ?? null;
+    const mirrorState = mirrorStates.get(item.id) ?? null;
     return (
       <li
         key={item.id}
@@ -864,6 +967,20 @@ export function BookingsManager() {
             <p className="text-sm font-semibold">
               {item.date} · {item.start_time}–{item.end_time} ·{" "}
               {BOOKING_STATUS_LABEL[item.status]}
+              {mirrorState ? (
+                <span
+                  aria-label={`Status Google Calendar: ${MIRROR_STATE_LABEL[mirrorState]}`}
+                  className={`ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${
+                    mirrorState === "synced"
+                      ? "bg-green-100 text-green-800"
+                      : mirrorState === "failed"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {MIRROR_STATE_LABEL[mirrorState]}
+                </span>
+              ) : null}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
               {item.client_name} · {item.client_phone} ·{" "}
@@ -904,6 +1021,16 @@ export function BookingsManager() {
               ? `Invoice (${bookingInvoices.length}) · ${newestInvoice.number} · ${invoiceSentLabel(newestInvoice)}`
               : "Buat invoice"}
           </button>
+          {mirrorState === "failed" ? (
+            <button
+              type="button"
+              disabled={rowBusy === item.id}
+              onClick={() => onRetryMirror(item)}
+              className="rounded-full border border-amber-400 px-4 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+            >
+              {rowBusy === item.id ? "Mencoba…" : "Coba lagi"}
+            </button>
+          ) : null}
           {editingId === item.id ? (
             <>
               <button
