@@ -1,8 +1,9 @@
 /**
  * Id tab + pemetaan hash dashboard admin (tiket 06). Murni: memetakan
  * `window.location.hash` ke id tab dengan fallback 'ringkasan'.
- * Komponen halaman memegang listener hashchange dan bilah sticky;
- * section membawa id + scroll-mt yang cocok untuk offset sticky.
+ * Komponen halaman memegang listener hashchange dan navigasi tab; tab
+ * mengganti panel yang tampil (bukan menggulir ke section), dan hash tetap
+ * dipakai agar tautan dalam/reload mendarat di panel yang sama.
  */
 export const ADMIN_TABS = [
   { id: "ringkasan", label: "Ringkasan" },

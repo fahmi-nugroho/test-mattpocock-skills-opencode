@@ -810,11 +810,11 @@ export function RequestsManager({
 
       <form
         onSubmit={onCreate}
-        className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
+        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-5"
       >
         <h3 className="text-sm font-bold">Buat link Format Booking</h3>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">
             Klien dan pengiriman
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -842,8 +842,8 @@ export function RequestsManager({
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">
             Jadwal opsional
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">

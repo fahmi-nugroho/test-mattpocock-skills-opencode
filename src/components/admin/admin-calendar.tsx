@@ -13,6 +13,8 @@ import {
   toMonthKey,
 } from "@/lib/calendar";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { BOOKING_STATUS_LABEL } from "@/lib/admin/booking-filter";
+import { formatDateId } from "@/lib/format";
 import {
   SCHEDULE_CHANGED_EVENT,
   notifyScheduleChanged,
@@ -145,94 +147,99 @@ export function AdminCalendar() {
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setMonthKey((m) => shiftMonth(m, -1))}
-          aria-label="Bulan sebelumnya"
-          className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
-        >
-          ‹
-        </button>
-        <p aria-live="polite" className="text-base font-bold">
-          {monthLabel}
-        </p>
-        <button
-          type="button"
-          onClick={() => setMonthKey((m) => shiftMonth(m, 1))}
-          aria-label="Bulan berikutnya"
-          className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
-        >
-          ›
-        </button>
-      </div>
-
-      <div
-        className="mt-3 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-neutral-500"
-        aria-hidden="true"
-      >
-        {WEEKDAY_HEADERS_ID.map((day) => (
-          <div key={day} className="py-1">
-            {day}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {cells.map((date, i) => {
-          if (date === null) return <div key={`blank-${i}`} />;
-          const status = statusByDate[date];
-          const past = isPastDate(date, todayKey);
-          const dayNum = Number(date.slice(8, 10));
-          const active = date === selected;
-          return (
-            <button
-              key={date}
-              type="button"
-              onClick={() => setSelected(date)}
-              aria-label={`${dayNum} ${monthLabel}: ${STATUS_META[status].label}`}
-              aria-pressed={active}
-              className={`flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium ${STATUS_META[status].cell}${past ? " opacity-60 saturate-50" : ""}${active ? " ring-2 ring-neutral-900" : ""}`}
-            >
-              <span>{dayNum}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-bold">
-            {selected} · {STATUS_META[statusByDate[selected] ?? "available"].label}
+    <div className="mt-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6">
+      <div className="max-w-xl xl:max-w-none">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setMonthKey((m) => shiftMonth(m, -1))}
+            aria-label="Bulan sebelumnya"
+            className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+          >
+            ‹
+          </button>
+          <p aria-live="polite" className="text-base font-bold">
+            {monthLabel}
           </p>
           <button
             type="button"
-            onClick={onToggleSelected}
-            disabled={toggling}
-            className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
+            onClick={() => setMonthKey((m) => shiftMonth(m, 1))}
+            aria-label="Bulan berikutnya"
+            className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
           >
-            {toggling
-              ? "Menyimpan…"
-              : selectedIsFull
-                ? "Hapus tanda penuh"
-                : "Tandai penuh"}
+            ›
           </button>
         </div>
+
+        <div
+          className="mt-3 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-neutral-500"
+          aria-hidden="true"
+        >
+          {WEEKDAY_HEADERS_ID.map((day) => (
+            <div key={day} className="py-1">
+              {day}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((date, i) => {
+            if (date === null) return <div key={`blank-${i}`} />;
+            const status = statusByDate[date];
+            const past = isPastDate(date, todayKey);
+            const dayNum = Number(date.slice(8, 10));
+            const active = date === selected;
+            return (
+              <button
+                key={date}
+                type="button"
+                onClick={() => setSelected(date)}
+                aria-label={`${dayNum} ${monthLabel}: ${STATUS_META[status].label}`}
+                aria-pressed={active}
+                className={`flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium ${STATUS_META[status].cell}${past ? " opacity-60 saturate-50" : ""}${active ? " ring-2 ring-neutral-900" : ""}`}
+              >
+                <span>{dayNum}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 max-w-xl rounded-xl border border-neutral-200 bg-white p-4 xl:mt-0">
+        <div>
+          <h3 className="text-sm font-bold">{formatDateId(selected)}</h3>
+          <p className="mt-0.5 text-xs text-neutral-600">
+            {STATUS_META[statusByDate[selected] ?? "available"].label}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleSelected}
+          disabled={toggling}
+          className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+        >
+          {toggling
+            ? "Menyimpan…"
+            : selectedIsFull
+              ? "Hapus tanda penuh"
+              : "Tandai penuh"}
+        </button>
         {toggleError ? (
           <p role="alert" className="mt-2 text-sm text-red-600">
             {toggleError}
           </p>
         ) : null}
         {selectedBookings.length === 0 && selectedBlocks.length === 0 ? (
-          <p className="mt-2 text-xs text-neutral-600">
+          <p className="mt-3 border-t border-neutral-200 pt-3 text-xs text-neutral-600">
             Belum ada booking/blokir pada tanggal ini.
           </p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
+          <ul className="mt-3 space-y-2 border-t border-neutral-200 pt-3">
             {selectedBookings.map((b) => (
               <li key={b.id} className="text-xs text-neutral-700">
-                Booking {b.start_time}–{b.end_time} · {b.client_name} ·{" "}
-                {b.status}
+                <span className="font-medium tabular-nums">
+                  {b.start_time}–{b.end_time}
+                </span>{" "}
+                · {b.client_name} · {BOOKING_STATUS_LABEL[b.status]}
               </li>
             ))}
             {selectedBlocks.map((b) => (

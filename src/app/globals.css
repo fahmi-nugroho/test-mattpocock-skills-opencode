@@ -29,3 +29,10 @@ html {
   /* Single-sourced from the CSS-first gold.soft token — no hex here. */
   background: var(--color-gold-soft);
 }
+
+/* Keyboard focus belongs to the palette rather than the browser default.
+   Components with their own focus-visible outline keep it (later rules). */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
