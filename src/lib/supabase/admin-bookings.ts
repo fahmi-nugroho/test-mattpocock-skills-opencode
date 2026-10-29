@@ -1,10 +1,37 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findBookingConflict } from "../admin/booking-conflicts";
 import type { ValidatedBookingInput } from "../admin/validate-booking";
-import type { Booking, BookingStatus, Database } from "./database";
+import type {
+  Booking,
+  BookingStatus,
+  Database,
+  GoogleCalendarOperation,
+} from "./database";
 import { deleteRowById, insertRow, updateRowById } from "./admin-crud";
+import { enqueueMirrorWork } from "./admin-mirror";
 
 type TypedClient = SupabaseClient<Database>;
+
+/**
+ * Leave one Calendar Mirror intent behind after a successful write. A queue
+ * failure must never turn a saved Booking into an error: the next drain or
+ * the daily reconcile repairs it, so the local save always wins.
+ */
+async function queueMirror(
+  client: TypedClient,
+  bookingId: string,
+  operation: GoogleCalendarOperation,
+): Promise<void> {
+  try {
+    await enqueueMirrorWork(client, bookingId, operation);
+  } catch {
+    // Deliberately swallowed; Google never blocks a Booking write.
+  }
+}
+
+function mirrorOperation(status: BookingStatus): GoogleCalendarOperation {
+  return status === "confirmed" ? "upsert" : "delete";
+}
 
 export type BookingInsert = ValidatedBookingInput;
 export type BookingPatch = Partial<ValidatedBookingInput>;
@@ -168,7 +195,18 @@ export async function createBooking(
   ]);
   const conflict = findBookingConflict(input, bookings, blocks, fullDates);
   if (conflict) throw new Error(conflict);
-  return insertRow<Booking>(client, "bookings", input, "Failed to create booking");
+  const row = await insertRow<Booking>(
+    client,
+    "bookings",
+    input,
+    "Failed to create booking",
+  );
+  await queueMirror(
+    client,
+    row.id,
+    mirrorOperation(row.status ?? input.status),
+  );
+  return row;
 }
 
 /**
@@ -190,13 +228,19 @@ export async function updateBooking(
   ]);
   const conflict = findBookingConflict(merged, bookings, blocks, fullDates);
   if (conflict) throw new Error(conflict);
-  return updateRowById<Booking>(
+  const row = await updateRowById<Booking>(
     client,
     "bookings",
     id,
     patch,
     "Failed to update booking",
   );
+  await queueMirror(
+    client,
+    id,
+    mirrorOperation(row.status ?? merged.status),
+  );
+  return row;
 }
 
 /**
@@ -225,13 +269,15 @@ export async function setBookingStatus(
     );
     if (conflict) throw new Error(conflict);
   }
-  return updateRowById<Booking>(
+  const row = await updateRowById<Booking>(
     client,
     "bookings",
     id,
     { status },
     "Failed to update booking status",
   );
+  await queueMirror(client, id, mirrorOperation(row.status ?? status));
+  return row;
 }
 
 /**
@@ -244,4 +290,8 @@ export async function deleteBooking(
   id: string,
 ): Promise<void> {
   await deleteRowById(client, "bookings", id, "Failed to delete booking");
+  // The queue row deliberately has no foreign key to the Booking, so this
+  // intent survives the row that just disappeared and can still delete the
+  // Google event.
+  await queueMirror(client, id, "delete");
 }
