@@ -270,7 +270,9 @@ export function AvailabilityCalendar({
   }
 
   return (
-    <div>
+    // Capped width: a full-width 7-column month at desktop sizes made
+    // ~100px day cells. Phones are narrower than the cap, so unchanged.
+    <div className="max-w-md">
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -415,7 +417,7 @@ export function AvailabilityCalendar({
             aria-modal="true"
             aria-label={`Jadwal ${formatDayId(selectedDate)}`}
             aria-live="polite"
-            className="relative max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-stone-200 bg-white p-4 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-stone-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:pb-4"
           >
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-bold">
@@ -540,7 +542,7 @@ export function AvailabilityCalendar({
                       ) : (
                         <span
                           aria-disabled="true"
-                          className="inline-block cursor-not-allowed rounded-full bg-stone-300 px-6 py-2.5 text-sm font-semibold text-stone-500"
+                          className="inline-block cursor-not-allowed rounded-full bg-stone-200 px-6 py-2.5 text-sm font-semibold text-stone-600"
                         >
                           Tanya jam ini via WhatsApp
                         </span>

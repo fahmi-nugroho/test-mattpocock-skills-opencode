@@ -25,6 +25,12 @@ html {
   scroll-behavior: smooth;
 }
 
+/* While a dialog is open its own CTAs own the action, and the floating
+   button must not sit on top of them (mobile popup / lightbox). */
+body:has([aria-modal="true"]) .wa-float {
+  display: none;
+}
+
 ::selection {
   /* Single-sourced from the CSS-first gold.soft token — no hex here. */
   background: var(--color-gold-soft);
