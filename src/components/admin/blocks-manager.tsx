@@ -276,7 +276,7 @@ export function BlocksManager() {
             type="checkbox"
             checked={allDay}
             onChange={(e) => setAllDay(e.target.checked)}
-            className="h-4 w-4"
+            className="h-4 w-4 accent-espresso"
           />
           <span className="text-sm font-medium">Sehari penuh</span>
         </label>
@@ -377,7 +377,7 @@ export function BlocksManager() {
                     type="checkbox"
                     checked={editAllDay}
                     onChange={(e) => setEditAllDay(e.target.checked)}
-                    className="h-4 w-4"
+                    className="h-4 w-4 accent-espresso"
                   />
                   <span className="text-sm">Sehari penuh</span>
                 </label>

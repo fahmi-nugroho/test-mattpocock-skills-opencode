@@ -106,13 +106,16 @@ export function PortfolioGrid({
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Kategori portfolio">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Kategori portfolio"
+      >
         {categories.map((category) => (
           <button
             key={category}
             type="button"
-            role="tab"
-            aria-selected={category === active}
+            aria-pressed={category === active}
             onClick={() => {
               setActive(category);
               setSelectedIndex(null);
@@ -158,7 +161,7 @@ export function PortfolioGrid({
                     loading="lazy"
                   />
                 </div>
-                <p className="truncate px-3 py-2 text-sm font-medium">
+                <p className="line-clamp-2 px-3 py-2 text-sm font-medium">
                   {item.title}
                 </p>
               </button>
@@ -177,7 +180,7 @@ export function PortfolioGrid({
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
           >
             <div className="relative aspect-[3/4] max-h-[60vh] w-full bg-stone-100">
               <Image
@@ -205,27 +208,30 @@ export function PortfolioGrid({
               <h3 className="mt-1 font-display text-xl font-bold text-stone-900">
                 {selectedItem.title}
               </h3>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  aria-label="Lihat gaya sebelumnya"
-                  className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100"
-                >
-                  ← Prev
-                </button>
-                <p className="text-xs text-stone-500" aria-live="polite">
-                  {selectedIndex !== null ? selectedIndex + 1 : 0} / {visible.length}
-                </p>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  aria-label="Lihat gaya berikutnya"
-                  className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100"
-                >
-                  Next →
-                </button>
-              </div>
+              {visible.length > 1 ? (
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    aria-label="Lihat gaya sebelumnya"
+                    className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100"
+                  >
+                    ← Prev
+                  </button>
+                  <p className="text-xs text-stone-500" aria-live="polite">
+                    {selectedIndex !== null ? selectedIndex + 1 : 0} /{" "}
+                    {visible.length}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    aria-label="Lihat gaya berikutnya"
+                    className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-100"
+                  >
+                    Next →
+                  </button>
+                </div>
+              ) : null}
               <a
                 href={buildStyleWaLink(
                   waNumber,
@@ -235,7 +241,7 @@ export function PortfolioGrid({
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`Tanya gaya ${selectedItem.title} via WhatsApp`}
-                className="mt-4 block rounded-full bg-green-600 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-green-700"
+                className="mt-4 block rounded-full bg-green-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-green-800"
               >
                 Tanya gaya ini via WA
               </a>

@@ -25,7 +25,20 @@ html {
   scroll-behavior: smooth;
 }
 
+/* While a dialog is open its own CTAs own the action, and the floating
+   button must not sit on top of them (mobile popup / lightbox). */
+body:has([aria-modal="true"]) .wa-float {
+  display: none;
+}
+
 ::selection {
   /* Single-sourced from the CSS-first gold.soft token — no hex here. */
   background: var(--color-gold-soft);
+}
+
+/* Keyboard focus belongs to the palette rather than the browser default.
+   Components with their own focus-visible outline keep it (later rules). */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }

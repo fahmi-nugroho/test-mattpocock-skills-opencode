@@ -3,6 +3,7 @@ import { PortfolioGrid } from "@/components/portfolio-grid";
 import { PriceList } from "@/components/price-list";
 import { HeroTrust } from "@/components/hero-trust";
 import { WaFloat } from "@/components/wa-float";
+import { BUSINESS_NAME } from "@/lib/brand";
 import type {
   PortfolioItem,
   ProfileStatRow,
@@ -140,6 +141,16 @@ export default async function Home() {
         </p>
         <AvailabilityCalendar waNumber={waNumber} />
       </section>
+
+      <footer className="mt-10 border-t border-stone-200/80 py-8 text-center">
+        <p className="font-display text-lg font-bold">{BUSINESS_NAME}</p>
+        <p className="mt-1 text-sm text-stone-600">
+          Pemesanan dan konsultasi langsung via WhatsApp.
+        </p>
+        <p className="mt-4 text-xs text-stone-500">
+          © {new Date().getFullYear()} {BUSINESS_NAME}
+        </p>
+      </footer>
 
       <WaFloat waNumber={waNumber} />
     </main>

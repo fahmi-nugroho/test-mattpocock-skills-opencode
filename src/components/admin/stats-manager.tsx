@@ -229,7 +229,7 @@ export function StatsManager() {
               type="checkbox"
               checked={visible}
               onChange={(e) => setVisible(e.target.checked)}
-              className="h-4 w-4"
+              className="h-4 w-4 accent-espresso"
             />
             <span className="text-sm font-medium">Tampilkan di landing</span>
           </label>

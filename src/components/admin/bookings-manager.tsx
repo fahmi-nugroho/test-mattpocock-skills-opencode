@@ -887,7 +887,7 @@ export function BookingsManager() {
                       onChange={() =>
                         setEditFields((f) => ({ ...f, hairdo: value }))
                       }
-                      className="h-4 w-4 accent-neutral-900"
+                      className="h-4 w-4 accent-espresso"
                     />
                     {STYLE_COPY[value].label}
                   </label>
@@ -1118,11 +1118,11 @@ export function BookingsManager() {
 
       <form
         onSubmit={onCreate}
-        className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
+        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-5"
       >
         <h3 className="text-sm font-bold">Tambah booking</h3>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">Jadwal</legend>
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">Jadwal</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium">Tanggal</span>
@@ -1170,8 +1170,8 @@ export function BookingsManager() {
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">Klien</legend>
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">Klien</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium">Nama klien</span>
@@ -1197,8 +1197,8 @@ export function BookingsManager() {
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">
             Layanan dan detail acara
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1276,7 +1276,7 @@ export function BookingsManager() {
                           setHairdo(value);
                           setLegacyPrefillHairdo("");
                         }}
-                        className="h-4 w-4 accent-neutral-900"
+                        className="h-4 w-4 accent-espresso"
                       />
                       <span className="text-sm font-medium">{option.label}</span>
                     </label>
@@ -1304,8 +1304,8 @@ export function BookingsManager() {
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 rounded-lg border border-neutral-200 p-3 sm:p-4">
-          <legend className="px-1 text-sm font-semibold">
+        <fieldset className="min-w-0 space-y-3">
+          <legend className="text-sm font-semibold">
             Pembayaran dan catatan
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">

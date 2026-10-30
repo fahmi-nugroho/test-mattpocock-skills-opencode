@@ -341,7 +341,7 @@ export function ServicesManager() {
               type="checkbox"
               checked={active}
               onChange={(e) => setActive(e.target.checked)}
-              className="h-4 w-4"
+              className="h-4 w-4 accent-espresso"
             />
             <span className="text-sm font-medium">Aktif di landing</span>
           </label>

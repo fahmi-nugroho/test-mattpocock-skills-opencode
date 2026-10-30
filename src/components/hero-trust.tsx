@@ -58,7 +58,7 @@ export function HeroTrust({
       aria-label="Perkenalan"
       className="grid grid-cols-1 items-center gap-8 py-14 sm:py-20 lg:grid-cols-2 lg:gap-12"
     >
-      <div className="min-w-0 text-center lg:text-left">
+      <div className="flex min-w-0 flex-col text-center lg:text-left">
         <p className="text-sm font-medium uppercase tracking-widest text-gold">
           {BUSINESS_NAME}
         </p>
@@ -85,11 +85,17 @@ export function HeroTrust({
             </div>
           ))}
         </dl>
-        <ul aria-label="Testimoni klien" className="mt-6 space-y-3 text-left">
+        {/* Swipeable on phones so the hero CTAs stay above the fold;
+            a stacked list from sm up. order-last keeps the CTAs before
+            the proof on small screens. */}
+        <ul
+          aria-label="Testimoni klien"
+          className="order-last mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 text-left sm:order-none sm:block sm:space-y-3 sm:overflow-visible"
+        >
           {displayedTestimonials.map((t, i) => (
             <li
               key={t.id ?? `${t.name}-${i}`}
-              className="rounded-xl border border-stone-200/70 bg-white px-4 py-3 shadow-sm"
+              className="w-[85%] shrink-0 snap-start rounded-xl border border-stone-200/70 bg-white px-4 py-3 shadow-sm sm:w-auto"
             >
               <p className="text-sm text-stone-700">“{t.quote}”</p>
               <p className="mt-1 text-xs font-medium text-stone-500">
@@ -103,7 +109,7 @@ export function HeroTrust({
             href={buildGeneralWaLink(waNumber)}
             target="_blank"
             rel="noreferrer"
-            className="rounded-full bg-green-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
+            className="rounded-full bg-green-700 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-green-800"
           >
             Chat WhatsApp
           </a>
