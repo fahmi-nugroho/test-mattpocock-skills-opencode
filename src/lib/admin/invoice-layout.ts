@@ -257,8 +257,7 @@ export function layoutInvoice(
   rule(cursor, 1.5);
   cursor += 34;
   text("ITEM", LEFT, cursor, "left", label);
-  text("QTY", 590, cursor, "right", label);
-  text("PRICE", 710, cursor, "right", label);
+  text("ORANG", 590, cursor, "right", label);
   text("TOTAL", RIGHT, cursor, "right", label);
   cursor += 14;
   rule(cursor);
@@ -284,29 +283,59 @@ export function layoutInvoice(
     style("body", 14, { color: MUTED }),
   );
   const itemBottom = Math.max(cursor + 30, itemTop + 58);
-  text("1", 590, itemTop, "right", body);
-  text(invoiceAmount(invoice.subtotal), 710, itemTop, "right", body);
+  text(`${invoice.headcount} orang`, 590, itemTop, "right", body);
+  // The agreed total as saved, never price x Headcount.
   text(invoiceAmount(invoice.subtotal), RIGHT, itemTop, "right", bodyBold);
   rule(itemBottom);
 
   // Totals: every amount comes from the frozen snapshot.
   const position = paymentPosition(invoice.subtotal, invoice.dp_amount);
   y = itemBottom + 46;
-  text("SUBTOTAL", MONEY_LABEL_X, y, "left", label);
+  text("TOTAL", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.subtotal), RIGHT, y, "right", body);
   y += 30;
   text("DP", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.dp_amount), RIGHT, y, "right", body);
   y += 20;
   rule(y, 0.75, MONEY_LABEL_X, RIGHT);
-  y += 14;
-  text("PELUNASAN", MONEY_LABEL_X, y, "left", bodyBold);
-  text(invoiceAmount(position.remaining), RIGHT, y, "right", bodyBold);
-  y += 34;
-  text("Payment Status:", MONEY_LABEL_X, y, "left", bodyBold);
-  text(position.status, RIGHT, y, "right", bodyBold);
 
-  y += 26;
+  // The remaining balance is the focal point; its label and figure sit on
+  // separate lines so the larger figure can never collide with the label.
+  y += 34;
+  text(
+    "SISA PEMBAYARAN",
+    MONEY_LABEL_X,
+    y,
+    "left",
+    style("body", 18, { weight: 700, color: GOLD }),
+  );
+  y += 44;
+  text(
+    // An overpaid DP is Lunas, so it never shows as a negative balance.
+    invoiceAmount(Math.max(0, position.remaining)),
+    RIGHT,
+    y,
+    "right",
+    style("body", 34, { weight: 700, color: GOLD }),
+  );
+
+  // Badge: the derived Payment Status in capitals, right-aligned beneath.
+  y += 24;
+  const badgeStyle = style("body", 16, { weight: 700, color: PAPER });
+  const badgeText = position.status.toUpperCase();
+  const badgeWidth = measure(badgeText, badgeStyle) + 28;
+  ops.push({
+    kind: "fill",
+    x: RIGHT - badgeWidth,
+    y,
+    width: badgeWidth,
+    height: 30,
+    color: INK,
+  });
+  text(badgeText, RIGHT - 14, y + 21, "right", badgeStyle);
+  y += 30;
+
+  y += 28;
   const noteStyle = style("body", 12, { color: MUTED });
   const note = "The down payment is non-refundable.";
   const noteLines = wrap(note, noteStyle, RIGHT - 480, measure);

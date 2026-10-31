@@ -126,12 +126,11 @@ describe("invoice page and margins", () => {
     expect(amounts.length).toBeGreaterThan(0);
     for (const op of amounts) {
       expect(op.align).toBe("right");
-      expect([710, INVOICE_PAGE.width - INVOICE_PAGE.margin]).toContain(op.x);
+      expect(op.x).toBe(INVOICE_PAGE.width - INVOICE_PAGE.margin);
     }
-    expect(texts(ops).find((op) => op.text === "SUBTOTAL")).toMatchObject({
-      x: 500,
-      align: "left",
-    });
+    expect(
+      texts(ops).find((op) => op.text === "TOTAL" && op.x === 500),
+    ).toMatchObject({ align: "left" });
     expect(
       texts(ops).find(
         (op) => op.text === "Rp 1.000.000" && op.x === 828,
@@ -143,15 +142,15 @@ describe("invoice page and margins", () => {
     });
   });
 
-  it("keeps the item's qty, price and total columns apart", () => {
+  it("keeps the item's Headcount and total columns apart", () => {
     const ops = layout();
-    const qty = texts(ops).find((op) => op.text === "1");
-    const price = texts(ops).find((op) => op.text === "Rp 1.500.000");
-    const total = texts(ops).filter((op) => op.text === "Rp 1.500.000")[1];
-    expect(qty && price && total).toBeTruthy();
-    if (!qty || !price || !total) return;
-    expect(price.x - measure(price.text, price)).toBeGreaterThan(qty.x);
-    expect(total.x - measure(total.text, total)).toBeGreaterThan(price.x);
+    const headcount = texts(ops).find((op) => op.text === "2 orang");
+    const total = texts(ops).find(
+      (op) => op.text === "Rp 1.500.000" && op.y === headcount?.y,
+    );
+    expect(headcount && total).toBeTruthy();
+    if (!headcount || !total) return;
+    expect(total.x - measure(total.text, total)).toBeGreaterThan(headcount.x);
   });
 
   it("draws the header, then the identity, then the item, then money", () => {
@@ -164,9 +163,8 @@ describe("invoice page and margins", () => {
       "ITEM",
       INVOICE.service_name,
       INVOICE.event_type,
-      "SUBTOTAL",
-      "PELUNASAN",
-      "Payment Status:",
+      "SISA PEMBAYARAN",
+      "DP DITERIMA",
     ].map((value) => indexOfText(ops, value));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -205,28 +203,81 @@ describe("invoice line item and totals", () => {
     expect(service).toBeGreaterThanOrEqual(0);
     expect(event).toBeGreaterThan(service);
     expect(texts(ops)[event].y).toBeGreaterThan(texts(ops)[service].y);
-    expect(strings(ops)).toContain("1");
-    expect(strings(ops)).toContain("Rp 1.500.000");
   });
 
-  it("prints SUBTOTAL, DP, PELUNASAN and the stored Payment Status", () => {
-    const values = strings(layout());
-    expect(values.filter((value) => value === "Rp 1.500.000").length).toBe(3);
-    expect(values).toContain("Rp 500.000");
-    expect(values).toContain("Rp 1.000.000");
-    expect(values).toContain("SUBTOTAL");
+  it("shows the Headcount and one agreed total on the item row, no QTY or PRICE", () => {
+    const ops = layout();
+    const values = strings(ops);
+    const service = texts(ops).find((op) => op.text === "Makeup Wisuda");
+    const row = texts(ops).filter((op) => op.y === service?.y);
+    expect(row.map((op) => op.text)).toEqual([
+      "Makeup Wisuda",
+      "2 orang",
+      "Rp 1.500.000",
+    ]);
+    expect(values).not.toContain("QTY");
+    expect(values).not.toContain("PRICE");
+    expect(values).not.toContain("1");
+  });
+
+  it("prints the agreed total, never price x Headcount", () => {
+    const values = strings(layout({ ...INVOICE, headcount: 3 }));
+    expect(values).toContain("3 orang");
+    expect(values.filter((value) => value === "Rp 1.500.000").length).toBe(2);
+    expect(values).not.toContain("Rp 4.500.000");
+  });
+
+  it("prints the total, DP and a gold SISA PEMBAYARAN larger than the other money rows", () => {
+    const ops = layout();
+    const values = strings(ops);
     expect(values).toContain("DP");
-    expect(values).toContain("PELUNASAN");
-    expect(values).toContain("Payment Status:");
-    expect(values).toContain("DP diterima");
+    expect(values).toContain("Rp 500.000");
+    expect(values).not.toContain("SUBTOTAL");
+    expect(values).not.toContain("PELUNASAN");
+    const label = texts(ops).find((op) => op.text === "SISA PEMBAYARAN");
+    const amount = texts(ops).find((op) => op.text === "Rp 1.000.000");
+    const dp = texts(ops).find((op) => op.text === "DP");
+    expect(label && amount && dp).toBeTruthy();
+    if (!label || !amount || !dp) return;
+    for (const op of [label, amount]) {
+      expect(op.color).toBe("#8a5a2b");
+      expect(op.size).toBeGreaterThan(dp.size);
+    }
+    expect(amount.size).toBeGreaterThan(label.size);
   });
 
-  it("derives Lunas from the stored snapshot, never from the live Booking", () => {
+  it("badges a DP diterima Invoice as DP DITERIMA, beside a balance still owed", () => {
+    const ops = layout();
+    const values = strings(ops);
+    expect(values).toContain("DP DITERIMA");
+    expect(values).not.toContain("LUNAS");
+    expect(values).toContain("Rp 1.000.000");
+    const badge = texts(ops).find((op) => op.text === "DP DITERIMA");
+    const fill = ops.find(
+      (op) => op.kind === "fill" && op.y > 0 && op.height < 100,
+    );
+    expect(badge && fill?.kind === "fill").toBe(true);
+    if (!badge || fill?.kind !== "fill") return;
+    expect(badge.x).toBeLessThanOrEqual(fill.x + fill.width);
+    expect(badge.x - measure(badge.text, badge)).toBeGreaterThanOrEqual(fill.x);
+    expect(badge.y).toBeGreaterThan(fill.y);
+    expect(badge.y).toBeLessThanOrEqual(fill.y + fill.height);
+  });
+
+  it("badges a settled Invoice as LUNAS with nothing left to pay", () => {
     const settled = { ...INVOICE, dp_amount: INVOICE.subtotal };
     const values = strings(layout(settled));
-    expect(values).toContain("Lunas");
+    expect(values).toContain("LUNAS");
+    expect(values).not.toContain("DP DITERIMA");
     expect(values).toContain("Rp 0");
-    expect(values).not.toContain("DP diterima");
+  });
+
+  it("never prints a negative balance for an overpaid Invoice", () => {
+    const overpaid = { ...INVOICE, dp_amount: INVOICE.subtotal + 100_000 };
+    const values = strings(layout(overpaid));
+    expect(values).toContain("LUNAS");
+    expect(values).toContain("Rp 0");
+    expect(values.join(" ")).not.toMatch(/Rp -/);
   });
 
   it("prints the fixed non-refundable note", () => {
