@@ -13,7 +13,7 @@
  * never disappears.
  */
 
-import { formatDateEn, formatDateId, formatIDR } from "../format";
+import { formatDateId, formatDateIdLong, formatIDR } from "../format";
 import { normaliseInstagramHandle } from "../instagram";
 import { isStyle, STYLE_COPY } from "../style-reference";
 import type { Invoice } from "../supabase/database";
@@ -228,18 +228,18 @@ export function layoutInvoice(
   }
   doubleRule(contactY + 6);
 
-  // Identity block: number, both English dates and the client.
+  // Identity block: number, both Indonesian dates and the client.
   let y = contactY + 60;
   text("No:", LEFT, y, "left", label);
   text(invoice.number, VALUE_X, y, "left", bodyBold);
   y += 30;
-  text("Date:", LEFT, y, "left", label);
-  text(formatDateEn(invoice.issued_on), VALUE_X, y, "left", body);
+  text("Tanggal:", LEFT, y, "left", label);
+  text(formatDateIdLong(invoice.issued_on), VALUE_X, y, "left", body);
   y += 30;
-  text("Due Date:", LEFT, y, "left", label);
-  text(formatDateEn(invoice.due_on), VALUE_X, y, "left", body);
+  text("Jatuh Tempo:", LEFT, y, "left", label);
+  text(formatDateIdLong(invoice.due_on), VALUE_X, y, "left", body);
   y += 44;
-  text("To:", LEFT, y, "left", label);
+  text("Kepada:", LEFT, y, "left", label);
   const clientStyle = style("body", 18, { weight: 700 });
   let clientY = y;
   for (const line of wrap(
@@ -319,7 +319,7 @@ export function layoutInvoice(
   doubleRule(y + 18);
   y += 62;
   text(
-    "Payment Information",
+    "Informasi Pembayaran",
     LEFT,
     y,
     "left",
@@ -341,18 +341,18 @@ export function layoutInvoice(
 
   const paymentRows: Array<[string, string]> = [
     ["Bank:", business.bank.name],
-    ["Account Name:", business.bank.accountName],
-    ["Account Number:", business.bank.accountNumber],
+    ["Nama Rekening:", business.bank.accountName],
+    ["Nomor Rekening:", business.bank.accountNumber],
   ];
   for (const [name, value] of paymentRows) {
     valueRow(name, valueOrDash(value), body);
   }
 
-  // Format Order: Indonesian event date, English labels, saved values.
+  // Format Order: Indonesian event date and labels, saved values.
   doubleRule(y + 16);
   y += 60;
   text(
-    "Format Order",
+    "Detail Pesanan",
     LEFT,
     y,
     "left",
@@ -360,18 +360,18 @@ export function layoutInvoice(
   );
   y += 34;
 
-  valueRow("Event Date:", formatDateId(invoice.booking_date), body);
-  valueRow("Event Type:", valueOrDash(invoice.event_type), body);
-  valueRow("Headcount:", `${invoice.headcount} orang`, body);
-  valueRow("Hairdo:", hairdoValue(invoice.hairdo), body);
-  valueRow("Venue:", valueOrDash(invoice.venue), body);
-  valueRow("Client Phone:", valueOrDash(invoice.client_phone), body);
-  valueRow("Start Time:", valueOrDash(invoice.start_time), body);
-  valueRow("Finish Time:", valueOrDash(invoice.end_time), body);
+  valueRow("Tanggal Acara:", formatDateId(invoice.booking_date), body);
+  valueRow("Jenis Acara:", valueOrDash(invoice.event_type), body);
+  valueRow("Jumlah Orang:", `${invoice.headcount} orang`, body);
+  valueRow("Gaya:", hairdoValue(invoice.hairdo), body);
+  valueRow("Lokasi:", valueOrDash(invoice.venue), body);
+  valueRow("No. Telepon:", valueOrDash(invoice.client_phone), body);
+  valueRow("Jam Mulai:", valueOrDash(invoice.start_time), body);
+  valueRow("Jam Selesai:", valueOrDash(invoice.end_time), body);
 
   // The script footer closes the page, below the block above it.
   text(
-    "Thank You",
+    "Terima kasih",
     INVOICE_PAGE.width / 2,
     Math.max(1512, y + 80),
     "center",

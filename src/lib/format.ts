@@ -19,10 +19,10 @@ export function formatDateId(dateStr: string): string {
   }).format(date);
 }
 
-/** Format a "YYYY-MM-DD" date in English months, e.g. "20 October 2026". */
-export function formatDateEn(dateStr: string): string {
+/** Format a "YYYY-MM-DD" date in id-ID without weekday, e.g. "21 Oktober 2026". */
+export function formatDateIdLong(dateStr: string): string {
   const date = new Date(`${dateStr}T00:00:00`);
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat("id-ID", {
     day: "numeric",
     month: "long",
     year: "numeric",

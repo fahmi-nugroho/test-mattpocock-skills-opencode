@@ -7,7 +7,7 @@ import {
   type InvoiceTextOp,
 } from "../admin/invoice-layout";
 import { invoiceBusiness, type InvoiceBusiness } from "../admin/invoice";
-import { formatDateEn } from "../format";
+import { formatDateIdLong } from "../format";
 import type { Invoice } from "../supabase/database";
 
 // Seam 1 (pure): the saved Invoice snapshot plus the business details become
@@ -182,17 +182,18 @@ describe("invoice header and identity", () => {
     expect(values).toContain("INVOICE");
   });
 
-  it("prints the invoice number, English issue/due dates and the client", () => {
+  it("prints the invoice number, Indonesian issue/due dates and the client", () => {
     const values = strings(layout());
     expect(values).toContain("No:");
     expect(values).toContain("invc-07/2026");
-    expect(values).toContain("Date:");
-    expect(values).toContain("20 October 2026");
-    expect(values).toContain("Due Date:");
+    expect(values).toContain("Tanggal:");
+    expect(values).toContain("20 Oktober 2026");
+    expect(values).toContain("Jatuh Tempo:");
     expect(values).toContain("14 November 2026");
-    expect(values).toContain("To:");
+    expect(values).toContain("Kepada:");
     expect(values).toContain("Sari Dewi");
-    expect(values.join(" ")).not.toMatch(/Oktober/);
+    expect(values).not.toContain("Selasa, 20 Oktober 2026");
+    expect(values.join(" ")).not.toMatch(/October/);
   });
 });
 
@@ -247,12 +248,12 @@ describe("invoice line item and totals", () => {
 describe("invoice payment block", () => {
   it("prints bank name, account name and account number", () => {
     const values = strings(layout());
-    expect(values).toContain("Payment Information");
+    expect(values).toContain("Informasi Pembayaran");
     expect(values).toContain("Bank:");
     expect(values).toContain("BCA");
-    expect(values).toContain("Account Name:");
+    expect(values).toContain("Nama Rekening:");
     expect(values).toContain("Wandana");
-    expect(values).toContain("Account Number:");
+    expect(values).toContain("Nomor Rekening:");
     expect(values).toContain("1234567890");
   });
 
@@ -264,10 +265,10 @@ describe("invoice payment block", () => {
     };
     const values = strings(layout(INVOICE, empty));
     expect(values).toContain("Instagram —");
-    expect(values).toContain("Payment Information");
+    expect(values).toContain("Informasi Pembayaran");
     expect(values).toContain("Bank:");
-    expect(values).toContain("Account Name:");
-    expect(values).toContain("Account Number:");
+    expect(values).toContain("Nama Rekening:");
+    expect(values).toContain("Nomor Rekening:");
     expect(values.filter((value) => value === "—").length).toBeGreaterThanOrEqual(3);
   });
 });
@@ -275,24 +276,48 @@ describe("invoice payment block", () => {
 describe("invoice Format Order block", () => {
   it("prints the Indonesian event date and every booking detail", () => {
     const values = strings(layout());
-    expect(values).toContain("Format Order");
-    expect(values).toContain("Event Date:");
+    expect(values).toContain("Detail Pesanan");
+    expect(values).toContain("Tanggal Acara:");
     expect(values).toContain("Sabtu, 14 November 2026");
-    expect(values).toContain("Event Type:");
+    expect(values).toContain("Jenis Acara:");
     expect(values).toContain("Wisuda");
-    expect(values).toContain("Headcount:");
+    expect(values).toContain("Jumlah Orang:");
     expect(values).toContain("2 orang");
-    expect(values).toContain("Hairdo:");
+    expect(values).toContain("Gaya:");
     expect(values).toContain("Hijabdo");
-    expect(values).toContain("Venue:");
+    expect(values).toContain("Lokasi:");
     expect(values).toContain("Gedung Serbaguna");
-    expect(values).toContain("Client Phone:");
+    expect(values).toContain("No. Telepon:");
     expect(values).toContain("081234567890");
-    expect(values).toContain("Start Time:");
+    expect(values).toContain("Jam Mulai:");
     expect(values).toContain("08:00");
-    expect(values).toContain("Finish Time:");
+    expect(values).toContain("Jam Selesai:");
     expect(values).toContain("12:00");
     expect(values).not.toContain("hijabdo");
+  });
+
+  it("prints no English label anywhere on the picture", () => {
+    const values = strings(layout());
+    for (const english of [
+      "Date:",
+      "Due Date:",
+      "To:",
+      "Event Date:",
+      "Event Type:",
+      "Headcount:",
+      "Hairdo:",
+      "Venue:",
+      "Client Phone:",
+      "Start Time:",
+      "Finish Time:",
+      "Account Name:",
+      "Account Number:",
+      "Payment Information",
+      "Format Order",
+      "Thank You",
+    ]) {
+      expect(values).not.toContain(english);
+    }
   });
 });
 
@@ -304,7 +329,7 @@ describe("invoice wrapping and footer", () => {
     const values = strings(wrapped).join(" ").replace(/\s+/g, " ");
     expect(values).toContain(venue);
     const venueOps = texts(wrapped).filter(
-      (op) => op.text !== "Venue:" && venue.includes(op.text) && op.x > 200,
+      (op) => op.text !== "Lokasi:" && venue.includes(op.text) && op.x > 200,
     );
     expect(venueOps.length).toBeGreaterThan(1);
     const right = INVOICE_PAGE.width - INVOICE_PAGE.margin;
@@ -334,17 +359,17 @@ describe("invoice wrapping and footer", () => {
     expectInsideMargins(wrapped);
   });
 
-  it("ends with the script Thank You, centred above the bottom margin", () => {
+  it("ends with the script Terima kasih, centred above the bottom margin", () => {
     const ops = layout();
     const last = texts(ops).at(-1);
-    expect(last?.text).toBe("Thank You");
+    expect(last?.text).toBe("Terima kasih");
     expect(last).toMatchObject({ font: "script", x: 450, align: "center" });
     expect(last?.y).toBeLessThan(1600);
   });
 
-  it("formats an English invoice date", () => {
-    expect(formatDateEn("2026-10-20")).toBe("20 October 2026");
-    expect(formatDateEn("2027-01-01")).toBe("1 January 2027");
+  it("formats an Indonesian long date without a weekday", () => {
+    expect(formatDateIdLong("2026-10-21")).toBe("21 Oktober 2026");
+    expect(formatDateIdLong("2027-01-01")).toBe("1 Januari 2027");
   });
 });
 
