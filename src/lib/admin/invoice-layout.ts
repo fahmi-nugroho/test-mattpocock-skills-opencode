@@ -28,7 +28,7 @@ export const INVOICE_PAGE = {
 const LEFT = INVOICE_PAGE.margin;
 const RIGHT = INVOICE_PAGE.width - INVOICE_PAGE.margin;
 const CONTENT_WIDTH = RIGHT - LEFT;
-const VALUE_X = 220;
+const VALUE_X = 240;
 const MONEY_LABEL_X = 500;
 const EM_DASH = "—";
 
@@ -188,9 +188,9 @@ export function layoutInvoice(
     rule(y + 8, 0.75);
   }
 
-  const body = style("body", 15);
-  const bodyBold = style("body", 15, { weight: 700 });
-  const label = style("body", 13, { color: MUTED });
+  const body = style("body", 16);
+  const bodyBold = style("body", 16, { weight: 700 });
+  const label = style("body", 16, { color: MUTED });
 
   // Header: the wordmark and title, then the two public contact lines. Both
   // sides wrap, so a long name or handle never crosses the page edge.
@@ -280,7 +280,7 @@ export function layoutInvoice(
     LEFT,
     cursor + 2,
     "left",
-    style("body", 14, { color: MUTED }),
+    style("body", 16, { color: MUTED }),
   );
   const itemBottom = Math.max(cursor + 30, itemTop + 58);
   text(`${invoice.headcount} orang`, 590, itemTop, "right", body);
@@ -342,7 +342,7 @@ export function layoutInvoice(
     let lineY = y;
     for (const line of lines) {
       text(line, VALUE_X, lineY, "left", valueStyle);
-      lineY += 22;
+      lineY += 24;
     }
     y = Math.max(y + 30, lineY + 6);
   }
@@ -357,7 +357,7 @@ export function layoutInvoice(
     y += 34;
   } else {
     y += 28;
-    const noteStyle = style("body", 12, { color: MUTED });
+    const noteStyle = style("body", 16, { color: MUTED });
     const noteLines = wrap(
       "DP tidak dapat dikembalikan.",
       noteStyle,
@@ -366,7 +366,7 @@ export function layoutInvoice(
     );
     for (const line of noteLines) {
       text(line, RIGHT, y, "right", noteStyle);
-      y += 18;
+      y += 22;
     }
 
     // Payment Information: empty values print an em dash, so a missing

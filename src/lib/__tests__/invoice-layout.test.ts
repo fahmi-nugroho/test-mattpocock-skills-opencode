@@ -40,6 +40,8 @@ const INVOICE: Invoice = {
   dp_amount: 500_000,
 };
 
+const SETTLED: Invoice = { ...INVOICE, dp_amount: INVOICE.subtotal };
+
 const BUSINESS: InvoiceBusiness = {
   name: "Wandana Makeup",
   whatsapp: "6281234567890",
@@ -171,6 +173,85 @@ describe("invoice page and margins", () => {
   });
 });
 
+/** Horizontal extent of a text op, from its alignment and the injected measure. */
+function extent(op: InvoiceTextOp): [number, number] {
+  const width = measure(op.text, op);
+  if (op.align === "left") return [op.x, op.x + width];
+  if (op.align === "right") return [op.x - width, op.x];
+  return [op.x - width / 2, op.x + width / 2];
+}
+
+/** Marks that share horizontal space share a row, or sit a line apart. */
+function expectNoOverlap(ops: InvoiceDrawOp[]): void {
+  const all = texts(ops);
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const [a0, a1] = extent(all[i]);
+      const [b0, b1] = extent(all[j]);
+      if (a1 <= b0 || b1 <= a0) continue;
+      const gap = Math.abs(all[i].y - all[j].y);
+      const clearance = 0.75 * Math.max(all[i].size, all[j].size);
+      expect(
+        gap,
+        `"${all[i].text}" and "${all[j].text}" overlap`,
+      ).toBeGreaterThanOrEqual(clearance);
+    }
+  }
+}
+
+describe("invoice legibility", () => {
+  const LONG: Invoice = {
+    ...INVOICE,
+    client_name: "Sari Dewi Kusumawardhani Putri dari Keluarga Besar Soedirman",
+    venue: "Gedung Serbaguna Utama Lantai Dua Ruang Anggrek dekat Pintu Timur",
+  };
+  const states: Array<[string, Invoice]> = [
+    ["DP diterima", INVOICE],
+    ["Lunas", SETTLED],
+    ["long values", LONG],
+  ];
+
+  it.each(states)("draws no text under 16 px (%s)", (_name, invoice) => {
+    for (const op of texts(layout(invoice))) {
+      expect(op.size, `"${op.text}"`).toBeGreaterThanOrEqual(16);
+    }
+  });
+
+  it.each(states)("keeps rows apart and inside the margins (%s)", (_name, invoice) => {
+    const ops = layout(invoice);
+    expectNoOverlap(ops);
+    expectInsideMargins(ops);
+  });
+
+  it("keeps the focal balance larger than every other money row", () => {
+    const ops = layout();
+    const focal = texts(ops).find((op) => op.text === "Rp 1.000.000");
+    const rows = texts(ops).filter(
+      (op) =>
+        (op.x === 500 && ["TOTAL", "DP"].includes(op.text)) ||
+        (op.x === 828 && ["Rp 500.000", "Rp 1.500.000"].includes(op.text)),
+    );
+    // TOTAL and DP labels, the DP amount, and the agreed total in the money block.
+    expect(focal).toBeTruthy();
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    for (const op of rows) expect(focal!.size).toBeGreaterThan(op.size);
+  });
+
+  it("orders the sections top to bottom for both states", () => {
+    for (const invoice of [INVOICE, SETTLED]) {
+      const ops = layout(invoice);
+      const order = [
+        "No:",
+        "ITEM",
+        "SISA PEMBAYARAN",
+        "Detail Pesanan",
+        "Terima kasih",
+      ].map((value) => texts(ops).find((op) => op.text === value)!.y);
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+    }
+  });
+});
+
 describe("invoice header and identity", () => {
   it("prints the business name, WhatsApp number and Instagram handle", () => {
     const values = strings(layout());
@@ -289,8 +370,6 @@ describe("invoice line item and totals", () => {
     }
   });
 });
-
-const SETTLED: Invoice = { ...INVOICE, dp_amount: INVOICE.subtotal };
 
 describe("invoice payment section while DP diterima", () => {
   it("prints the settle-before prompt with the Indonesian due date", () => {
