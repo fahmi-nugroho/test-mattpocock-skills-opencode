@@ -4,10 +4,10 @@
 
 **Blocked by:** 04 (16 px text floor).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A short Invoice reports a 900×1600 page; the page width stays 900.
-- [ ] An Invoice with long wrapped content reports a taller page, every mark lies inside it, and the thank-you is below all other content.
-- [ ] The preview, download and share still use the exact same picture, drawn at the reported size.
-- [ ] The layout tests replace the pinned `{900, 1600, 72}` assertion with minimum-height and growth assertions through the existing layout seam.
-- [ ] Marks stay inside the margins at the reported size, and the sharing, numbering and schema tests stay green.
+- [x] A short Invoice reports a 900×1600 page; the page width stays 900.
+- [x] An Invoice with long wrapped content reports a taller page, every mark lies inside it, and the thank-you is below all other content.
+- [x] The preview, download and share still use the exact same picture, drawn at the reported size.
+- [x] The layout tests replace the pinned `{900, 1600, 72}` assertion with minimum-height and growth assertions through the existing layout seam.
+- [x] Marks stay inside the margins at the reported size, and the sharing, numbering and schema tests stay green.

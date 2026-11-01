@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 (Item row and money block).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `DP diterima`: bank block, due-date prompt with the correct Indonesian date, and the non-refundable note are all present.
-- [ ] `DP diterima` with empty bank settings: the block remains, each empty value is an em dash.
-- [ ] `Lunas`: no bank block, no due-date prompt, no refund note, and a payment-complete confirmation is present.
-- [ ] Layout tests cover both states through the existing layout seam, replacing the always-print-bank assertion.
-- [ ] The earlier invoice spec is left unchanged; this ticket narrows its stories 5 and 6.
+- [x] `DP diterima`: bank block, due-date prompt with the correct Indonesian date, and the non-refundable note are all present.
+- [x] `DP diterima` with empty bank settings: the block remains, each empty value is an em dash.
+- [x] `Lunas`: no bank block, no due-date prompt, no refund note, and a payment-complete confirmation is present.
+- [x] Layout tests cover both states through the existing layout seam, replacing the always-print-bank assertion.
+- [x] The earlier invoice spec is left unchanged; this ticket narrows its stories 5 and 6.

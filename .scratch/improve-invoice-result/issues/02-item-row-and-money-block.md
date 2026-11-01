@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 (Indonesian labels and dates).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The item row prints the Headcount and exactly one total, and no quantity or unit-price column.
-- [ ] The printed total is the agreed total on the snapshot, not price × Headcount.
-- [ ] `SISA PEMBAYARAN` is drawn larger than the other money rows and in the gold colour.
-- [ ] The badge text always agrees with the remaining balance (`LUNAS` only when the DP is at least the agreed total) and the Payment Status derivation itself is unchanged.
-- [ ] Layout tests cover the item row, the focal balance and the badge for both `Lunas` and `DP diterima` snapshots.
+- [x] The item row prints the Headcount and exactly one total, and no quantity or unit-price column.
+- [x] The printed total is the agreed total on the snapshot, not price × Headcount.
+- [x] `SISA PEMBAYARAN` is drawn larger than the other money rows and in the gold colour.
+- [x] The badge text always agrees with the remaining balance (`LUNAS` only when the DP is at least the agreed total) and the Payment Status derivation itself is unchanged.
+- [x] Layout tests cover the item row, the focal balance and the badge for both `Lunas` and `DP diterima` snapshots.

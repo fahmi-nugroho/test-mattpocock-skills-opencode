@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] No English label or heading remains on the picture (identity block, Payment Information, Format Order, thank-you).
-- [ ] Issue and due dates print in Indonesian long form without weekday; the Event Date still prints with its weekday.
-- [ ] Style still prints through the existing `Hijabdo` / `Hairdo` mapping, and the printed label for Style is decided between `Gaya Rambut` and the shorter `Gaya` (the glossary lists "hairstyle" as a term to avoid).
-- [ ] The pure layout tests assert the Indonesian labels and dates through the existing layout seam; the English-label assertions are replaced.
-- [ ] Sharing, numbering, schema and share-message tests stay green.
+- [x] No English label or heading remains on the picture (identity block, Payment Information, Format Order, thank-you).
+- [x] Issue and due dates print in Indonesian long form without weekday; the Event Date still prints with its weekday.
+- [x] Style still prints through the existing `Hijabdo` / `Hairdo` mapping, and the printed label for Style is decided between `Gaya Rambut` and the shorter `Gaya` (the glossary lists "hairstyle" as a term to avoid).
+- [x] The pure layout tests assert the Indonesian labels and dates through the existing layout seam; the English-label assertions are replaced.
+- [x] Sharing, numbering, schema and share-message tests stay green.

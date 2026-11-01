@@ -4,9 +4,9 @@
 
 **Blocked by:** 03 (Payment section follows Payment Status).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Every text operation in the draw list has a size of at least 16.
-- [ ] Re-flowed content still stays inside the page margins (including the long-name, long-venue and em-dash cases), with no overlapping rows in both Payment Status states.
-- [ ] The focal `SISA PEMBAYARAN` figure is still drawn larger than the other money rows.
-- [ ] Layout tests assert the size floor and the margin and ordering invariants through the existing layout seam.
+- [x] Every text operation in the draw list has a size of at least 16.
+- [x] Re-flowed content still stays inside the page margins (including the long-name, long-venue and em-dash cases), with no overlapping rows in both Payment Status states.
+- [x] The focal `SISA PEMBAYARAN` figure is still drawn larger than the other money rows.
+- [x] Layout tests assert the size floor and the margin and ordering invariants through the existing layout seam.
