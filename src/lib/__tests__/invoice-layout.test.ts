@@ -280,12 +280,6 @@ describe("invoice line item and totals", () => {
     expect(values.join(" ")).not.toMatch(/Rp -/);
   });
 
-  it("prints the fixed non-refundable note", () => {
-    expect(strings(layout())).toContain(
-      "The down payment is non-refundable.",
-    );
-  });
-
   it("uses one Rp 200.000 shape for every amount", () => {
     const amounts = strings(layout()).filter((value) => value.includes("Rp"));
     expect(amounts.length).toBeGreaterThan(0);
@@ -293,6 +287,66 @@ describe("invoice line item and totals", () => {
       expect(amount).toMatch(/^Rp \d{1,3}(\.\d{3})*$/);
       expect(amount).not.toContain("\u00a0");
     }
+  });
+});
+
+const SETTLED: Invoice = { ...INVOICE, dp_amount: INVOICE.subtotal };
+
+describe("invoice payment section while DP diterima", () => {
+  it("prints the settle-before prompt with the Indonesian due date", () => {
+    const values = strings(layout());
+    expect(values).toContain("Mohon lunasi sebelum 14 November 2026");
+  });
+
+  it("prints the Indonesian non-refundable note, not the English one", () => {
+    const values = strings(layout());
+    expect(values).toContain("DP tidak dapat dikembalikan.");
+    expect(values).not.toContain("The down payment is non-refundable.");
+  });
+
+  it("prints no payment-complete confirmation", () => {
+    expect(strings(layout())).not.toContain("Pembayaran telah lunas.");
+  });
+});
+
+describe("invoice payment section once Lunas", () => {
+  it("drops the bank block, the prompt and the refund note", () => {
+    const values = strings(layout(SETTLED));
+    for (const gone of [
+      "Informasi Pembayaran",
+      "Bank:",
+      "BCA",
+      "Nama Rekening:",
+      "Wandana",
+      "Nomor Rekening:",
+      "1234567890",
+      "DP tidak dapat dikembalikan.",
+    ]) {
+      expect(values).not.toContain(gone);
+    }
+    expect(values.join(" | ")).not.toContain("Mohon lunasi");
+  });
+
+  it("confirms payment is complete instead", () => {
+    expect(strings(layout(SETTLED))).toContain("Pembayaran telah lunas.");
+  });
+
+  it("stays quiet about empty bank settings, since no bank block prints", () => {
+    const empty: InvoiceBusiness = {
+      ...BUSINESS,
+      bank: { name: "", accountName: "", accountNumber: "" },
+    };
+    const values = strings(layout(SETTLED, empty));
+    expect(values).not.toContain("Bank:");
+    expect(values).toContain("Pembayaran telah lunas.");
+  });
+
+  it("keeps the order details after the confirmation", () => {
+    const ops = layout(SETTLED);
+    expect(indexOfText(ops, "Detail Pesanan")).toBeGreaterThan(
+      indexOfText(ops, "Pembayaran telah lunas."),
+    );
+    expectInsideMargins(ops);
   });
 });
 

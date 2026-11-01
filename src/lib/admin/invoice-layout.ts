@@ -335,27 +335,6 @@ export function layoutInvoice(
   text(badgeText, RIGHT - 14, y + 21, "right", badgeStyle);
   y += 30;
 
-  y += 28;
-  const noteStyle = style("body", 12, { color: MUTED });
-  const note = "The down payment is non-refundable.";
-  const noteLines = wrap(note, noteStyle, RIGHT - 480, measure);
-  for (const line of noteLines) {
-    text(line, RIGHT, y, "right", noteStyle);
-    y += 18;
-  }
-
-  // Payment Information: never hidden, empty values print an em dash.
-  doubleRule(y + 18);
-  y += 62;
-  text(
-    "Informasi Pembayaran",
-    LEFT,
-    y,
-    "left",
-    style("body", 18, { weight: 700 }),
-  );
-  y += 34;
-
   /** One label/value row; the value wraps at the page's right margin. */
   function valueRow(name: string, value: string, valueStyle: InvoiceTextStyle) {
     text(name, LEFT, y, "left", bodyBold);
@@ -368,25 +347,58 @@ export function layoutInvoice(
     y = Math.max(y + 30, lineY + 6);
   }
 
-  const paymentRows: Array<[string, string]> = [
-    ["Bank:", business.bank.name],
-    ["Nama Rekening:", business.bank.accountName],
-    ["Nomor Rekening:", business.bank.accountNumber],
-  ];
-  for (const [name, value] of paymentRows) {
-    valueRow(name, valueOrDash(value), body);
+  const sectionTitle = style("body", 18, { weight: 700 });
+  if (position.status === "Lunas") {
+    // Settled: nothing left to pay, so no bank block, prompt or refund note.
+    y += 28;
+    doubleRule(y + 18);
+    y += 62;
+    text("Pembayaran telah lunas.", LEFT, y, "left", sectionTitle);
+    y += 34;
+  } else {
+    y += 28;
+    const noteStyle = style("body", 12, { color: MUTED });
+    const noteLines = wrap(
+      "DP tidak dapat dikembalikan.",
+      noteStyle,
+      RIGHT - 480,
+      measure,
+    );
+    for (const line of noteLines) {
+      text(line, RIGHT, y, "right", noteStyle);
+      y += 18;
+    }
+
+    // Payment Information: empty values print an em dash, so a missing
+    // setting is visible before the Invoice is sent.
+    doubleRule(y + 18);
+    y += 62;
+    text("Informasi Pembayaran", LEFT, y, "left", sectionTitle);
+    y += 34;
+    for (const line of wrap(
+      `Mohon lunasi sebelum ${formatDateIdLong(invoice.due_on)}`,
+      bodyBold,
+      CONTENT_WIDTH,
+      measure,
+    )) {
+      text(line, LEFT, y, "left", bodyBold);
+      y += 24;
+    }
+
+    const paymentRows: Array<[string, string]> = [
+      ["Bank:", business.bank.name],
+      ["Nama Rekening:", business.bank.accountName],
+      ["Nomor Rekening:", business.bank.accountNumber],
+    ];
+    for (const [name, value] of paymentRows) {
+      valueRow(name, valueOrDash(value), body);
+    }
   }
 
   // Format Order: Indonesian event date and labels, saved values.
   doubleRule(y + 16);
   y += 60;
-  text(
-    "Detail Pesanan",
-    LEFT,
-    y,
-    "left",
-    style("body", 18, { weight: 700 }),
-  );
+  text("Detail Pesanan", LEFT, y, "left", sectionTitle);
   y += 34;
 
   valueRow("Tanggal Acara:", formatDateId(invoice.booking_date), body);
@@ -402,7 +414,7 @@ export function layoutInvoice(
   text(
     "Terima kasih",
     INVOICE_PAGE.width / 2,
-    Math.max(1512, y + 80),
+    Math.max(1512, y + 60),
     "center",
     style("script", 64, { color: GOLD }),
   );
