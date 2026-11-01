@@ -3,9 +3,10 @@
  *
  * Given the saved Invoice snapshot, the business details and an injected
  * text-measurement function, this returns the ordered draw operations for one
- * 900x1600 cream page. It never touches a canvas: the painter just executes
- * the list, so every content, order, margin, alignment and wrapping decision
- * can be tested without pixels.
+ * 900-wide cream page and the height it needs (at least 1600). It never
+ * touches a canvas: the painter just executes the list, so every content,
+ * order, margin, alignment and wrapping decision can be tested without
+ * pixels.
  *
  * The saved snapshot is the only source of client, event and money values;
  * the live Booking is never read here. Business identity and payment settings
@@ -21,9 +22,15 @@ import { paymentPosition, type InvoiceBusiness } from "./invoice";
 
 export const INVOICE_PAGE = {
   width: 900,
-  height: 1600,
+  /** A short Invoice is exactly this tall; longer content grows the page. */
+  minHeight: 1600,
   margin: 72,
 } as const;
+
+/** Space kept below the thank-you baseline, so the footer is never cropped. */
+const FOOTER_BOTTOM = 88;
+/** Space between the last content row and the thank-you baseline. */
+const FOOTER_GAP = 80;
 
 const LEFT = INVOICE_PAGE.margin;
 const RIGHT = INVOICE_PAGE.width - INVOICE_PAGE.margin;
@@ -77,6 +84,12 @@ export interface InvoiceFillOp {
 }
 
 export type InvoiceDrawOp = InvoiceTextOp | InvoiceRuleOp | InvoiceFillOp;
+
+/** The draw list plus the page height it needs, so painter and layout agree. */
+export interface InvoiceLayout {
+  height: number;
+  ops: InvoiceDrawOp[];
+}
 
 /** Measures one run of text in the same style the painter will draw it. */
 export type InvoiceMeasure = (text: string, style: InvoiceTextStyle) => number;
@@ -143,26 +156,18 @@ function wrap(
 }
 
 /**
- * Lay one Invoice out in reading order: paper, header, identity, the single
+ * Lay one Invoice out in reading order: header, identity, the single
  * item, the money column, Payment Information, Format Order and the script
- * footer. `measure` is the only width source, so the tests can drive wrapping
+ * footer, behind a cream fill sized to the height reported with the list.
+ * `measure` is the only width source, so the tests can drive wrapping
  * without a canvas.
  */
 export function layoutInvoice(
   invoice: Invoice,
   business: InvoiceBusiness,
   measure: InvoiceMeasure,
-): InvoiceDrawOp[] {
-  const ops: InvoiceDrawOp[] = [
-    {
-      kind: "fill",
-      x: 0,
-      y: 0,
-      width: INVOICE_PAGE.width,
-      height: INVOICE_PAGE.height,
-      color: PAPER,
-    },
-  ];
+): InvoiceLayout {
+  const ops: InvoiceDrawOp[] = [];
 
   function text(
     value: string,
@@ -384,6 +389,7 @@ export function layoutInvoice(
       text(line, LEFT, y, "left", bodyBold);
       y += 24;
     }
+    y += 10;
 
     const paymentRows: Array<[string, string]> = [
       ["Bank:", business.bank.name],
@@ -410,14 +416,25 @@ export function layoutInvoice(
   valueRow("Jam Mulai:", valueOrDash(invoice.start_time), body);
   valueRow("Jam Selesai:", valueOrDash(invoice.end_time), body);
 
-  // The script footer closes the page, below the block above it.
+  // The script footer closes the page, below everything above it; the page
+  // grows to hold it and never drops below the minimum height.
+  const footerY = Math.max(INVOICE_PAGE.minHeight - FOOTER_BOTTOM, y + FOOTER_GAP);
   text(
     "Terima kasih",
     INVOICE_PAGE.width / 2,
-    Math.max(1512, y + 60),
+    footerY,
     "center",
     style("script", 64, { color: GOLD }),
   );
 
-  return ops;
+  const height = footerY + FOOTER_BOTTOM;
+  ops.unshift({
+    kind: "fill",
+    x: 0,
+    y: 0,
+    width: INVOICE_PAGE.width,
+    height,
+    color: PAPER,
+  });
+  return { height, ops };
 }

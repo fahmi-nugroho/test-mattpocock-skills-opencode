@@ -3,7 +3,7 @@
  * ticket 04). It executes the operation list from `layoutInvoice` and makes
  * no content or layout decisions of its own.
  *
- * The page is drawn at a 2x backing scale (1800x3200 for the logical page)
+ * The page is drawn at a 2x backing scale (1800x3200 for a minimum-height page, taller when the content needs it)
  * and exported as PNG. Font families come from the next/font CSS variables on
  * <body>; loading is best-effort and timed, so a slow or failed font never
  * blocks the invoice — the fallback stack still renders every mark.
@@ -13,6 +13,7 @@ import {
   INVOICE_PAGE,
   layoutInvoice,
   type InvoiceDrawOp,
+  type InvoiceLayout,
   type InvoiceFont,
   type InvoiceMeasure,
   type InvoiceTextStyle,
@@ -131,14 +132,14 @@ function paintInvoice(
   }
 }
 
-/** Apply the backing scale, then paint the logical page-sized operation list. */
+/** Size the canvas from the layout's height at the backing scale, then paint. */
 function paintInvoiceToCanvas(
   canvas: HTMLCanvasElement,
-  ops: readonly InvoiceDrawOp[],
+  { ops, height }: InvoiceLayout,
   families: InvoiceFontFamilies,
 ): void {
   canvas.width = INVOICE_PAGE.width * BACKING_SCALE;
-  canvas.height = INVOICE_PAGE.height * BACKING_SCALE;
+  canvas.height = height * BACKING_SCALE;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D tidak tersedia di browser ini.");
   ctx.setTransform(BACKING_SCALE, 0, 0, BACKING_SCALE, 0, 0);
@@ -178,7 +179,7 @@ export async function renderInvoicePng(
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D tidak tersedia di browser ini.");
-  const ops = layoutInvoice(invoice, business, measureWith(ctx, families));
-  paintInvoiceToCanvas(canvas, ops, families);
+  const layout = layoutInvoice(invoice, business, measureWith(ctx, families));
+  paintInvoiceToCanvas(canvas, layout, families);
   return canvasToPng(canvas);
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   INVOICE_PAGE,
   layoutInvoice,
+  type InvoiceLayout,
   type InvoiceDrawOp,
   type InvoiceMeasure,
   type InvoiceTextOp,
@@ -56,11 +57,18 @@ const BUSINESS: InvoiceBusiness = {
 /** Deterministic, independent of any canvas: 0.6 em per character. */
 const measure: InvoiceMeasure = (text, style) => text.length * style.size * 0.6;
 
+function page(
+  invoice: Invoice = INVOICE,
+  business: InvoiceBusiness = BUSINESS,
+): InvoiceLayout {
+  return layoutInvoice(invoice, business, measure);
+}
+
 function layout(
   invoice: Invoice = INVOICE,
   business: InvoiceBusiness = BUSINESS,
 ): InvoiceDrawOp[] {
-  return layoutInvoice(invoice, business, measure);
+  return page(invoice, business).ops;
 }
 
 function texts(ops: InvoiceDrawOp[]): InvoiceTextOp[] {
@@ -75,7 +83,7 @@ function indexOfText(ops: InvoiceDrawOp[], value: string): number {
   return strings(ops).indexOf(value);
 }
 
-function expectInsideMargins(ops: InvoiceDrawOp[]): void {
+function expectInsideMargins({ ops, height }: InvoiceLayout): void {
   const left = INVOICE_PAGE.margin;
   const right = INVOICE_PAGE.width - INVOICE_PAGE.margin;
   for (const op of ops) {
@@ -84,14 +92,14 @@ function expectInsideMargins(ops: InvoiceDrawOp[]): void {
       expect(op.x1).toBeGreaterThanOrEqual(left);
       expect(op.x2).toBeLessThanOrEqual(right);
       expect(op.y1).toBeGreaterThan(0);
-      expect(op.y2).toBeLessThan(INVOICE_PAGE.height);
+      expect(op.y2).toBeLessThan(height);
       continue;
     }
     const width = measure(op.text, op);
     expect(op.x).toBeGreaterThanOrEqual(left);
     expect(op.x).toBeLessThanOrEqual(right);
     expect(op.y).toBeGreaterThan(0);
-    expect(op.y).toBeLessThan(INVOICE_PAGE.height);
+    expect(op.y).toBeLessThan(height);
     if (op.align === "left") {
       expect(op.x + width).toBeLessThanOrEqual(right + 0.001);
     }
@@ -106,8 +114,9 @@ function expectInsideMargins(ops: InvoiceDrawOp[]): void {
 }
 
 describe("invoice page and margins", () => {
-  it("fills a 900x1600 cream page before drawing anything", () => {
-    const ops = layout();
+  it("reports a short Invoice as exactly 900x1600 and fills it with cream first", () => {
+    const { ops, height } = page();
+    expect(height).toBe(1600);
     expect(ops[0]).toMatchObject({
       kind: "fill",
       x: 0,
@@ -115,11 +124,11 @@ describe("invoice page and margins", () => {
       width: 900,
       height: 1600,
     });
-    expect(INVOICE_PAGE).toEqual({ width: 900, height: 1600, margin: 72 });
+    expect(INVOICE_PAGE).toEqual({ width: 900, minHeight: 1600, margin: 72 });
   });
 
   it("keeps every mark inside the page margins", () => {
-    expectInsideMargins(layout());
+    expectInsideMargins(page());
   });
 
   it("anchors the money column at the right margin and labels at the left", () => {
@@ -218,9 +227,9 @@ describe("invoice legibility", () => {
   });
 
   it.each(states)("keeps rows apart and inside the margins (%s)", (_name, invoice) => {
-    const ops = layout(invoice);
-    expectNoOverlap(ops);
-    expectInsideMargins(ops);
+    const result = page(invoice);
+    expectNoOverlap(result.ops);
+    expectInsideMargins(result);
   });
 
   it("keeps the focal balance larger than every other money row", () => {
@@ -421,11 +430,11 @@ describe("invoice payment section once Lunas", () => {
   });
 
   it("keeps the order details after the confirmation", () => {
-    const ops = layout(SETTLED);
-    expect(indexOfText(ops, "Detail Pesanan")).toBeGreaterThan(
-      indexOfText(ops, "Pembayaran telah lunas."),
+    const result = page(SETTLED);
+    expect(indexOfText(result.ops, "Detail Pesanan")).toBeGreaterThan(
+      indexOfText(result.ops, "Pembayaran telah lunas."),
     );
-    expectInsideMargins(ops);
+    expectInsideMargins(result);
   });
 });
 
@@ -509,7 +518,8 @@ describe("invoice wrapping and footer", () => {
   it("wraps a long value inside the page using the injected measurement", () => {
     const venue =
       "Gedung Serbaguna Utama Lantai Dua Ruang Anggrek dekat Pintu Timur Belakang";
-    const wrapped = layout({ ...INVOICE, venue });
+    const result = page({ ...INVOICE, venue });
+    const wrapped = result.ops;
     const values = strings(wrapped).join(" ").replace(/\s+/g, " ");
     expect(values).toContain(venue);
     const venueOps = texts(wrapped).filter(
@@ -520,7 +530,7 @@ describe("invoice wrapping and footer", () => {
     for (const op of venueOps) {
       expect(measure(op.text, op)).toBeLessThanOrEqual(right - op.x + 0.001);
     }
-    expectInsideMargins(wrapped);
+    expectInsideMargins(result);
   });
 
   it("wraps long header, client and payment values too", () => {
@@ -535,12 +545,13 @@ describe("invoice wrapping and footer", () => {
         accountName: "Wandana Makeup Studio Cabang Kota Bandung",
       },
     };
-    const wrapped = layout({ ...INVOICE, client_name: client }, business);
+    const result = page({ ...INVOICE, client_name: client }, business);
+    const wrapped = result.ops;
     const values = strings(wrapped).join(" ").replace(/\s+/g, " ");
     expect(values).toContain(client);
     expect(values).toContain(business.name);
     expect(values).toContain(business.bank.accountName);
-    expectInsideMargins(wrapped);
+    expectInsideMargins(result);
   });
 
   it("ends with the script Terima kasih, centred above the bottom margin", () => {
@@ -548,7 +559,41 @@ describe("invoice wrapping and footer", () => {
     const last = texts(ops).at(-1);
     expect(last?.text).toBe("Terima kasih");
     expect(last).toMatchObject({ font: "script", x: 450, align: "center" });
-    expect(last?.y).toBeLessThan(1600);
+    expect(last?.y).toBeLessThan(page().height);
+  });
+
+  it("grows the page for long content and keeps the thank-you below everything", () => {
+    const words = "Gedung Serbaguna Utama Lantai Dua Ruang Anggrek dekat Pintu Timur ";
+    const long: Invoice = {
+      ...INVOICE,
+      client_name: "Sari Dewi Kusumawardhani Putri ".repeat(6),
+      service_name: "Makeup Wisuda Paket Lengkap ".repeat(8),
+      venue: words.repeat(12),
+    };
+    for (const invoice of [long, { ...long, dp_amount: long.subtotal }]) {
+      const result = page(invoice);
+      expect(result.height).toBeGreaterThan(1600);
+      expect(result.ops[0]).toMatchObject({ kind: "fill", y: 0, width: 900, height: result.height });
+      expectInsideMargins(result);
+      expectNoOverlap(result.ops);
+      const all = texts(result.ops);
+      const thanks = all.at(-1)!;
+      expect(thanks.text).toBe("Terima kasih");
+      for (const op of all.slice(0, -1)) expect(op.y).toBeLessThan(thanks.y);
+      for (const op of result.ops) {
+        if (op.kind === "rule") expect(op.y1).toBeLessThan(thanks.y);
+      }
+      // The 64 px script footer keeps at least its own size below the baseline.
+      expect(result.height - thanks.y).toBeGreaterThanOrEqual(64);
+    }
+  });
+
+  it("never reports a page shorter than the minimum", () => {
+    const empty: InvoiceBusiness = {
+      ...BUSINESS,
+      bank: { name: "", accountName: "", accountNumber: "" },
+    };
+    expect(page(SETTLED, empty).height).toBe(INVOICE_PAGE.minHeight);
   });
 
   it("formats an Indonesian long date without a weekday", () => {
