@@ -4,6 +4,10 @@ Status: accepted
 
 Date: 2026-10-21
 
+[ADR-0005](0005-preserve-booking-payment-and-service-details.md) extends the
+snapshot with Pelunasan and multiple Services. The service deletion behavior
+below describes the original single-service design.
+
 ## Context
 
 Before this decision the admin built each invoice by hand in a design app: she
