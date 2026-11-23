@@ -57,11 +57,13 @@ import { linkBookingRequest } from "@/lib/supabase/admin-requests";
 import { getSettings } from "@/lib/supabase/admin-settings";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
+import { SERVICE_CATALOG_CHANGED_EVENT } from "@/lib/admin/service-catalog-events";
 import { Dialog } from "@/components/dialog";
 import { InvoiceDialog } from "./invoice-dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import type {
   Booking,
+  BookingService,
   BookingStatus,
   GoogleCalendarEventRow,
   GoogleCalendarWorkRow,
@@ -81,6 +83,82 @@ function parseIntField(value: string, fallback: number | null): number | null {
   const trimmed = value.trim();
   if (trimmed === "") return fallback;
   return Number(trimmed);
+}
+
+function suggestedBookingTotal(
+  selected: BookingService[],
+  catalog: Service[],
+  headcount: string,
+): number | null {
+  if (selected.length !== 1) return null;
+  const service = catalog.find(({ id }) => id === selected[0].id);
+  return suggestTotal(service?.price_idr ?? null, parseIntField(headcount, 1));
+}
+
+function BookingServicesPicker({
+  selected,
+  catalog,
+  saved = [],
+  onChange,
+}: {
+  selected: BookingService[];
+  catalog: Service[];
+  saved?: BookingService[];
+  onChange: (services: BookingService[]) => void;
+}) {
+  const picker = useRef<HTMLSelectElement>(null);
+  const group = useRef<HTMLFieldSetElement>(null);
+  const available = catalog.filter(({ id }) => !selected.some((service) => service.id === id));
+
+  return (
+    <fieldset ref={group} tabIndex={-1} className="min-w-0 sm:col-span-2">
+      <legend className="text-sm font-medium">
+        Layanan <span className="font-normal text-neutral-500">(opsional)</span>
+      </legend>
+      <select
+        ref={picker}
+        aria-label="Tambah layanan"
+        value=""
+        disabled={available.length === 0}
+        onChange={(e) => {
+          const service = available.find(({ id }) => id === e.target.value);
+          if (service) {
+            const { id, name } = service;
+            onChange([...selected, saved.find((entry) => entry.id === id) ?? { id, name }]);
+          }
+        }}
+        className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50"
+      >
+        <option value="">
+          {available.length ? "Tambah layanan" : "Tidak ada layanan untuk ditambahkan"}
+        </option>
+        {available.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+      </select>
+      {selected.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {selected.map(({ id, name }) => (
+            <li key={id} className="flex items-center justify-between gap-2 text-sm">
+              <span className="min-w-0 break-words">{name}</span>
+              <button
+                type="button"
+                aria-label={`Hapus layanan ${name}`}
+                onClick={() => {
+                  onChange(selected.filter((service) => service.id !== id));
+                  requestAnimationFrame(() => {
+                    const target = picker.current?.disabled ? group.current : picker.current;
+                    target?.focus({ preventScroll: true });
+                  });
+                }}
+                className="min-h-11 shrink-0 rounded-lg border border-neutral-300 px-3 text-xs font-semibold hover:bg-neutral-100"
+              >
+                Hapus
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </fieldset>
+  );
 }
 
 /**
@@ -118,7 +196,7 @@ export function BookingsManager() {
   const [date, setDate] = useState(() => getTodayKey());
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("10:00");
-  const [serviceId, setServiceId] = useState("");
+  const [selectedServices, setSelectedServices] = useState<BookingService[]>([]);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -131,22 +209,19 @@ export function BookingsManager() {
   // A request accepted from before the change carries free text in the reused
   // column; the radio cannot show it, so it is kept here and shown read-only.
   const [legacyPrefillHairdo, setLegacyPrefillHairdo] = useState("");
-  const [totalPrice, setTotalPrice] = useState("");
+  const [manualTotal, setManualTotal] = useState<string | null>(null);
   const [dpAmount, setDpAmount] = useState("0");
-  // Until the admin edits the total by hand, a chosen service keeps it in
-  // sync with price × headcount (a hint only — never saved unless left in).
-  const [totalTouched, setTotalTouched] = useState(false);
   // Set when "Jadikan Booking" prefilled this form from a request; the next
   // successful save links the request to the new booking.
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [editFields, setEditFields] = useState({
     date: "",
     start_time: "",
     end_time: "",
-    service_id: "",
+    selected_services: [] as BookingService[],
     client_name: "",
     client_phone: "",
     notes: "",
@@ -156,10 +231,14 @@ export function BookingsManager() {
     venue: "",
     hairdo: "",
     reference: "",
-    total_price: "",
+    total_price: null as string | null,
     dp_amount: "0",
   });
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const editingId = editingBooking?.id ?? null;
+  const savedServices = editingBooking?.selected_services ?? [];
+  const servicesChanged = editFields.selected_services.length !== savedServices.length ||
+    editFields.selected_services.some(({ id }, index) => id !== savedServices[index].id);
   // A row op's failure, kept with the row it belongs to so the reason appears
   // in that row even when the dialog shows twenty of them.
   const [rowError, setRowError] = useState<{
@@ -198,17 +277,6 @@ export function BookingsManager() {
   const invoiceButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const pendingInvoiceFocusRef = useRef<string | null>(null);
 
-  const serviceNames = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const s of services) map.set(s.id, s.name);
-    return map;
-  }, [services]);
-  const serviceName = useMemo(
-    () => (id: string | null) =>
-      id ? (serviceNames.get(id) ?? "Layanan dihapus") : "—",
-    [serviceNames],
-  );
-
   // One newest-first group per Booking: the row summary and the dialog list
   // read the same order, and neither reads the live Booking.
   const invoicesByBooking = useMemo(
@@ -227,11 +295,6 @@ export function BookingsManager() {
   const invoiceBookingInvoices = invoiceBookingId
     ? (invoicesByBooking.get(invoiceBookingId) ?? [])
     : [];
-  // 0018 stores "" when the service is gone; mirror that in the snapshot so
-  // the duplicate guard compares what the database would actually save.
-  const invoiceServiceName = invoiceBooking?.service_id
-    ? (serviceNames.get(invoiceBooking.service_id) ?? "")
-    : "";
   // One stable object for the preview: the picture redraws when settings load
   // or change, not on every render of the booking list.
   const invoiceBusinessDetails = useMemo(
@@ -250,12 +313,12 @@ export function BookingsManager() {
           item.date,
           item.client_name,
           item.client_phone,
-          serviceName(item.service_id),
+          ...item.selected_services.map(({ name }) => name),
           item.notes,
           BOOKING_STATUS_LABEL[item.status],
         ],
       ),
-    [items, filter, query, serviceName],
+    [items, filter, query],
   );
 
   // The dialog reads the rows the section already loaded — opening it fetches
@@ -415,8 +478,9 @@ export function BookingsManager() {
   }
 
   useEffect(() => {
-    let cancelled = false;
+    let latestLoad = 0;
     async function load() {
+      const loadId = ++latestLoad;
       try {
         const supabase = supabaseBrowser();
         const [bookings, serviceRows, invoiceRows, businessResult, mirror] =
@@ -433,7 +497,7 @@ export function BookingsManager() {
               work: [] as GoogleCalendarWorkRow[],
             })),
           ]);
-        if (!cancelled) {
+        if (loadId === latestLoad) {
           setItems(bookings);
           setServices(serviceRows);
           setInvoices(invoiceRows);
@@ -443,21 +507,18 @@ export function BookingsManager() {
           setMirrorWork(mirror.work);
         }
       } catch {
-        if (!cancelled) setError("Gagal memuat booking. Coba lagi.");
+        if (loadId === latestLoad) setError("Gagal memuat booking. Coba lagi.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (loadId === latestLoad) setLoading(false);
       }
     }
-    load();
-    // Another panel (calendar / blocks) mutated the schedule: refetch
-    // so this list never visibly lags a confirm/cancel elsewhere.
-    const onChange = () => {
-      if (!cancelled) load();
-    };
-    window.addEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+    void load();
+    window.addEventListener(SCHEDULE_CHANGED_EVENT, load);
+    window.addEventListener(SERVICE_CATALOG_CHANGED_EVENT, load);
     return () => {
-      cancelled = true;
-      window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+      latestLoad++;
+      window.removeEventListener(SCHEDULE_CHANGED_EVENT, load);
+      window.removeEventListener(SERVICE_CATALOG_CHANGED_EVENT, load);
     };
   }, []);
 
@@ -500,7 +561,8 @@ export function BookingsManager() {
       if (draft.start_time) setStart(draft.start_time);
       if (draft.end_time) setEnd(draft.end_time);
       setPendingRequestId(requestId);
-      setTotalTouched(false);
+      setSelectedServices([]);
+      setManualTotal(null);
       setFormError(null);
       requestAnimationFrame(() => {
         const form = document.getElementById("booking-form");
@@ -512,18 +574,7 @@ export function BookingsManager() {
     return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
   }, []);
 
-  // Service suggestion: price × headcount fills the total only while the
-  // admin has not edited the total by hand; a cleared total stays cleared.
-  useEffect(() => {
-    if (totalTouched) return;
-    const service = services.find((s) => s.id === serviceId);
-    if (!service) {
-      setTotalPrice("");
-      return;
-    }
-    const suggested = suggestTotal(service.price_idr, parseIntField(headcount, 1));
-    setTotalPrice(suggested === null ? "" : String(suggested));
-  }, [serviceId, headcount, totalTouched, services]);
+  const totalPrice = manualTotal ?? String(suggestedBookingTotal(selectedServices, services, headcount) ?? "");
 
   const createRemaining = remainingBalance(
     parseIntField(totalPrice, null),
@@ -540,7 +591,7 @@ export function BookingsManager() {
         date,
         start_time: start,
         end_time: end,
-        service_id: serviceId || null,
+        service_ids: selectedServices.map(({ id }) => id),
         client_name: clientName,
         client_phone: clientPhone,
         notes,
@@ -566,7 +617,7 @@ export function BookingsManager() {
       setClientName("");
       setClientPhone("");
       setNotes("");
-      setServiceId("");
+      setSelectedServices([]);
       setStatus("pending");
       setEventType("");
       setHeadcount("1");
@@ -574,9 +625,8 @@ export function BookingsManager() {
       setHairdo("");
       setReference("");
       setLegacyPrefillHairdo("");
-      setTotalPrice("");
+      setManualTotal(null);
       setDpAmount("0");
-      setTotalTouched(false);
       // A prefilled accept path links the request to the booking it just
       // created. The booking already exists, so a link failure is reported
       // rather than retried — it must never be created a second time. The
@@ -609,13 +659,13 @@ export function BookingsManager() {
   }
 
   function startEdit(item: Booking) {
-    setEditingId(item.id);
+    setEditingBooking(item);
     setRowError(null);
     setEditFields({
       date: item.date,
       start_time: item.start_time,
       end_time: item.end_time,
-      service_id: item.service_id ?? "",
+      selected_services: item.selected_services,
       client_name: item.client_name,
       client_phone: item.client_phone,
       notes: item.notes,
@@ -628,12 +678,12 @@ export function BookingsManager() {
       // with no Style chosen so the admin picks one or leaves it empty.
       hairdo: isStyle(item.hairdo) ? item.hairdo : "",
       reference: item.reference,
-      total_price: item.total_price === null ? "" : String(item.total_price),
+      total_price: item.total_price === null ? null : String(item.total_price),
       dp_amount: String(item.dp_amount),
     });
   }
 
-  async function onSaveEdit(item: Booking) {
+  async function onSaveEdit(item: Booking, totalPrice: string) {
     if (rowBusy) return;
     setRowError(null);
     let validated;
@@ -642,7 +692,7 @@ export function BookingsManager() {
         date: editFields.date,
         start_time: editFields.start_time,
         end_time: editFields.end_time,
-        service_id: editFields.service_id || null,
+        service_ids: editFields.selected_services.map(({ id }) => id),
         client_name: editFields.client_name,
         client_phone: editFields.client_phone,
         notes: editFields.notes,
@@ -652,7 +702,7 @@ export function BookingsManager() {
         venue: editFields.venue,
         hairdo: editFields.hairdo,
         reference: editFields.reference,
-        total_price: parseIntField(editFields.total_price, null),
+        total_price: parseIntField(totalPrice, null),
         dp_amount: parseIntField(editFields.dp_amount, 0),
       });
     } catch (err) {
@@ -664,10 +714,13 @@ export function BookingsManager() {
     }
     setRowBusy(item.id);
     try {
-      const row = await updateBooking(supabaseBrowser(), item.id, validated);
+      const { selected_services, ...details } = validated;
+      const row = await updateBooking(
+        supabaseBrowser(), item.id, servicesChanged ? { ...details, selected_services } : details,
+      );
       // Same one ordering rule: the split orders the list, not this save.
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
-      setEditingId(null);
+      setEditingBooking(null);
       notifyScheduleChanged();
       void drainAndRefreshMirror();
     } catch (err) {
@@ -737,7 +790,7 @@ export function BookingsManager() {
       // The Booking row is gone; its tracked row survives so the drain can
       // still delete the Google event.
       void drainAndRefreshMirror();
-      if (editingId === item.id) setEditingId(null);
+      if (editingId === item.id) setEditingBooking(null);
     } catch {
       setRowError({
         id: item.id,
@@ -756,6 +809,11 @@ export function BookingsManager() {
     const newestInvoice = bookingInvoices[0] ?? null;
     const mirrorState = mirrorStates.get(item.id) ?? null;
     const hasPelunasan = item.pelunasan_amount !== null;
+    const editSuggested = editingId === item.id && !hasPelunasan
+      ? suggestedBookingTotal(editFields.selected_services, services, editFields.headcount)
+      : null;
+    const scopeChanged = servicesChanged || editFields.headcount !== String(editingBooking?.headcount);
+    const editTotal = editFields.total_price ?? (scopeChanged ? String(editSuggested ?? "") : "");
     const payment = item.total_price === null
       ? null
       : paymentPosition(item.total_price, item.dp_amount, item.pelunasan_amount);
@@ -851,6 +909,12 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            <BookingServicesPicker
+              selected={editFields.selected_services}
+              catalog={services}
+              saved={savedServices}
+              onChange={(selected_services) => setEditFields((fields) => ({ ...fields, selected_services }))}
+            />
             <label className="block">
               <span className="text-sm font-medium">Jenis acara</span>
               <input
@@ -950,18 +1014,26 @@ export function BookingsManager() {
               <input
                 type="number"
                 min={0}
-                value={editFields.total_price}
+                value={editTotal}
                 readOnly={hasPelunasan}
+                required={editFields.selected_services.length > 1}
                 onChange={(e) =>
                   setEditFields((f) => ({
                     ...f,
                     total_price: e.target.value,
                   }))
                 }
-                placeholder="Kosongkan bila belum disepakati"
+                placeholder={editFields.selected_services.length > 1
+                  ? "Isi total untuk semua layanan"
+                  : "Kosongkan bila belum disepakati"}
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            {editSuggested !== null && String(editSuggested) !== editTotal ? (
+              <p className="text-xs text-neutral-600 sm:col-span-2">
+                Saran total dari katalog: {formatIDR(editSuggested)}
+              </p>
+            ) : null}
             <label className="block">
               <span className="text-sm font-medium">DP (Rp)</span>
               <input
@@ -1015,9 +1087,9 @@ export function BookingsManager() {
                 </span>
               ) : null}
             </p>
-            <p className="mt-0.5 text-xs text-neutral-500">
+            <p className="mt-0.5 break-words text-xs text-neutral-500">
               {item.client_name} · {item.client_phone} ·{" "}
-              {serviceName(item.service_id)}
+              {item.selected_services.map(({ name }) => name).join(", ") || "—"}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
               {item.event_type || "—"} · {item.headcount} orang ·{" "}
@@ -1086,14 +1158,14 @@ export function BookingsManager() {
               <button
                 type="button"
                 disabled={rowBusy === item.id}
-                onClick={() => onSaveEdit(item)}
+                onClick={() => onSaveEdit(item, editTotal)}
                 className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
               >
                 {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
               </button>
               <button
                 type="button"
-                onClick={() => setEditingId(null)}
+                onClick={() => setEditingBooking(null)}
                 className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
               >
                 Batal
@@ -1270,21 +1342,11 @@ export function BookingsManager() {
             Layanan dan detail acara
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block min-w-0">
-              <span className="text-sm font-medium">Layanan</span>
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              >
-                <option value="">Tanpa layanan</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <BookingServicesPicker
+              selected={selectedServices}
+              catalog={services}
+              onChange={setSelectedServices}
+            />
             <label className="block">
               <span className="text-sm font-medium">Jenis acara</span>
               <input
@@ -1383,11 +1445,11 @@ export function BookingsManager() {
                 type="number"
                 min={0}
                 value={totalPrice}
-                onChange={(e) => {
-                  setTotalPrice(e.target.value);
-                  setTotalTouched(true);
-                }}
-                placeholder="Kosongkan bila belum disepakati"
+                onChange={(e) => setManualTotal(e.target.value)}
+                required={selectedServices.length > 1}
+                placeholder={selectedServices.length > 1
+                  ? "Isi total untuk semua layanan"
+                  : "Kosongkan bila belum disepakati"}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
@@ -1530,7 +1592,6 @@ export function BookingsManager() {
 
       <InvoiceDialog
         booking={invoiceBooking}
-        serviceName={invoiceServiceName}
         invoices={invoiceBookingInvoices}
         business={invoiceBusinessDetails}
         businessLoadFailed={businessLoadFailed}

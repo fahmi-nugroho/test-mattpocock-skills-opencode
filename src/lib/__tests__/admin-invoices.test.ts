@@ -32,7 +32,7 @@ const ROW: Invoice = {
   sent_at: null,
   client_name: "Sari",
   client_phone: "081234567890",
-  service_name: "Makeup Wisuda",
+  service_names: ["Makeup Wisuda", "Hairdo"],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung A",

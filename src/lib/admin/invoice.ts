@@ -186,7 +186,7 @@ export function indexInvoicesByBooking(
 const SNAPSHOT_KEYS = [
   "client_name",
   "client_phone",
-  "service_name",
+  "service_names",
   "event_type",
   "headcount",
   "venue",
@@ -216,6 +216,7 @@ type SnapshotBooking = Pick<
   Booking,
   | "client_name"
   | "client_phone"
+  | "selected_services"
   | "event_type"
   | "headcount"
   | "venue"
@@ -235,7 +236,6 @@ type SnapshotBooking = Pick<
  */
 export function buildInvoiceSnapshot(
   booking: SnapshotBooking,
-  serviceName: string,
   issuedOn: string,
   dueOn: string | null,
 ): InvoiceSnapshot {
@@ -244,7 +244,7 @@ export function buildInvoiceSnapshot(
   return {
     client_name: booking.client_name,
     client_phone: booking.client_phone,
-    service_name: serviceName,
+    service_names: booking.selected_services.map(({ name }) => name),
     event_type: booking.event_type,
     headcount: booking.headcount,
     venue: booking.venue,
@@ -266,13 +266,16 @@ export function invoiceSnapshotOf(invoice: Invoice): InvoiceSnapshot {
 }
 
 function snapshotsMatch(a: InvoiceSnapshot, b: InvoiceSnapshot): boolean {
-  return SNAPSHOT_KEYS.every((key) => a[key] === b[key]);
+  return SNAPSHOT_KEYS.every((key) => {
+    if (key !== "service_names") return a[key] === b[key];
+    return a.service_names.length === b.service_names.length &&
+      a.service_names.every((name, index) => name === b.service_names[index]);
+  });
 }
 
 export interface InvoiceIssueInput extends InvoiceDates {
   booking: SnapshotBooking &
     Pick<Booking, "status">;
-  serviceName: string;
 }
 
 /**
@@ -285,7 +288,7 @@ export function invoiceIssueRefusal(
   input: InvoiceIssueInput,
   newest: Invoice | null,
 ): string | null {
-  const { booking, serviceName, issuedOn, dueOn } = input;
+  const { booking, issuedOn, dueOn } = input;
 
   if (booking.status === "cancelled") {
     return "Invoice tidak dapat dibuat untuk booking yang dibatalkan.";
@@ -309,7 +312,7 @@ export function invoiceIssueRefusal(
     if (dateRefusal) return dateRefusal;
   }
   if (newest && snapshotsMatch(
-    buildInvoiceSnapshot(booking, serviceName, issuedOn, dueOn),
+    buildInvoiceSnapshot(booking, issuedOn, dueOn),
     invoiceSnapshotOf(newest),
   )) {
     return `Invoice baru akan sama persis dengan ${newest.number}. Kirim ulang invoice itu alih-alih membuat nomor baru.`;

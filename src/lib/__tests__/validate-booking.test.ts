@@ -5,13 +5,31 @@ import { validateBookingInput } from "../admin/validate-booking";
 // Catches bad date/time/client/status before a DB write.
 // Misses live DB CHECKs and overlap guard (booking-conflicts seam).
 describe("validateBookingInput", () => {
+  it("keeps each selected Service once and one manually agreed total", () => {
+    const booking = {
+      date: "2026-10-12",
+      start_time: "09:00",
+      end_time: "11:00",
+      client_name: "Sinta",
+      client_phone: "081234567890",
+      status: "pending",
+      service_ids: ["s1", "s2", "s1"],
+      headcount: 3,
+    };
+    expect(validateBookingInput({ ...booking, total_price: 725_000 })).toMatchObject({
+      selected_services: [{ id: "s1" }, { id: "s2" }],
+      headcount: 3,
+      total_price: 725_000,
+    });
+    expect(() => validateBookingInput(booking)).toThrow(/total harga/i);
+  });
+
   it("accepts a valid booking", () => {
     expect(
       validateBookingInput({
         date: "2026-10-12",
         start_time: "09:00",
         end_time: "11:00",
-        service_id: null,
         client_name: "Sinta",
         client_phone: "081234567890",
         notes: "Rias wisuda",
@@ -21,7 +39,7 @@ describe("validateBookingInput", () => {
       date: "2026-10-12",
       start_time: "09:00",
       end_time: "11:00",
-      service_id: null,
+      selected_services: [],
       client_name: "Sinta",
       client_phone: "081234567890",
       notes: "Rias wisuda",

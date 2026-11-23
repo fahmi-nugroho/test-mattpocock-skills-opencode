@@ -29,7 +29,7 @@ const INVOICE: Invoice = {
   sent_at: null,
   client_name: "Sari Dewi",
   client_phone: "081234567890",
-  service_name: "Makeup Wisuda",
+  service_names: ["Makeup Wisuda"],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung Serbaguna",
@@ -173,7 +173,7 @@ describe("invoice page and margins", () => {
       "No:",
       INVOICE.number,
       "ITEM",
-      INVOICE.service_name,
+      INVOICE.service_names[0],
       INVOICE.event_type,
       "SISA PEMBAYARAN",
       "DP DITERIMA",
@@ -309,6 +309,32 @@ describe("invoice line item and totals", () => {
     expect(values).not.toContain("QTY");
     expect(values).not.toContain("PRICE");
     expect(values).not.toContain("1");
+  });
+
+  it.each([INVOICE, SETTLED])("prints a long Service list with one Booking Headcount and total", (invoice) => {
+    const names = Array.from({ length: 40 }, (_, index) => `Paket Rias ${index + 1}`);
+    const result = page({ ...invoice, service_names: names });
+    const values = strings(result.ops);
+    expect(values.filter((value) => names.includes(value))).toEqual(names);
+    const ops = texts(result.ops);
+    const itemStart = ops.find((op) => op.text === "ITEM")!.y;
+    const event = ops.find((op) => op.text === "Wisuda")!.y;
+    const item = ops.filter((op) => op.y > itemStart && op.y < event).map((op) => op.text);
+    expect(item.filter((value) => value === "2 orang")).toHaveLength(1);
+    expect(item.filter((value) => value.startsWith("Rp"))).toEqual(["Rp 1.500.000"]);
+    expect(values).toContain(invoice === SETTLED ? "LUNAS" : "DP DITERIMA");
+    expect(result.height).toBeGreaterThan(INVOICE_PAGE.minHeight);
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
+  });
+
+  it("keeps a long unbroken Service name clear of the price and other names", () => {
+    const name = "PaketMakeupTanpaSpasi".repeat(8);
+    const result = page({ ...INVOICE, service_names: [name, "Hairdo"] });
+    const values = strings(result.ops);
+    expect(values.slice(values.indexOf("TOTAL") + 1, values.indexOf("Hairdo")).join("")).toBe(name);
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
   });
 
   it("prints the agreed total, never price x Headcount", () => {
@@ -598,7 +624,7 @@ describe("invoice wrapping and footer", () => {
     const long: Invoice = {
       ...INVOICE,
       client_name: "Sari Dewi Kusumawardhani Putri ".repeat(6),
-      service_name: "Makeup Wisuda Paket Lengkap ".repeat(8),
+      service_names: ["Makeup Wisuda Paket Lengkap ".repeat(8)],
       venue: words.repeat(12),
     };
     for (const invoice of [long, { ...long, dp_amount: long.subtotal }]) {

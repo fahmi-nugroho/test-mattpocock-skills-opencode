@@ -239,6 +239,25 @@ describe("0019 invoice lifecycle contract (local SQL verify, no live DB)", () =>
   });
 });
 
+describe("multiple Services SQL contract", () => {
+  it("carries forward linked Booking Services and each Invoice's own saved name", () => {
+    const code = codeOnly(readMigration("0024_booking_services.sql")).toLowerCase();
+    expect(code).toMatch(/update bookings b[\s\S]*?from services s\s+where s.id = b.service_id/);
+    expect(code).toMatch(/update invoices\s+set service_names = array\[service_name\]\s+where service_name <> ''/);
+    expect(code).toMatch(/enable trigger invoices_guard_lifecycle/);
+  });
+
+  it("issues the full list of saved names from the locked Booking", () => {
+    const code = codeOnly(readMigration("0024_booking_services.sql")).toLowerCase();
+    const createInvoice = createInvoiceFunction(code);
+    expect(createInvoice).toMatch(/from bookings\s+where id = p_booking_id\s+for update/);
+    expect(createInvoice).toMatch(/jsonb_array_elements\(v_booking.selected_services\) with ordinality/);
+    expect(createInvoice).toMatch(/insert into invoices\s*\([^;]*?\bservice_names\b/);
+    expect(createInvoice).not.toMatch(/(join|from) services\b/);
+    expect(code).toMatch(/revoke execute on function create_invoice\(uuid, date, date\) from public, anon/);
+  });
+});
+
 describe("Pelunasan SQL contract", () => {
   it("locks the saved Booking and records the balance only after checking the reviewed amounts", () => {
     const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();

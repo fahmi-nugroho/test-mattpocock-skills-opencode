@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { filterByQuery } from "@/lib/admin/filter-items";
+import { notifyServiceCatalogChanged } from "@/lib/admin/service-catalog-events";
 import { validateServiceInput } from "@/lib/admin/validate-service";
 import { checkImageFile } from "@/lib/admin/validate-image";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
@@ -111,6 +112,7 @@ export function ServicesManager() {
         cover_image_url: uploaded,
       });
       setItems((prev) => [...prev, row].sort((a, b) => a.sort - b.sort));
+      notifyServiceCatalogChanged();
       setQuery("");
       setCreated(true);
       setName("");
@@ -198,6 +200,7 @@ export function ServicesManager() {
       setItems((prev) =>
         prev.map((p) => (p.id === item.id ? row : p)).sort((a, b) => a.sort - b.sort),
       );
+      notifyServiceCatalogChanged();
       setEditingId(null);
     } catch {
       // Update failed after a replacement upload: prune the new object
@@ -241,6 +244,7 @@ export function ServicesManager() {
         item.cover_image_url,
       );
       setItems((prev) => prev.filter((p) => p.id !== item.id));
+      notifyServiceCatalogChanged();
       if (editingId === item.id) setEditingId(null);
       if (!cleanupOk) {
         setNotice(

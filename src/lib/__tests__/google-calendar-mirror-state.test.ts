@@ -38,7 +38,7 @@ function booking(id: string, status: Booking["status"]): Booking {
     date: "2026-11-01",
     start_time: "09:00",
     end_time: "10:00",
-    service_id: null,
+    selected_services: [],
     client_name: "Sinta",
     client_phone: "081234567890",
     notes: "",

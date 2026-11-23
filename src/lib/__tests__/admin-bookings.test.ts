@@ -137,7 +137,7 @@ const BOOKING = {
   date: "2026-10-12",
   start_time: "09:00",
   end_time: "10:00",
-  service_id: null as string | null,
+  selected_services: [],
   client_name: "Sinta",
   client_phone: "081234567890",
   notes: "",
@@ -239,6 +239,24 @@ describe("recordPelunasan", () => {
 });
 
 describe("createBooking", () => {
+  it("saves multiple Service IDs with the agreed total and returns the saved names", async () => {
+    const selectedServices = [{ id: "s1", name: "Makeup Wisuda" }, { id: "s2", name: "Hairdo" }];
+    const input = {
+      ...BOOKING,
+      selected_services: [{ id: "s1" }, { id: "s2" }],
+      total_price: 725_000,
+    };
+    const { client, calls } = bookingClient({
+      inserted: { ...input, id: "b1", selected_services: selectedServices },
+    });
+
+    await expect(createBooking(client, input)).resolves.toMatchObject({
+      selected_services: selectedServices,
+      total_price: 725_000,
+    });
+    expect(calls).toContainEqual(["insert", input]);
+  });
+
   it("inserts a confirmed booking when the day is free", async () => {
     const { client, calls } = bookingClient({ inserted: { ...BOOKING, id: "9" } });
     await expect(createBooking(client, BOOKING)).resolves.toMatchObject({
@@ -292,6 +310,17 @@ describe("createBooking", () => {
 });
 
 describe("updateBooking", () => {
+  it("retains a removed catalog Service when the Booking is edited", async () => {
+    const selectedServices = [{ id: "s1", name: "Nama Lama" }, { id: "s2", name: "Hairdo" }];
+    const current = { ...BOOKING, id: "b1", total_price: 725_000, selected_services: selectedServices };
+    const updated = { ...current, selected_services: [selectedServices[0]] };
+    const { client, calls } = bookingClient({ bookingRow: current, updated });
+
+    const patch = { selected_services: [{ id: "s1" }] };
+    await expect(updateBooking(client, "b1", patch)).resolves.toEqual(updated);
+    expect(calls).toContainEqual(["update", patch]);
+  });
+
   it("reschedules through the same overlap guard", async () => {
     const { client } = bookingClient({
       bookingRow: { ...BOOKING, id: "b1", status: "pending" },

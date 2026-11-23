@@ -5,7 +5,6 @@ import type {
   GoogleCalendarEventRow,
   GoogleCalendarOperation,
   GoogleCalendarWorkRow,
-  Service,
 } from "../supabase/database";
 import {
   getConnection,
@@ -171,31 +170,6 @@ async function getBooking(
     .maybeSingle();
   if (error) throw new Error(`Gagal memuat booking: ${error.message}`);
   return (data as Booking | null) ?? null;
-}
-
-async function getServiceName(
-  client: TypedClient,
-  serviceId: string,
-): Promise<string | null> {
-  const loose = client as unknown as {
-    from(name: string): {
-      select(columns: string): {
-        eq(column: string, value: string): {
-          maybeSingle(): Promise<{
-            data: unknown;
-            error: { message: string } | null;
-          }>;
-        };
-      };
-    };
-  };
-  const { data, error } = await loose
-    .from("services")
-    .select("name")
-    .eq("id", serviceId)
-    .maybeSingle();
-  if (error) throw new Error(`Gagal memuat layanan: ${error.message}`);
-  return (data as Pick<Service, "name"> | null)?.name ?? null;
 }
 
 /** Re-read after the claim: this is the decision that prevents duplicates. */
@@ -464,10 +438,7 @@ async function runWork(
     return { outcome: deleted ? "deleted" : "skipped", error: null };
   }
 
-  const serviceName = booking.service_id
-    ? await getServiceName(client, booking.service_id)
-    : null;
-  const draft = buildMirrorEvent(booking, serviceName);
+  const draft = buildMirrorEvent(booking);
 
   if (tracked) {
     try {

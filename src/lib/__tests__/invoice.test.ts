@@ -80,7 +80,7 @@ const BOOKING: Booking = {
   date: "2026-11-14",
   start_time: "08:00",
   end_time: "12:00",
-  service_id: "s1",
+  selected_services: [{ id: "s1", name: "Makeup Wisuda" }],
   client_name: "Sari",
   client_phone: "081234567890",
   notes: "",
@@ -107,7 +107,7 @@ const NEWEST: Invoice = {
   sent_at: null,
   client_name: "Sari",
   client_phone: "081234567890",
-  service_name: "Makeup Wisuda",
+  service_names: ["Makeup Wisuda"],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung A",
@@ -129,7 +129,6 @@ function issue(
 ) {
   return {
     booking: { ...BOOKING, ...overrides },
-    serviceName: "Makeup Wisuda",
     issuedOn: dates.issuedOn,
     dueOn: dates.dueOn,
   };
@@ -208,7 +207,7 @@ describe("invoice issuing guard", () => {
       issuedOn: "2026-10-20", dueOn: null,
     });
     expect(invoiceIssueRefusal(input, null)).toBeNull();
-    expect(buildInvoiceSnapshot(input.booking, input.serviceName, input.issuedOn, input.dueOn))
+    expect(buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn))
       .toMatchObject({ dp_amount: dp, pelunasan_amount: pelunasan, due_on: null });
     expect(invoiceIssueRefusal({ ...input, issuedOn: "" }, null)).toMatch(/tanggal terbit/i);
     expect(invoiceIssueRefusal({ ...input, booking: { ...input.booking, status: "cancelled" } }, null))
@@ -219,11 +218,22 @@ describe("invoice issuing guard", () => {
     expect(invoiceIssueRefusal({ ...issue(), dueOn: null }, null)).toMatch(/jatuh tempo/i);
   });
 
+  it("compares every saved Service name when checking for a duplicate", () => {
+    const input = issue({
+      selected_services: [...BOOKING.selected_services, { id: "s2", name: "Hairdo" }],
+    });
+    const newest = { ...NEWEST, service_names: ["Makeup Wisuda", "Hairdo"] };
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, newest)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, { ...newest, service_names: ["Makeup Wisuda", "Hijabdo"] }))
+      .toBeNull();
+  });
+
   it("checks Pelunasan when comparing a new issue to the latest snapshot", () => {
     const input = issue({ pelunasan_amount: 1_000_000 });
     const paid = {
       ...NEWEST,
-      ...buildInvoiceSnapshot(input.booking, input.serviceName, input.issuedOn, input.dueOn),
+      ...buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn),
     };
     expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
     expect(invoiceIssueRefusal(input, paid)).toMatch(/kirim ulang/i);
@@ -325,11 +335,11 @@ describe("invoice list helpers", () => {
 describe("invoice snapshot", () => {
   it("copies the Booking's displayed fields and both dates", () => {
     expect(
-      buildInvoiceSnapshot(BOOKING, "Makeup Wisuda", "2026-10-20", "2026-11-14"),
+      buildInvoiceSnapshot(BOOKING, "2026-10-20", "2026-11-14"),
     ).toEqual({
       client_name: "Sari",
       client_phone: "081234567890",
-      service_name: "Makeup Wisuda",
+      service_names: ["Makeup Wisuda"],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",
@@ -349,7 +359,7 @@ describe("invoice snapshot", () => {
     expect(invoiceSnapshotOf(NEWEST)).toEqual({
       client_name: "Sari",
       client_phone: "081234567890",
-      service_name: "Makeup Wisuda",
+      service_names: ["Makeup Wisuda"],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",
@@ -370,6 +380,7 @@ describe("invoice snapshot", () => {
     const editedBooking = {
       ...BOOKING,
       client_name: "Sari Dewi",
+      selected_services: [{ id: "s2", name: "Hairdo" }],
       date: "2026-12-01",
       start_time: "09:00",
       end_time: "13:00",
@@ -379,11 +390,11 @@ describe("invoice snapshot", () => {
     };
     const prospective = buildInvoiceSnapshot(
       editedBooking,
-      "Makeup Wisuda",
       "2026-10-20",
       "2026-12-01",
     );
 
+    expect(prospective.service_names).toEqual(["Hairdo"]);
     expect(prospective).not.toEqual(before);
     expect(invoiceSnapshotOf(NEWEST)).toEqual(before);
   });

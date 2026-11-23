@@ -47,29 +47,26 @@ function jakartaDateTime(date: string, time: string): string {
 }
 
 /**
- * A Booking plus its linked service name -> the Google event body.
+ * A Booking with its saved Service names -> the Google event body.
  *
  * The title always names the client and falls back from the service to the
  * event type and finally to "Booking", so it is never blank. The description
  * carries the Booking's own fields only: an Invoice number, bank details, or
  * anything else copied into an Invoice never belongs in the mirror.
  */
-export function buildMirrorEvent(
-  booking: Booking,
-  serviceName: string | null,
-): GoogleCalendarEventDraft {
-  const service = text(serviceName);
+export function buildMirrorEvent(booking: Booking): GoogleCalendarEventDraft {
+  const services = booking.selected_services.map(({ name }) => text(name)).filter(Boolean);
   const eventType = text(booking.event_type);
   const venue = text(booking.venue);
   const reference = text(booking.reference);
   const notes = text(booking.notes);
-  const category = service || eventType || "Booking";
+  const category = services[0] || eventType || "Booking";
 
   const lines: string[] = [
     `Nama klien: ${booking.client_name}`,
     `No. HP: ${booking.client_phone}`,
   ];
-  if (service) lines.push(`Layanan: ${service}`);
+  if (services.length) lines.push(`Layanan: ${services.join(", ")}`);
   if (eventType) lines.push(`Jenis acara: ${eventType}`);
   lines.push(`Jumlah orang: ${booking.headcount}`);
   if (venue) lines.push(`Lokasi: ${venue}`);

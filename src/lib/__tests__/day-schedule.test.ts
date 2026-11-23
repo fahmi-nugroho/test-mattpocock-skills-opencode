@@ -219,6 +219,7 @@ describe("mapDayScheduleRow", () => {
             kind: "booked",
             service: "Akad",
             service_id: "uuid-1",
+            selected_services: [{ id: "uuid-1", name: "Akad" }],
             open_hour: "09:00",
             close_hour: "19:00",
           },

@@ -4,7 +4,7 @@
  * Time columns stay date + "HH:MM" text (see 0001_schema.sql header), so
  * Booking/Block rows share field names and semantics with the
  * BookingForDay/BlockForDay seam in src/lib/availability.ts. Nullable
- * variants (service unlinked, all-day blocks) use `string | null`;
+ * variants (such as all-day blocks) use `string | null`;
  * narrow to the seam shape after null checks at the call site.
  */
 
@@ -30,12 +30,17 @@ export interface PortfolioItem {
   visible: boolean;
 }
 
+export interface BookingService {
+  id: string;
+  name: string;
+}
+
 export interface Booking {
   id: string;
   date: string; // "YYYY-MM-DD"
   start_time: string; // "HH:MM"
   end_time: string; // "HH:MM"
-  service_id: string | null;
+  selected_services: BookingService[];
   client_name: string;
   client_phone: string;
   notes: string;
@@ -93,7 +98,7 @@ export interface Invoice {
   sent_at: string | null;
   client_name: string;
   client_phone: string;
-  service_name: string;
+  service_names: string[];
   event_type: string;
   headcount: number;
   venue: string;

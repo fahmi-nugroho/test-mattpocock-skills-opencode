@@ -44,8 +44,6 @@ function sameBusiness(a: InvoiceBusiness, b: InvoiceBusiness): boolean {
 interface InvoiceDialogProps {
   /** The Booking whose Invoices are shown; null while the dialog is closed. */
   booking: Booking | null;
-  /** The Booking's service name, or "" when the service is gone (as 0018 stores it). */
-  serviceName: string;
   /** Every loaded Invoice for this Booking, newest first. */
   invoices: readonly Invoice[];
   /** Business name and the payment details printed on the picture. */
@@ -80,7 +78,6 @@ interface InvoiceDialogProps {
  */
 export function InvoiceDialog({
   booking,
-  serviceName,
   invoices,
   business,
   businessLoadFailed = false,
@@ -181,7 +178,7 @@ export function InvoiceDialog({
       : null;
   const refusal = booking
     ? invoiceIssueRefusal(
-        { booking, serviceName, ...issueDates },
+        { booking, ...issueDates },
         newest,
       )
     : null;

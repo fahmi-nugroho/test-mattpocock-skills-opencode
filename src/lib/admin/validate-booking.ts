@@ -1,11 +1,11 @@
-import type { BookingStatus } from "../supabase/database";
+import type { BookingService, BookingStatus } from "../supabase/database";
 import { REFERENCE_MAX, isStyle } from "../style-reference";
 
 export interface BookingInput {
   date: string;
   start_time: string;
   end_time: string;
-  service_id?: string | null;
+  service_ids?: string[];
   client_name: string;
   client_phone: string;
   notes?: string;
@@ -23,7 +23,7 @@ export interface ValidatedBookingInput {
   date: string;
   start_time: string;
   end_time: string;
-  service_id: string | null;
+  selected_services: Pick<BookingService, "id">[];
   client_name: string;
   client_phone: string;
   notes: string;
@@ -82,12 +82,7 @@ export function validateBookingInput(
   if (!(STATUSES as readonly string[]).includes(input.status)) {
     throw new Error("Status booking harus pending, confirmed, atau cancelled");
   }
-  const service_id =
-    input.service_id === undefined || input.service_id === null
-      ? null
-      : input.service_id.trim() === ""
-        ? null
-        : input.service_id.trim();
+  const serviceIds = new Set(input.service_ids ?? []);
 
   const event_type = (input.event_type ?? "").trim();
   if (event_type.length > EVENT_TYPE_MAX) {
@@ -124,6 +119,9 @@ export function validateBookingInput(
   ) {
     throw new Error("Total harga harus angka minimal 0");
   }
+  if (serviceIds.size > 1 && total_price === null) {
+    throw new Error("Total harga wajib diisi jika memilih lebih dari satu layanan");
+  }
 
   const dp_amount = input.dp_amount ?? 0;
   if (!Number.isInteger(dp_amount) || dp_amount < 0) {
@@ -134,7 +132,7 @@ export function validateBookingInput(
     date: input.date,
     start_time: input.start_time,
     end_time: input.end_time,
-    service_id,
+    selected_services: Array.from(serviceIds, (id) => ({ id })),
     client_name,
     client_phone,
     notes: (input.notes ?? "").trim(),

@@ -131,7 +131,7 @@ function style(
   };
 }
 
-/** Split on words, accumulating only while the injected measurement fits. */
+/** Keep words together when they fit the available width. */
 function wrap(
   value: string,
   textStyle: InvoiceTextStyle,
@@ -140,15 +140,28 @@ function wrap(
 ): string[] {
   const text = value.trim();
   if (text === "") return [EM_DASH];
-  const words = text.split(/\s+/);
   const lines: string[] = [];
-  let line = words[0];
-  for (const word of words.slice(1)) {
-    const candidate = `${line} ${word}`;
-    if (measure(candidate, textStyle) <= maxWidth) line = candidate;
-    else {
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    if (line) {
+      const candidate = `${line} ${word}`;
+      if (measure(candidate, textStyle) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
       lines.push(line);
+      line = "";
+    }
+    if (measure(word, textStyle) <= maxWidth) {
       line = word;
+      continue;
+    }
+    for (const character of word) {
+      if (line && measure(line + character, textStyle) > maxWidth) {
+        lines.push(line);
+        line = "";
+      }
+      line += character;
     }
   }
   lines.push(line);
@@ -259,7 +272,7 @@ export function layoutInvoice(
     clientY += 24;
   }
 
-  // One line item, its event type beneath, and the right-aligned money column.
+  // One Booking with its Service list and shared Headcount and total.
   let cursor = Math.max(444, clientY + 16);
   rule(cursor, 1.5);
   cursor += 34;
@@ -271,16 +284,14 @@ export function layoutInvoice(
   cursor += 38;
 
   const serviceStyle = style("body", 17, { weight: 700 });
-  const serviceLines = wrap(
-    invoice.service_name,
-    serviceStyle,
-    RIGHT - LEFT - 320,
-    measure,
-  );
+  const serviceNames = invoice.service_names.length ? invoice.service_names : [""];
   const itemTop = cursor;
-  for (const line of serviceLines) {
-    text(line, LEFT, cursor, "left", serviceStyle);
-    cursor += 24;
+  for (const [index, name] of serviceNames.entries()) {
+    if (index > 0) cursor += 5;
+    for (const line of wrap(name, serviceStyle, RIGHT - LEFT - 320, measure)) {
+      text(line, LEFT, cursor, "left", serviceStyle);
+      cursor += 24;
+    }
   }
   text(
     valueOrDash(invoice.event_type),

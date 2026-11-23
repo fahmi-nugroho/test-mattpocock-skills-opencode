@@ -14,7 +14,10 @@ const BOOKING: Booking = {
   date: "2026-11-01",
   start_time: "09:00",
   end_time: "11:30",
-  service_id: "s-1",
+  selected_services: [
+    { id: "s-1", name: "Makeup Wisuda" },
+    { id: "s-2", name: "Hairdo" },
+  ],
   client_name: "Sinta",
   client_phone: "081234567890",
   notes: "Datang lebih awal",
@@ -29,16 +32,16 @@ const BOOKING: Booking = {
   pelunasan_amount: null,
 };
 
-function descriptionLines(booking: Booking, serviceName: string | null) {
-  return (buildMirrorEvent(booking, serviceName).description ?? "").split("\n");
+function descriptionLines(booking: Booking) {
+  return (buildMirrorEvent(booking).description ?? "").split("\n");
 }
 
-// Seam 1 (pure projection): Booking + service name -> Google event body.
+// Seam 1 (pure projection): Booking with saved Services -> Google event body.
 // Catches a title/description/time field that would lie on the owner's phone.
 // Misses Google API acceptance and queue behaviour.
 describe("buildMirrorEvent", () => {
   it("builds the full event body from every Booking field", () => {
-    const event = buildMirrorEvent(BOOKING, "Makeup Wisuda");
+    const event = buildMirrorEvent(BOOKING);
 
     expect(event.summary).toBe("Sinta — Makeup Wisuda");
     expect(event.location).toBe("Gedung Serbaguna, Bandung");
@@ -56,10 +59,10 @@ describe("buildMirrorEvent", () => {
     expect(event).not.toHaveProperty("reminders");
     expect(event.extendedProperties?.private?.muaBookingId).toBe("b-1");
 
-    const lines = descriptionLines(BOOKING, "Makeup Wisuda");
+    const lines = descriptionLines(BOOKING);
     expect(lines).toContain("Nama klien: Sinta");
     expect(lines).toContain("No. HP: 081234567890");
-    expect(lines).toContain("Layanan: Makeup Wisuda");
+    expect(lines).toContain("Layanan: Makeup Wisuda, Hairdo");
     expect(lines).toContain("Jenis acara: Wisuda");
     expect(lines).toContain("Jumlah orang: 2");
     expect(lines).toContain("Lokasi: Gedung Serbaguna, Bandung");
@@ -73,14 +76,12 @@ describe("buildMirrorEvent", () => {
 
   it("falls back to the event type, then to Booking, when no service is linked", () => {
     const withEventType = buildMirrorEvent(
-      { ...BOOKING, service_id: null },
-      null,
+      { ...BOOKING, selected_services: [] },
     );
     expect(withEventType.summary).toBe("Sinta — Wisuda");
 
     const withNothing = buildMirrorEvent(
-      { ...BOOKING, service_id: null, event_type: "" },
-      null,
+      { ...BOOKING, selected_services: [], event_type: "" },
     );
     expect(withNothing.summary).toBe("Sinta — Booking");
     expect(withNothing.description).not.toMatch(/^Layanan:/m);
@@ -88,7 +89,7 @@ describe("buildMirrorEvent", () => {
   });
 
   it("treats whitespace-only service and event type as missing", () => {
-    expect(buildMirrorEvent({ ...BOOKING, event_type: "   " }, "  ").summary).toBe(
+    expect(buildMirrorEvent({ ...BOOKING, selected_services: [{ id: "s-1", name: "  " }], event_type: "   " }).summary).toBe(
       "Sinta — Booking",
     );
   });
@@ -97,6 +98,7 @@ describe("buildMirrorEvent", () => {
     const sparse = buildMirrorEvent(
       {
         ...BOOKING,
+        selected_services: [],
         event_type: "",
         venue: "",
         hairdo: "",
@@ -105,7 +107,6 @@ describe("buildMirrorEvent", () => {
         total_price: null,
         dp_amount: 0,
       },
-      "",
     );
 
     expect(sparse.location).toBeUndefined();
@@ -130,12 +131,12 @@ describe("buildMirrorEvent", () => {
 
   it("keeps a long Reference intact", () => {
     const reference = "x".repeat(300);
-    const lines = descriptionLines({ ...BOOKING, reference }, "Makeup");
+    const lines = descriptionLines({ ...BOOKING, reference });
     expect(lines).toContain(`Referensi: ${reference}`);
   });
 
   it("never carries Invoice numbers, bank details or other Invoice data", () => {
-    const text = buildMirrorEvent(BOOKING, "Makeup").description ?? "";
+    const text = buildMirrorEvent(BOOKING).description ?? "";
     expect(text).not.toMatch(/invc-/i);
     expect(text).not.toMatch(/bank/i);
     expect(text).not.toMatch(/rekening/i);
@@ -143,7 +144,7 @@ describe("buildMirrorEvent", () => {
   });
 
   it("treats an unrecognised legacy Style as plain text rather than losing it", () => {
-    const lines = descriptionLines({ ...BOOKING, hairdo: "sanggul klasik" }, "");
+    const lines = descriptionLines({ ...BOOKING, hairdo: "sanggul klasik" });
     expect(lines).toContain("Gaya rambut: sanggul klasik");
   });
 });
