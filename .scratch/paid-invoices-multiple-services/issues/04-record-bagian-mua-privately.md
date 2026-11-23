@@ -4,10 +4,14 @@
 
 **Blocked by:** 01 (Record Pelunasan and issue a LUNAS Invoice).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The admin can create or edit a Booking with an optional Bagian MUA in whole rupiah. A blank value means unknown and Rp0 means the MUA kept nothing. A known amount requires an Agreed Total and must be between zero and that total. Validate the range when either amount changes.
-- [ ] During **Catat Pelunasan**, a blank Bagian MUA suggests the Agreed Total. The admin can accept it, lower it, or clear it before saving. For a Rp1.500.000 Booking with Rp600.000 going to a collaborator, the admin can save Rp900.000.
-- [ ] A previously entered value, including Rp0, is preserved unless the admin explicitly changes it. Save Pelunasan and the reviewed Bagian MUA together so a failed attempt cannot partially record the action.
-- [ ] Bagian MUA stays within authenticated admin Booking data. Invoice snapshots, preview and export, the Calendar Mirror, and public responses exclude it. An edit to Bagian MUA alone leaves Invoice issue decisions, Payment Status, and remaining balance unchanged.
-- [ ] Existing Booking, Invoice, Calendar Mirror, and public contract tests cover the amount rules, persistence, and privacy. Check the suggested, changed, cleared, and previously entered values in the existing settlement form.
+- [x] The admin can create or edit a Booking with an optional Bagian MUA in whole rupiah. A blank value means unknown and Rp0 means the MUA kept nothing. A known amount requires an Agreed Total and must be between zero and that total. Validate the range when either amount changes.
+- [x] During **Catat Pelunasan**, a blank Bagian MUA suggests the Agreed Total. The admin can accept it, lower it, or clear it before saving. For a Rp1.500.000 Booking with Rp600.000 going to a collaborator, the admin can save Rp900.000.
+- [x] A previously entered value, including Rp0, is preserved unless the admin explicitly changes it. Save Pelunasan and the reviewed Bagian MUA together so a failed attempt cannot partially record the action.
+- [x] Bagian MUA stays within authenticated admin Booking data. Invoice snapshots, preview and export, the Calendar Mirror, and public responses exclude it. An edit to Bagian MUA alone leaves Invoice issue decisions, Payment Status, and remaining balance unchanged.
+- [x] Existing Booking, Invoice, Calendar Mirror, and public contract tests cover the amount rules, persistence, and privacy. Check the suggested, changed, cleared, and previously entered values in the existing settlement form.
+
+## Comments
+
+- Verified with typechecking, all 764 tests, local PostgreSQL for settlement and access controls, and mobile Chromium for Booking creation, editing, and settlement.

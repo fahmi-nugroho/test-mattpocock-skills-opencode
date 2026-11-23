@@ -53,6 +53,7 @@ export interface Booking {
   total_price: number | null; // null = not quoted yet (0015)
   dp_amount: number; // >= 0, default 0 (0015)
   pelunasan_amount: number | null;
+  bagian_mua: number | null;
 }
 
 /**
@@ -261,6 +262,8 @@ export interface Database {
           p_expected_dp: number;
           p_expected_client_name: string;
           p_expected_client_phone: string;
+          p_expected_bagian_mua: number | null;
+          p_bagian_mua: number | null;
         };
         Returns: Booking;
       };

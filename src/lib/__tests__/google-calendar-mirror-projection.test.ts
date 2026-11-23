@@ -30,6 +30,7 @@ const BOOKING: Booking = {
   total_price: 750000,
   dp_amount: 250000,
   pelunasan_amount: null,
+  bagian_mua: 321_000,
 };
 
 function descriptionLines(booking: Booking) {
@@ -40,6 +41,11 @@ function descriptionLines(booking: Booking) {
 // Catches a title/description/time field that would lie on the owner's phone.
 // Misses Google API acceptance and queue behaviour.
 describe("buildMirrorEvent", () => {
+  it("projects the same event when Bagian MUA changes", () => {
+    const changed: Booking = { ...BOOKING, bagian_mua: 0 };
+    expect(buildMirrorEvent(changed)).toEqual(buildMirrorEvent(BOOKING));
+  });
+
   it("builds the full event body from every Booking field", () => {
     const event = buildMirrorEvent(BOOKING);
 

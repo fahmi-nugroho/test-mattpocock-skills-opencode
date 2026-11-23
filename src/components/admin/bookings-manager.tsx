@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import {
   BOOKING_FILTERS,
@@ -52,6 +52,7 @@ import {
   setBookingStatus,
   undoPelunasan,
   updateBooking,
+  type BookingPatch,
 } from "@/lib/supabase/admin-bookings";
 import { listInvoicesAdmin } from "@/lib/supabase/admin-invoices";
 import { linkBookingRequest } from "@/lib/supabase/admin-requests";
@@ -84,6 +85,45 @@ function parseIntField(value: string, fallback: number | null): number | null {
   const trimmed = value.trim();
   if (trimmed === "") return fallback;
   return Number(trimmed);
+}
+
+function BagianMuaField({ total, ...input }: { total: string } &
+  Pick<ComponentProps<"input">, "name" | "value" | "defaultValue" | "onChange">) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium">Bagian MUA (Rp)</span>
+      <input
+        type="number"
+        min={0}
+        max={parseIntField(total, null) ?? undefined}
+        step={1}
+        placeholder="Kosongkan bila belum diketahui"
+        className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        {...input}
+      />
+    </label>
+  );
+}
+
+function bookingEditFields(item: Booking) {
+  return {
+    date: item.date,
+    start_time: item.start_time,
+    end_time: item.end_time,
+    selected_services: item.selected_services,
+    client_name: item.client_name,
+    client_phone: item.client_phone,
+    notes: item.notes,
+    status: item.status,
+    event_type: item.event_type,
+    headcount: String(item.headcount),
+    venue: item.venue,
+    hairdo: isStyle(item.hairdo) ? item.hairdo : "",
+    reference: item.reference,
+    total_price: item.total_price === null ? null : String(item.total_price),
+    dp_amount: String(item.dp_amount),
+    bagian_mua: String(item.bagian_mua ?? ""),
+  };
 }
 
 function suggestedBookingTotal(
@@ -212,6 +252,7 @@ export function BookingsManager() {
   const [legacyPrefillHairdo, setLegacyPrefillHairdo] = useState("");
   const [manualTotal, setManualTotal] = useState<string | null>(null);
   const [dpAmount, setDpAmount] = useState("0");
+  const [bagianMua, setBagianMua] = useState("");
   // Set when "Jadikan Booking" prefilled this form from a request; the next
   // successful save links the request to the new booking.
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
@@ -234,6 +275,7 @@ export function BookingsManager() {
     reference: "",
     total_price: null as string | null,
     dp_amount: "0",
+    bagian_mua: "",
   });
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const editingId = editingBooking?.id ?? null;
@@ -564,6 +606,7 @@ export function BookingsManager() {
       setPendingRequestId(requestId);
       setSelectedServices([]);
       setManualTotal(null);
+      setBagianMua("");
       setFormError(null);
       requestAnimationFrame(() => {
         const form = document.getElementById("booking-form");
@@ -604,6 +647,7 @@ export function BookingsManager() {
         reference,
         total_price: parseIntField(totalPrice, null),
         dp_amount: parseIntField(dpAmount, 0),
+        bagian_mua: parseIntField(bagianMua, null),
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Input tidak valid");
@@ -628,6 +672,7 @@ export function BookingsManager() {
       setLegacyPrefillHairdo("");
       setManualTotal(null);
       setDpAmount("0");
+      setBagianMua("");
       // A prefilled accept path links the request to the booking it just
       // created. The booking already exists, so a link failure is reported
       // rather than retried — it must never be created a second time. The
@@ -662,34 +707,15 @@ export function BookingsManager() {
   function startEdit(item: Booking) {
     setEditingBooking(item);
     setRowError(null);
-    setEditFields({
-      date: item.date,
-      start_time: item.start_time,
-      end_time: item.end_time,
-      selected_services: item.selected_services,
-      client_name: item.client_name,
-      client_phone: item.client_phone,
-      notes: item.notes,
-      status: item.status,
-      event_type: item.event_type,
-      headcount: String(item.headcount),
-      venue: item.venue,
-      // Legacy free text in the reused column cannot be re-selected by a
-      // two-option radio: it shows read-only in the list, and editing starts
-      // with no Style chosen so the admin picks one or leaves it empty.
-      hairdo: isStyle(item.hairdo) ? item.hairdo : "",
-      reference: item.reference,
-      total_price: item.total_price === null ? null : String(item.total_price),
-      dp_amount: String(item.dp_amount),
-    });
+    setEditFields(bookingEditFields(item));
   }
 
   async function onSaveEdit(item: Booking, totalPrice: string) {
-    if (rowBusy) return;
+    if (rowBusy || !editingBooking) return;
     setRowError(null);
-    let validated;
+    let patch: BookingPatch;
     try {
-      validated = validateBookingInput({
+      const { selected_services, ...details } = validateBookingInput({
         date: editFields.date,
         start_time: editFields.start_time,
         end_time: editFields.end_time,
@@ -705,7 +731,15 @@ export function BookingsManager() {
         reference: editFields.reference,
         total_price: parseIntField(totalPrice, null),
         dp_amount: parseIntField(editFields.dp_amount, 0),
+        bagian_mua: parseIntField(editFields.bagian_mua, null),
       });
+      const originalFields = bookingEditFields(editingBooking);
+      const submittedFields = { ...editFields, total_price: totalPrice };
+      patch = Object.fromEntries(Object.entries(details).filter(([key]) => {
+        const field = key as keyof typeof details;
+        return submittedFields[field] !== (originalFields[field] ?? "");
+      }));
+      if (servicesChanged) patch.selected_services = selected_services;
     } catch (err) {
       setRowError({
         id: item.id,
@@ -713,12 +747,13 @@ export function BookingsManager() {
       });
       return;
     }
+    if (Object.keys(patch).length === 0) {
+      setEditingBooking(null);
+      return;
+    }
     setRowBusy(item.id);
     try {
-      const { selected_services, ...details } = validated;
-      const row = await updateBooking(
-        supabaseBrowser(), item.id, servicesChanged ? { ...details, selected_services } : details,
-      );
+      const row = await updateBooking(supabaseBrowser(), item.id, patch);
       // Same one ordering rule: the split orders the list, not this save.
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
       setEditingBooking(null);
@@ -757,15 +792,15 @@ export function BookingsManager() {
     }
   }
 
-  async function onChangePelunasan(item: Booking) {
+  async function onChangePelunasan(item: Booking, bagianMua: number | null) {
     if (rowBusy) return;
     const undo = item.pelunasan_amount !== null;
     setRowError(null);
     setRowBusy(item.id);
-    const action = undo ? undoPelunasan : recordPelunasan;
     const failureMessage = undo ? "Gagal membatalkan pelunasan." : "Gagal mencatat pelunasan.";
     try {
-      const row = await action(supabaseBrowser(), item);
+      const client = supabaseBrowser();
+      const row = undo ? await undoPelunasan(client, item) : await recordPelunasan(client, item, bagianMua);
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
     } catch (err) {
       const saved = await getBookingById(supabaseBrowser(), item.id).catch(() => null);
@@ -823,13 +858,21 @@ export function BookingsManager() {
       : paymentPosition(item.total_price, item.dp_amount, item.pelunasan_amount);
     const settlementAmount = item.pelunasan_amount ?? payment?.remaining ?? 0;
     const settlementLabel = hasPelunasan ? "Batalkan Pelunasan" : "Catat Pelunasan";
+    const editFormId = `booking-edit-${item.id}`;
     return (
       <li
         key={item.id}
         className="rounded-xl border border-neutral-200 bg-white p-3"
       >
         {editingId === item.id ? (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <form
+            id={editFormId}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSaveEdit(item, editTotal);
+            }}
+            className="grid gap-2 sm:grid-cols-2"
+          >
             <label className="block">
               <span className="text-sm font-medium">Tanggal</span>
               <input
@@ -1056,6 +1099,11 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            <BagianMuaField
+              value={editFields.bagian_mua}
+              total={editTotal}
+              onChange={(e) => setEditFields((fields) => ({ ...fields, bagian_mua: e.target.value }))}
+            />
             {hasPelunasan ? (
               <p className="text-xs text-neutral-600 sm:col-span-2">
                 Tutup editor, lalu pilih Batalkan Pelunasan untuk mengubah total atau DP.
@@ -1072,7 +1120,7 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
-          </div>
+          </form>
         ) : (
           <div>
             <p className="text-sm font-semibold">
@@ -1116,6 +1164,9 @@ export function BookingsManager() {
                 {" · "}{item.dp_amount > 0 || hasPelunasan ? payment.status : "Belum dibayar"}
               </p>
             ) : null}
+            {item.bagian_mua !== null ? (
+              <p className="mt-0.5 text-xs text-neutral-600">Bagian MUA {formatIDR(item.bagian_mua)}</p>
+            ) : null}
             {item.notes ? (
               <p className="mt-1 text-xs text-neutral-600">{item.notes}</p>
             ) : null}
@@ -1131,10 +1182,18 @@ export function BookingsManager() {
                   description={hasPelunasan
                     ? `Hapus catatan pelunasan sebesar ${formatIDR(settlementAmount)} dari booking ini. Invoice yang sudah terbit tetap tersimpan.`
                     : `Catat sisa pembayaran sebesar ${formatIDR(settlementAmount)} sebagai pelunasan.`}
-                  onConfirm={() => onChangePelunasan(item)}
+                  onConfirm={(form) => onChangePelunasan(item, parseIntField(String(form.get("bagian_mua") ?? ""), null))}
                   destructive={hasPelunasan}
                   disabled={rowBusy !== null}
-                />
+                >
+                  {hasPelunasan ? null : (
+                    <BagianMuaField
+                      name="bagian_mua"
+                      total={String(item.total_price ?? "")}
+                      defaultValue={String(item.bagian_mua ?? item.total_price ?? "")}
+                    />
+                  )}
+                </ConfirmAction>
               ) : null}
               <button
                 ref={(el) => {
@@ -1165,9 +1224,9 @@ export function BookingsManager() {
           {editingId === item.id ? (
             <>
               <button
-                type="button"
+                type="submit"
+                form={editFormId}
                 disabled={rowBusy === item.id}
-                onClick={() => onSaveEdit(item, editTotal)}
                 className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
               >
                 {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
@@ -1472,6 +1531,7 @@ export function BookingsManager() {
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            <BagianMuaField value={bagianMua} total={totalPrice} onChange={(e) => setBagianMua(e.target.value)} />
             {createRemaining !== null ? (
               <p className="text-sm text-neutral-600 sm:col-span-2">
                 Sisa pembayaran: {formatIDR(createRemaining)}

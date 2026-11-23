@@ -151,6 +151,7 @@ const BOOKING = {
   reference: "",
   total_price: null as number | null,
   dp_amount: 0,
+  bagian_mua: null,
 };
 
 describe("listBookingsAdmin", () => {
@@ -209,13 +210,21 @@ describe("recordPelunasan", () => {
     client_phone: "081234567890",
     total_price: 1_500_000,
     dp_amount: 500_000,
+    bagian_mua: null,
   };
 
-  it.each([[500_000, 1_000_000], [0, 1_500_000]])(
-    "records the final transfer separately from a DP of Rp%i",
-    async (dp, pelunasan) => {
-      const reviewed = { ...reviewedBooking, dp_amount: dp };
-      const saved = { ...reviewed, pelunasan_amount: pelunasan };
+  it.each([
+    [500_000, 1_000_000, null, 1_500_000],
+    [500_000, 1_000_000, null, 900_000],
+    [500_000, 1_000_000, null, null],
+    [500_000, 1_000_000, 700_000, 700_000],
+    [0, 1_500_000, 0, 0],
+    [500_000, 1_000_000, 700_000, null],
+  ])(
+    "records Pelunasan with DP %s, transfer %s and Bagian MUA from %s to %s in one call",
+    async (dp, pelunasan, previous, bagian_mua) => {
+      const reviewed = { ...reviewedBooking, dp_amount: dp, bagian_mua: previous };
+      const saved = { ...reviewed, pelunasan_amount: pelunasan, bagian_mua };
       const rpc = async (name: string, args: unknown) => {
         expect(name).toBe("record_pelunasan");
         expect(args).toEqual({
@@ -224,19 +233,22 @@ describe("recordPelunasan", () => {
           p_expected_dp: dp,
           p_expected_client_name: "Sinta",
           p_expected_client_phone: "081234567890",
+          p_expected_bagian_mua: previous,
+          p_bagian_mua: bagian_mua,
         });
         return ok(saved);
       };
-      await expect(recordPelunasan(asClient({ rpc }), reviewed)).resolves.toEqual(saved);
+      await expect(recordPelunasan(asClient({ rpc }), reviewed, bagian_mua)).resolves.toEqual(saved);
     },
   );
 
   it.each([
     "Detail booking berubah. Periksa kembali sisa pembayaran.",
+    "Bagian MUA berubah. Periksa kembali sebelum mencatat pelunasan.",
     "Pelunasan sudah tercatat.",
   ])("surfaces a refused settlement: %s", async (message) => {
     const rpc = async () => fail(message);
-    await expect(recordPelunasan(asClient({ rpc }), reviewedBooking)).rejects.toThrow(message);
+    await expect(recordPelunasan(asClient({ rpc }), reviewedBooking, 900_000)).rejects.toThrow(message);
   });
 });
 
@@ -247,6 +259,7 @@ describe("undoPelunasan", () => {
     total_price: 1_500_000,
     dp_amount: 500_000,
     pelunasan_amount: 1_000_000,
+    bagian_mua: 900_000,
   };
 
   it("clears only the reviewed final payment and returns the saved Booking", async () => {
@@ -282,6 +295,15 @@ describe("undoPelunasan", () => {
 });
 
 describe("createBooking", () => {
+  it("saves a known amount of Rp0 on a new Booking", async () => {
+    const input = { ...BOOKING, total_price: 1_500_000, bagian_mua: 0 };
+    const inserted = { ...input, id: "b1" };
+    const { client, calls } = bookingClient({ inserted });
+
+    await expect(createBooking(client, input)).resolves.toEqual(inserted);
+    expect(calls).toContainEqual(["insert", input]);
+  });
+
   it("saves multiple Service IDs with the agreed total and returns the saved names", async () => {
     const selectedServices = [{ id: "s1", name: "Makeup Wisuda" }, { id: "s2", name: "Hairdo" }];
     const input = {
@@ -353,6 +375,24 @@ describe("createBooking", () => {
 });
 
 describe("updateBooking", () => {
+  it.each([null, 0, 900_000])("saves a private amount of %s on a settled Booking", async (bagian_mua) => {
+    const current = { ...BOOKING, id: "b1", total_price: 1_500_000, dp_amount: 500_000, pelunasan_amount: 1_000_000 };
+    const saved = { ...current, bagian_mua };
+    const { client, calls } = bookingClient({ bookingRow: current, updated: saved, fullDates: [current.date] });
+
+    await expect(updateBooking(client, "b1", { bagian_mua })).resolves.toEqual(saved);
+    expect(calls).toContainEqual(["update", { bagian_mua }]);
+    expect(calls).not.toContainEqual(["rpc", "enqueue_google_calendar_work", expect.anything()]);
+  });
+
+  it("rejects lowering the total below the saved Bagian MUA", async () => {
+    const current = { ...BOOKING, id: "b1", total_price: 1_500_000, bagian_mua: 900_000 };
+    const { client, calls } = bookingClient({ bookingRow: current });
+
+    await expect(updateBooking(client, "b1", { total_price: 899_999 })).rejects.toThrow(/Bagian MUA/);
+    expect(calls).not.toContainEqual(["update", expect.anything()]);
+  });
+
   it.each([{ total_price: 1_750_000 }, { dp_amount: 650_000 }])(
     "surfaces a settled amount edit refusal for %o without notifying the Calendar Mirror",
     async (patch) => {
@@ -377,7 +417,7 @@ describe("updateBooking", () => {
       expect(args).toMatchObject({ p_expected_total: 1_750_000, p_expected_dp: 650_000 });
       return ok({ ...corrected, pelunasan_amount: 1_100_000 });
     };
-    await expect(recordPelunasan(asClient({ rpc }), saved)).resolves.toMatchObject({
+    await expect(recordPelunasan(asClient({ rpc }), saved, saved.bagian_mua)).resolves.toMatchObject({
       ...correctedAmounts,
       pelunasan_amount: 1_100_000,
     });

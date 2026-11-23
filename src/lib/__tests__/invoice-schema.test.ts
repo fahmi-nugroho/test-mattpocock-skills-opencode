@@ -254,11 +254,23 @@ describe("multiple Services SQL contract", () => {
     expect(createInvoice).toMatch(/jsonb_array_elements\(v_booking.selected_services\) with ordinality/);
     expect(createInvoice).toMatch(/insert into invoices\s*\([^;]*?\bservice_names\b/);
     expect(createInvoice).not.toMatch(/(join|from) services\b/);
+    expect(createInvoice).not.toContain("bagian_mua");
     expect(code).toMatch(/revoke execute on function create_invoice\(uuid, date, date\) from public, anon/);
   });
 });
 
 describe("Pelunasan SQL contract", () => {
+  it("atomically saves Pelunasan and the reviewed private amount under the Booking lock", () => {
+    const code = codeOnly(readMigration("0025_booking_bagian_mua.sql")).toLowerCase();
+    expect(code).toMatch(/add column bagian_mua integer\s*,/);
+    expect(code).toMatch(/bagian_mua is null\s+or \(total_price is not null and bagian_mua between 0 and total_price\)/);
+    expect(code).toContain("drop function record_pelunasan(uuid, integer, integer, text, text)");
+    expect(code).toMatch(/select \* into v_booking[\s\S]*?where id = p_booking_id\s+for update/);
+    expect(code).toMatch(/v_booking\.bagian_mua is distinct from p_expected_bagian_mua[\s\S]*?raise exception/);
+    expect(code).toMatch(/set pelunasan_amount = v_remaining,\s+bagian_mua = p_bagian_mua\s+where id = p_booking_id/);
+    expect(code).not.toMatch(/alter table invoices|create_invoice/);
+  });
+
   it("locks the saved Booking and records the balance only after checking the reviewed amounts", () => {
     const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();
     expect(code).toMatch(/select \* into v_booking[\s\S]*?where id = p_booking_id\s+for update/);

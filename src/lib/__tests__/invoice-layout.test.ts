@@ -425,6 +425,14 @@ describe("invoice payment section while DP diterima", () => {
 });
 
 describe("invoice payment section once Lunas", () => {
+  it("excludes the private Booking amount from the preview and export draw list", () => {
+    const invoice = { ...INVOICE, pelunasan_amount: 1_000_000, due_on: null };
+    const extraBookingData = { ...invoice, bagian_mua: 900_000 };
+    const ops = layout(extraBookingData);
+    expect(ops).toEqual(layout(invoice));
+    expect(strings(ops).join(" ")).not.toMatch(/bagian mua|900\.000/i);
+  });
+
   it.each([
     [500_000, 1_000_000, "Rp 500.000", "Rp 1.000.000"],
     [0, 1_500_000, "Rp 0", "Rp 1.500.000"],

@@ -51,6 +51,7 @@ function booking(id: string, status: Booking["status"]): Booking {
     total_price: null,
     dp_amount: 0,
     pelunasan_amount: null,
+    bagian_mua: null,
   };
 }
 

@@ -93,6 +93,7 @@ const BOOKING: Booking = {
   total_price: 1_500_000,
   dp_amount: 500_000,
   pelunasan_amount: null,
+  bagian_mua: 900_000,
 };
 
 const NEWEST: Invoice = {
@@ -180,6 +181,20 @@ describe("invoice issuing guard", () => {
     const refusal = invoiceIssueRefusal(issue(), NEWEST);
     expect(refusal).toMatch(/invc-07\/2026/);
     expect(refusal).toMatch(/kirim ulang/i);
+  });
+
+  it("keeps Invoice eligibility, duplicate decisions and client payments after a private amount edit", () => {
+    const before = issue();
+    const edited = issue({ bagian_mua: 0 });
+    expect(invoiceIssueRefusal(edited, null)).toBeNull();
+    expect(invoiceIssueRefusal(edited, NEWEST)).toMatch(/kirim ulang/i);
+    const snapshot = buildInvoiceSnapshot(edited.booking, edited.issuedOn, edited.dueOn);
+    expect(snapshot).toEqual(buildInvoiceSnapshot(before.booking, before.issuedOn, before.dueOn));
+    expect(snapshot).not.toHaveProperty("bagian_mua");
+    expect(paymentPosition(snapshot.subtotal, snapshot.dp_amount, snapshot.pelunasan_amount)).toEqual({
+      remaining: 1_000_000,
+      status: "DP diterima",
+    });
   });
 
   it("allows a changed Booking detail to become a new Invoice", () => {

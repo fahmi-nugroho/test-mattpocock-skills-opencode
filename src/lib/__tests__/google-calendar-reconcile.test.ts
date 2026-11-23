@@ -61,6 +61,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     total_price: 500000,
     dp_amount: 100000,
     pelunasan_amount: null,
+    bagian_mua: null,
     ...overrides,
   };
 }

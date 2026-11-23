@@ -54,7 +54,7 @@ function jakartaDateTime(date: string, time: string): string {
  * carries the Booking's own fields only: an Invoice number, bank details, or
  * anything else copied into an Invoice never belongs in the mirror.
  */
-export function buildMirrorEvent(booking: Booking): GoogleCalendarEventDraft {
+export function buildMirrorEvent(booking: Omit<Booking, "pelunasan_amount" | "bagian_mua">): GoogleCalendarEventDraft {
   const services = booking.selected_services.map(({ name }) => text(name)).filter(Boolean);
   const eventType = text(booking.event_type);
   const venue = text(booking.venue);

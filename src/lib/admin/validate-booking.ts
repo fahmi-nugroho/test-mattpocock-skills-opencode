@@ -17,6 +17,7 @@ export interface BookingInput {
   reference?: string;
   total_price?: number | null;
   dp_amount?: number;
+  bagian_mua?: number | null;
 }
 
 export interface ValidatedBookingInput {
@@ -35,6 +36,7 @@ export interface ValidatedBookingInput {
   reference: string;
   total_price: number | null;
   dp_amount: number;
+  bagian_mua: number | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -47,6 +49,16 @@ const STATUSES: readonly BookingStatus[] = [
 // Caps mirror the 0015 column checks.
 const EVENT_TYPE_MAX = 100;
 const VENUE_MAX = 200;
+
+export function validateBagianMua(amount: number | null, total: number | null): void {
+  if (amount === null) return;
+  if (total === null) {
+    throw new Error("Isi total harga sebelum mengisi Bagian MUA.");
+  }
+  if (!Number.isInteger(amount) || amount < 0 || amount > total) {
+    throw new Error("Bagian MUA harus dalam rupiah bulat, dari Rp0 hingga total harga.");
+  }
+}
 
 /**
  * Validate the admin booking form (ticket 07, extended tickets 04 and 02).
@@ -127,6 +139,8 @@ export function validateBookingInput(
   if (!Number.isInteger(dp_amount) || dp_amount < 0) {
     throw new Error("DP harus angka minimal 0");
   }
+  const bagian_mua = input.bagian_mua ?? null;
+  validateBagianMua(bagian_mua, total_price);
 
   return {
     date: input.date,
@@ -144,5 +158,6 @@ export function validateBookingInput(
     reference,
     total_price,
     dp_amount,
+    bagian_mua,
   };
 }

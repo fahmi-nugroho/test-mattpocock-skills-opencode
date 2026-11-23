@@ -56,6 +56,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     total_price: 500000,
     dp_amount: 100000,
     pelunasan_amount: null,
+    bagian_mua: null,
     ...overrides,
   };
 }
@@ -295,6 +296,7 @@ describe("drainMirrorQueue", () => {
     const { client, state, calls } = fakeClient({
       bookings: [booking({
         selected_services: [{ id: "s1", name: "Makeup Wisuda" }, { id: "s2", name: "Hairdo" }],
+        bagian_mua: 321_000,
       })],
       work: [work()],
     });
@@ -302,6 +304,9 @@ describe("drainMirrorQueue", () => {
 
     const result = await drainMirrorQueue(client, runtime(port), NOW);
 
+    expect(calls.filter(([op, table]) => op === "select" && table === "bookings")).not.toContainEqual([
+      "select", "bookings", expect.stringMatching(/\*|bagian_mua/),
+    ]);
     expect(port.calls.filter((call) => call[0] === "create")).toHaveLength(1);
     const create = port.calls.find((call) => call[0] === "create");
     expect(create?.[2]).toMatchObject({
@@ -309,6 +314,7 @@ describe("drainMirrorQueue", () => {
       description: expect.stringContaining("Layanan: Makeup Wisuda, Hairdo"),
       location: "Bandung",
     });
+    expect(JSON.stringify(create?.[2])).not.toMatch(/bagian.?mua|321\.?000/i);
     expect(state.events).toEqual([
       expect.objectContaining({ booking_id: "b1", google_event_id: "g-created-1" }),
     ]);

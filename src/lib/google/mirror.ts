@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  Booking,
   Database,
   GoogleCalendarEventRow,
   GoogleCalendarOperation,
@@ -18,6 +17,7 @@ import {
   mirrorTodayKey,
   planBackfill,
   planMirrorWork,
+  type MirrorPlannerBooking,
 } from "./mirror-projection";
 import type { GoogleCalendarPort } from "./port";
 import { enqueueMirrorWork } from "../supabase/admin-mirror";
@@ -133,7 +133,7 @@ function isMissingEventError(error: unknown): boolean {
   );
 }
 
-async function listRows<T>(client: TypedClient, table: string): Promise<T[]> {
+async function listRows<T>(client: TypedClient, table: string, columns = "*"): Promise<T[]> {
   const loose = client as unknown as {
     from(name: string): {
       select(columns: string): Promise<{
@@ -142,7 +142,7 @@ async function listRows<T>(client: TypedClient, table: string): Promise<T[]> {
       }>;
     };
   };
-  const { data, error } = await loose.from(table).select("*");
+  const { data, error } = await loose.from(table).select(columns);
   if (error) throw new Error(`Gagal memuat data sinkronisasi Google: ${error.message}`);
   return Array.isArray(data) ? (data as T[]) : [];
 }
@@ -150,7 +150,7 @@ async function listRows<T>(client: TypedClient, table: string): Promise<T[]> {
 async function getBooking(
   client: TypedClient,
   id: string,
-): Promise<Booking | null> {
+): Promise<Parameters<typeof buildMirrorEvent>[0] | null> {
   const loose = client as unknown as {
     from(name: string): {
       select(columns: string): {
@@ -165,11 +165,11 @@ async function getBooking(
   };
   const { data, error } = await loose
     .from("bookings")
-    .select("*")
+    .select("id,date,start_time,end_time,status,selected_services,client_name,client_phone,notes,event_type,headcount,venue,hairdo,reference,total_price,dp_amount")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`Gagal memuat booking: ${error.message}`);
-  return (data as Booking | null) ?? null;
+  return data as Parameters<typeof buildMirrorEvent>[0] | null;
 }
 
 /** Re-read after the claim: this is the decision that prevents duplicates. */
@@ -514,7 +514,7 @@ export async function drainMirrorQueue(
   const todayKey = mirrorTodayKey(now);
   try {
     const [bookings, tracked, work] = await Promise.all([
-      listRows<Booking>(client, "bookings"),
+      listRows<MirrorPlannerBooking>(client, "bookings", "id,date,status"),
       listRows<GoogleCalendarEventRow>(client, EVENTS_TABLE),
       listRows<GoogleCalendarWorkRow>(client, WORK_TABLE),
     ]);
@@ -692,11 +692,11 @@ export async function reconcileMirror(
   const connection = await getConnection(client);
   if (!connection.enabled) return emptySummary({ disabled: true });
 
-  let bookings: Booking[];
+  let bookings: MirrorPlannerBooking[];
   let trackedRows: GoogleCalendarEventRow[];
   try {
     [bookings, trackedRows] = await Promise.all([
-      listRows<Booking>(client, "bookings"),
+      listRows<MirrorPlannerBooking>(client, "bookings", "id,date,status"),
       listRows<GoogleCalendarEventRow>(client, EVENTS_TABLE),
     ]);
   } catch (error) {
@@ -748,7 +748,7 @@ export async function reconcileMirror(
   let cleanupError: string | null = null;
   try {
     const [freshBookings, freshTracked, freshWork] = await Promise.all([
-      listRows<Booking>(client, "bookings"),
+      listRows<MirrorPlannerBooking>(client, "bookings", "id,date,status"),
       listRows<GoogleCalendarEventRow>(client, EVENTS_TABLE),
       listRows<GoogleCalendarWorkRow>(client, WORK_TABLE),
     ]);
