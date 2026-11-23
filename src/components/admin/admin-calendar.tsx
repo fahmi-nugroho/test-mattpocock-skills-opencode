@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { computeDayStatus, type DayStatus } from "@/lib/availability";
 import {
   WEEKDAY_HEADERS_ID,
@@ -10,7 +11,6 @@ import {
   isPastDate,
   parseMonthKey,
   shiftMonth,
-  toMonthKey,
 } from "@/lib/calendar";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { BOOKING_STATUS_LABEL } from "@/lib/admin/booking-filter";
@@ -46,16 +46,14 @@ const STATUS_META: Record<DayStatus, { label: string; cell: string }> = {
  * with a per-date full-toggle button.
  */
 export function AdminCalendar() {
-  const [monthKey, setMonthKey] = useState(() => {
-    const now = new Date();
-    return toMonthKey(now.getFullYear(), now.getMonth() + 1);
-  });
+  const [monthKey, setMonthKey] = useState(() => getTodayKey().slice(0, 7));
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [fullDates, setFullDates] = useState<string[]>([]);
   const [selected, setSelected] = useState(() => getTodayKey());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
@@ -90,7 +88,7 @@ export function AdminCalendar() {
       cancelled = true;
       window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
     };
-  }, []);
+  }, [loadAttempt]);
 
   const { year, month } = parseMonthKey(monthKey);
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
@@ -120,12 +118,22 @@ export function AdminCalendar() {
   const selectedBlocks = blocks.filter((b) => b.date === selected);
   const selectedIsFull = fullDates.includes(selected);
 
+  function selectDate(date: string) {
+    setSelected(date);
+    setToggleError(null);
+  }
+
+  function showMonth(next: string) {
+    setMonthKey(next);
+    selectDate(next === todayKey.slice(0, 7) ? todayKey : `${next}-01`);
+  }
+
   async function onToggleSelected() {
     if (toggling) return;
     setToggleError(null);
     setToggling(true);
     try {
-      const next = await toggleFullDate(supabaseBrowser(), selected);
+      const next = await toggleFullDate(supabaseBrowser(), selected, !selectedIsFull);
       setFullDates(next);
       notifyScheduleChanged();
     } catch {
@@ -140,21 +148,32 @@ export function AdminCalendar() {
   }
   if (error) {
     return (
-      <p role="alert" className="mt-3 text-sm text-red-600">
-        {error}
-      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <p role="alert" className="text-sm text-red-700">{error}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setLoading(true);
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+          className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+        >
+          Muat ulang
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="mt-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6">
-      <div className="max-w-xl xl:max-w-none">
+      <div className="max-w-xl rounded-xl border border-neutral-200 bg-white p-3 sm:p-4 xl:max-w-none">
         <div className="flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setMonthKey((m) => shiftMonth(m, -1))}
+            onClick={() => showMonth(shiftMonth(monthKey, -1))}
             aria-label="Bulan sebelumnya"
-            className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+            className="min-h-10 min-w-10 rounded-full border border-neutral-300 text-lg font-semibold transition hover:bg-neutral-100"
           >
             ‹
           </button>
@@ -163,9 +182,9 @@ export function AdminCalendar() {
           </p>
           <button
             type="button"
-            onClick={() => setMonthKey((m) => shiftMonth(m, 1))}
+            onClick={() => showMonth(shiftMonth(monthKey, 1))}
             aria-label="Bulan berikutnya"
-            className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+            className="min-h-10 min-w-10 rounded-full border border-neutral-300 text-lg font-semibold transition hover:bg-neutral-100"
           >
             ›
           </button>
@@ -192,37 +211,37 @@ export function AdminCalendar() {
               <button
                 key={date}
                 type="button"
-                onClick={() => setSelected(date)}
+                onClick={() => selectDate(date)}
                 aria-label={`${dayNum} ${monthLabel}: ${STATUS_META[status].label}`}
                 aria-pressed={active}
-                className={`flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium ${STATUS_META[status].cell}${past ? " opacity-60 saturate-50" : ""}${active ? " ring-2 ring-neutral-900" : ""}`}
+                aria-current={date === todayKey ? "date" : undefined}
+                className={`flex aspect-square min-h-9 min-w-0 items-center justify-center rounded-lg text-sm font-medium hover:brightness-95 ${STATUS_META[status].cell}${past ? " opacity-75 saturate-50" : ""}${active ? " ring-2 ring-inset ring-neutral-900" : ""}${date === todayKey ? " font-bold underline underline-offset-4" : ""}`}
               >
                 <span>{dayNum}</span>
               </button>
             );
           })}
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-green-100 px-2.5 py-1 font-medium text-green-900">Tersedia</span>
+          <span className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-900">Tutup</span>
+          <button
+            type="button"
+            onClick={() => showMonth(todayKey.slice(0, 7))}
+            className="ml-auto min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100"
+          >
+            Hari ini
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 max-w-xl rounded-xl border border-neutral-200 bg-white p-4 xl:mt-0">
         <div>
-          <h3 className="text-sm font-bold">{formatDateId(selected)}</h3>
+          <h3 className="text-base font-bold">{formatDateId(selected)}</h3>
           <p className="mt-0.5 text-xs text-neutral-600">
             {STATUS_META[statusByDate[selected] ?? "available"].label}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onToggleSelected}
-          disabled={toggling}
-          className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-        >
-          {toggling
-            ? "Menyimpan…"
-            : selectedIsFull
-              ? "Hapus tanda penuh"
-              : "Tandai penuh"}
-        </button>
         {toggleError ? (
           <p role="alert" className="mt-2 text-sm text-red-600">
             {toggleError}
@@ -251,6 +270,17 @@ export function AdminCalendar() {
             ))}
           </ul>
         )}
+        <div className="mt-4 border-t border-neutral-200 pt-3">
+          <ConfirmAction
+            label={selectedIsFull ? "Hapus tanda penuh" : "Tandai penuh"}
+            title={`${selectedIsFull ? "Hapus tanda penuh untuk" : "Tandai penuh"} ${formatDateId(selected)}?`}
+            description={selectedIsFull
+              ? "Kalender publik akan kembali mengikuti blokir pada tanggal ini."
+              : "Tanggal ini akan tampil tutup di kalender publik."}
+            onConfirm={onToggleSelected}
+            disabled={toggling}
+          />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import {
   BOOKING_FILTERS,
   BOOKING_FILTER_LABEL,
@@ -162,7 +163,6 @@ export function BookingsManager() {
     id: string;
     message: string;
   } | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   // The chosen status chip; `all` shows every Booking.
   const [filter, setFilter] = useState<BookingFilter>("all");
@@ -300,11 +300,7 @@ export function BookingsManager() {
     filterRefs.current[next]?.focus();
   }
 
-  /**
-   * Open a Booking's invoices. The shared dialog is single-instance, so the
-   * booking list closes in the same update; two stacked overlays would share
-   * one Escape handler.
-   */
+  /** Switch from the booking list to this booking's invoices. */
   function openInvoices(item: Booking) {
     setListOpen(false);
     setInvoiceBookingId(item.id);
@@ -470,9 +466,10 @@ export function BookingsManager() {
     const bookingId = pendingInvoiceFocusRef.current;
     if (!bookingId) return;
     pendingInvoiceFocusRef.current = null;
-    invoiceButtonRefs.current
-      .get(bookingId)
-      ?.focus({ preventScroll: true });
+    const frame = requestAnimationFrame(() => {
+      invoiceButtonRefs.current.get(bookingId)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [listOpen]);
 
   // "Jadikan Booking" hand-off: the Permintaan section dispatches the request
@@ -502,6 +499,11 @@ export function BookingsManager() {
       setPendingRequestId(requestId);
       setTotalTouched(false);
       setFormError(null);
+      requestAnimationFrame(() => {
+        const form = document.getElementById("booking-form");
+        form?.focus({ preventScroll: true });
+        form?.scrollIntoView({ block: "start", behavior: "instant" });
+      });
     };
     window.addEventListener(ACCEPT_REQUEST_EVENT, onAccept);
     return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
@@ -699,10 +701,6 @@ export function BookingsManager() {
   }
 
   async function onDelete(item: Booking) {
-    if (confirmDeleteId !== item.id) {
-      setConfirmDeleteId(item.id);
-      return;
-    }
     if (rowBusy) return;
     setRowError(null);
     setRowBusy(item.id);
@@ -715,7 +713,6 @@ export function BookingsManager() {
       // The Booking row is gone; its tracked row survives so the drain can
       // still delete the Google event.
       void drainAndRefreshMirror();
-      setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
     } catch {
       setRowError({
@@ -745,11 +742,12 @@ export function BookingsManager() {
               <span className="text-sm font-medium">Tanggal</span>
               <input
                 type="date"
+                autoFocus
                 value={editFields.date}
                 onChange={(e) =>
                   setEditFields((f) => ({ ...f, date: e.target.value }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -762,7 +760,7 @@ export function BookingsManager() {
                     status: e.target.value as BookingStatus,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
                 {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -782,7 +780,7 @@ export function BookingsManager() {
                     start_time: e.target.value,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -793,7 +791,7 @@ export function BookingsManager() {
                 onChange={(e) =>
                   setEditFields((f) => ({ ...f, end_time: e.target.value }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -807,7 +805,7 @@ export function BookingsManager() {
                     client_name: e.target.value,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -822,7 +820,7 @@ export function BookingsManager() {
                   }))
                 }
                 placeholder="08…"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -837,7 +835,7 @@ export function BookingsManager() {
                   }))
                 }
                 placeholder="Wisuda, lamaran…"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -852,7 +850,7 @@ export function BookingsManager() {
                     headcount: e.target.value,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -864,7 +862,7 @@ export function BookingsManager() {
                   setEditFields((f) => ({ ...f, venue: e.target.value }))
                 }
                 placeholder="Gedung / alamat"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <fieldset className="rounded-lg border border-neutral-200 p-2 sm:col-span-2">
@@ -916,7 +914,7 @@ export function BookingsManager() {
                   }))
                 }
                 placeholder="Link foto atau deskripsi singkat"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -932,7 +930,7 @@ export function BookingsManager() {
                   }))
                 }
                 placeholder="Kosongkan bila belum disepakati"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -947,7 +945,7 @@ export function BookingsManager() {
                     dp_amount: e.target.value,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block sm:col-span-2">
@@ -958,7 +956,7 @@ export function BookingsManager() {
                 onChange={(e) =>
                   setEditFields((f) => ({ ...f, notes: e.target.value }))
                 }
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -1007,29 +1005,33 @@ export function BookingsManager() {
           </div>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            ref={(el) => {
-              if (el) invoiceButtonRefs.current.set(item.id, el);
-              else invoiceButtonRefs.current.delete(item.id);
-            }}
-            type="button"
-            onClick={() => openInvoices(item)}
-            aria-haspopup="dialog"
-            className="rounded-full border border-neutral-900 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
-          >
-            {newestInvoice
-              ? `Invoice (${bookingInvoices.length}) · ${newestInvoice.number} · ${invoiceSentLabel(newestInvoice)}`
-              : "Buat invoice"}
-          </button>
-          {mirrorState === "failed" ? (
-            <button
-              type="button"
-              disabled={rowBusy === item.id}
-              onClick={() => onRetryMirror(item)}
-              className="rounded-full border border-amber-400 px-4 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
-            >
-              {rowBusy === item.id ? "Mencoba…" : "Coba lagi"}
-            </button>
+          {editingId !== item.id ? (
+            <>
+              <button
+                ref={(el) => {
+                  if (el) invoiceButtonRefs.current.set(item.id, el);
+                  else invoiceButtonRefs.current.delete(item.id);
+                }}
+                type="button"
+                onClick={() => openInvoices(item)}
+                aria-haspopup="dialog"
+                className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100"
+              >
+                {newestInvoice
+                  ? `Invoice (${bookingInvoices.length}) · ${newestInvoice.number} · ${invoiceSentLabel(newestInvoice)}`
+                  : "Buat invoice"}
+              </button>
+              {mirrorState === "failed" ? (
+                <button
+                  type="button"
+                  disabled={rowBusy === item.id}
+                  onClick={() => onRetryMirror(item)}
+                  className="rounded-full border border-amber-400 px-4 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+                >
+                  {rowBusy === item.id ? "Mencoba…" : "Coba lagi"}
+                </button>
+              ) : null}
+            </>
           ) : null}
           {editingId === item.id ? (
             <>
@@ -1052,48 +1054,44 @@ export function BookingsManager() {
           ) : (
             <button
               type="button"
+              disabled={rowBusy !== null}
               onClick={() => startEdit(item)}
-              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+              className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
             >
               Ubah Jadwal
             </button>
           )}
-          {item.status !== "confirmed" ? (
-            <button
-              type="button"
-              disabled={rowBusy === item.id}
-              onClick={() => onSetStatus(item, "confirmed")}
-              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-            >
-              Konfirmasi
-            </button>
+          {editingId !== item.id ? (
+            <>
+              {item.status !== "confirmed" ? (
+                <ConfirmAction
+                  label="Konfirmasi booking"
+                  title={`Konfirmasi booking ${item.client_name}?`}
+                  description="Jam booking ini akan tercatat sebagai terisi di kalender publik."
+                  onConfirm={() => onSetStatus(item, "confirmed")}
+                  disabled={rowBusy !== null}
+                />
+              ) : null}
+              {item.status !== "cancelled" ? (
+                <ConfirmAction
+                  label="Batalkan booking"
+                  title={`Batalkan booking ${item.client_name}?`}
+                  description="Booking akan tetap tercatat sebagai batal. Jamnya dapat tersedia kembali di kalender publik."
+                  onConfirm={() => onSetStatus(item, "cancelled")}
+                  disabled={rowBusy !== null}
+                  destructive
+                />
+              ) : null}
+              <ConfirmAction
+                label="Hapus booking"
+                title={`Hapus booking ${item.client_name}?`}
+                description="Booking dan invoice terkait akan dihapus. Jadwal publik akan diperbarui."
+                onConfirm={() => onDelete(item)}
+                disabled={rowBusy !== null}
+                destructive
+              />
+            </>
           ) : null}
-          {item.status !== "cancelled" ? (
-            <button
-              type="button"
-              disabled={rowBusy === item.id}
-              onClick={() => onSetStatus(item, "cancelled")}
-              className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-            >
-              Batalkan
-            </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={rowBusy === item.id}
-            onClick={() => onDelete(item)}
-            className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-              confirmDeleteId === item.id
-                ? "bg-red-600 text-white"
-                : "border border-red-300 text-red-700"
-            }`}
-          >
-            {rowBusy === item.id
-              ? "Menghapus…"
-              : confirmDeleteId === item.id
-                ? "Klik lagi untuk hapus"
-                : "Hapus"}
-          </button>
         </div>
         {rowError?.id === item.id ? (
           <p role="alert" className="mt-2 text-xs text-red-600">
@@ -1116,22 +1114,44 @@ export function BookingsManager() {
         </p>
       ) : null}
 
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setListOpen(true)}
+        aria-haspopup="dialog"
+        className="mb-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-gold-soft/55 px-4 py-3 text-left transition hover:bg-gold-soft"
+      >
+        <span>
+          <span className="block text-sm font-semibold">
+            Lihat daftar booking
+          </span>
+          <span className="mt-0.5 block text-xs text-neutral-600">
+            {upcomingCount} mendatang · {upcomingWaiting} masih menunggu
+          </span>
+        </span>
+        <span aria-hidden="true" className="ml-auto text-lg">
+          ›
+        </span>
+      </button>
+
       <form
+        id="booking-form"
         onSubmit={onCreate}
-        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-5"
+        tabIndex={-1}
+        className="scroll-mt-24 space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
       >
         <h3 className="text-sm font-bold">Tambah booking</h3>
         <fieldset className="min-w-0 space-y-3">
           <legend className="text-sm font-semibold">Jadwal</legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
+            <label className="block min-w-0">
               <span className="text-sm font-medium">Tanggal</span>
               <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1141,7 +1161,7 @@ export function BookingsManager() {
                 required
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1151,7 +1171,7 @@ export function BookingsManager() {
                 required
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1159,7 +1179,7 @@ export function BookingsManager() {
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as BookingStatus)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
                 {BOOKING_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -1173,7 +1193,7 @@ export function BookingsManager() {
         <fieldset className="min-w-0 space-y-3">
           <legend className="text-sm font-semibold">Klien</legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
+            <label className="block min-w-0">
               <span className="text-sm font-medium">Nama klien</span>
               <input
                 type="text"
@@ -1181,7 +1201,7 @@ export function BookingsManager() {
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="Nama klien"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1192,7 +1212,7 @@ export function BookingsManager() {
                 value={clientPhone}
                 onChange={(e) => setClientPhone(e.target.value)}
                 placeholder="08…"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -1202,12 +1222,12 @@ export function BookingsManager() {
             Layanan dan detail acara
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
+            <label className="block min-w-0">
               <span className="text-sm font-medium">Layanan</span>
               <select
                 value={serviceId}
                 onChange={(e) => setServiceId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
                 <option value="">Tanpa layanan</option>
                 {services.map((s) => (
@@ -1224,7 +1244,7 @@ export function BookingsManager() {
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
                 placeholder="Wisuda, lamaran…"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1234,7 +1254,7 @@ export function BookingsManager() {
                 min={1}
                 value={headcount}
                 onChange={(e) => setHeadcount(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1244,7 +1264,7 @@ export function BookingsManager() {
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
                 placeholder="Gedung / alamat"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <fieldset className="min-w-0">
@@ -1299,7 +1319,7 @@ export function BookingsManager() {
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="Link foto atau deskripsi singkat"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -1309,7 +1329,7 @@ export function BookingsManager() {
             Pembayaran dan catatan
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
+            <label className="block min-w-0">
               <span className="text-sm font-medium">Total harga (Rp)</span>
               <input
                 type="number"
@@ -1320,7 +1340,7 @@ export function BookingsManager() {
                   setTotalTouched(true);
                 }}
                 placeholder="Kosongkan bila belum disepakati"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -1330,7 +1350,7 @@ export function BookingsManager() {
                 min={0}
                 value={dpAmount}
                 onChange={(e) => setDpAmount(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             {createRemaining !== null ? (
@@ -1345,7 +1365,7 @@ export function BookingsManager() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Hasil negosiasi WA, permintaan khusus…"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -1355,34 +1375,16 @@ export function BookingsManager() {
             {formError}
           </p>
         ) : null}
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-full bg-neutral-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-        >
-          {saving ? "Menyimpan…" : "Tambah booking"}
-        </button>
+        <div className="flex justify-end border-t border-neutral-200 pt-4">
+          <button
+            type="submit"
+            disabled={saving}
+            className="min-h-11 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+          >
+            {saving ? "Menyimpan…" : "Tambah booking"}
+          </button>
+        </div>
       </form>
-
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setListOpen(true)}
-        aria-haspopup="dialog"
-        className="mt-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50"
-      >
-        <span>
-          <span className="block text-sm font-semibold">
-            Lihat daftar booking
-          </span>
-          <span className="mt-0.5 block text-xs text-neutral-600">
-            {upcomingCount} mendatang · {upcomingWaiting} masih menunggu
-          </span>
-        </span>
-        <span aria-hidden="true" className="ml-auto text-lg">
-          ›
-        </span>
-      </button>
 
       <Dialog
         open={listOpen}

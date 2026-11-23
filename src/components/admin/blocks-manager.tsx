@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateBlockInput } from "@/lib/admin/validate-block";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -12,6 +13,7 @@ import {
 } from "@/lib/supabase/admin-blocks";
 import { getFullDates, toggleFullDate } from "@/lib/supabase/admin-full-dates";
 import type { Block } from "@/lib/supabase/database";
+import { formatDateId } from "@/lib/format";
 import { getTodayKey } from "@/lib/calendar";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 
@@ -45,8 +47,7 @@ export function BlocksManager() {
   const [editEnd, setEditEnd] = useState("");
   const [editReason, setEditReason] = useState("");
   const [rowBusy, setRowBusy] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [query, setQuery] = useState("");
 
   // Client-side search over visible text fields only; CRUD/data flow
@@ -126,13 +127,15 @@ export function BlocksManager() {
     }
   }
 
-  async function onToggleFull(e: React.FormEvent) {
-    e.preventDefault();
-    if (toggling || !fullDateInput) return;
+  const markedFull = fullDates.includes(fullDateInput);
+  const validFullDate = /^\d{4}-\d{2}-\d{2}$/.test(fullDateInput);
+
+  async function onToggleFull() {
+    if (toggling || !validFullDate) return;
     setToggleError(null);
     setToggling(true);
     try {
-      const next = await toggleFullDate(supabaseBrowser(), fullDateInput);
+      const next = await toggleFullDate(supabaseBrowser(), fullDateInput, !markedFull);
       setFullDates(next);
       notifyScheduleChanged();
     } catch (err) {
@@ -158,7 +161,7 @@ export function BlocksManager() {
     if (rowBusy) return;
     setRowError(null);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(editDate)) {
-      setRowError("Tanggal blokir harus format YYYY-MM-DD");
+      setRowError({ id: item.id, message: "Tanggal blokir harus format YYYY-MM-DD" });
       return;
     }
     setRowBusy(item.id);
@@ -174,19 +177,13 @@ export function BlocksManager() {
       setEditingId(null);
       notifyScheduleChanged();
     } catch (err) {
-      setRowError(
-        err instanceof Error ? err.message : "Gagal menyimpan perubahan. Coba lagi.",
-      );
+      setRowError({ id: item.id, message: err instanceof Error ? err.message : "Gagal menyimpan perubahan. Coba lagi." });
     } finally {
       setRowBusy(null);
     }
   }
 
   async function onDelete(item: Block) {
-    if (confirmDeleteId !== item.id) {
-      setConfirmDeleteId(item.id);
-      return;
-    }
     if (rowBusy) return;
     setRowError(null);
     setRowBusy(item.id);
@@ -194,10 +191,9 @@ export function BlocksManager() {
       await deleteBlock(supabaseBrowser(), item.id);
       setItems((prev) => prev.filter((p) => p.id !== item.id));
       notifyScheduleChanged();
-      setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
     } catch {
-      setRowError("Gagal menghapus blokir. Coba lagi.");
+      setRowError({ id: item.id, message: "Gagal menghapus blokir. Coba lagi." });
     } finally {
       setRowBusy(null);
     }
@@ -212,11 +208,6 @@ export function BlocksManager() {
       {error ? (
         <p role="alert" className="text-sm text-red-600">
           {error}
-        </p>
-      ) : null}
-      {rowError ? (
-        <p role="alert" className="text-sm text-red-600">
-          {rowError}
         </p>
       ) : null}
 
@@ -246,6 +237,15 @@ export function BlocksManager() {
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
+          <label className="flex min-h-10 items-center gap-2 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={allDay}
+              onChange={(e) => setAllDay(e.target.checked)}
+              className="h-4 w-4 accent-espresso"
+            />
+            <span className="text-sm font-medium">Sehari penuh</span>
+          </label>
           {!allDay ? (
             <>
               <label className="block">
@@ -271,15 +271,6 @@ export function BlocksManager() {
             </>
           ) : null}
         </div>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={allDay}
-            onChange={(e) => setAllDay(e.target.checked)}
-            className="h-4 w-4 accent-espresso"
-          />
-          <span className="text-sm font-medium">Sehari penuh</span>
-        </label>
         {formError ? (
           <p role="alert" className="text-sm text-red-600">
             {formError}
@@ -294,14 +285,10 @@ export function BlocksManager() {
         </button>
       </form>
 
-      <form
-        onSubmit={onToggleFull}
-        className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
-      >
-        <h3 className="text-sm font-bold">Tandai tanggal penuh (manual)</h3>
+      <section aria-labelledby="full-date-title" className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+        <h3 id="full-date-title" className="text-sm font-bold">Tanda tanggal penuh</h3>
         <p className="text-xs text-neutral-600">
-          Tanggal penuh tampil Tutup di kalender publik — sama seperti blokir
-          sehari penuh.
+          Tanggal yang ditandai tampil tutup di kalender publik.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
@@ -310,21 +297,22 @@ export function BlocksManager() {
               type="date"
               required
               value={fullDateInput}
-              onChange={(e) => setFullDateInput(e.target.value)}
+              onChange={(e) => {
+                setFullDateInput(e.target.value);
+                setToggleError(null);
+              }}
               className="mt-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
-          <button
-            type="submit"
-            disabled={toggling}
-            className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-          >
-            {toggling
-              ? "Menyimpan…"
-              : fullDates.includes(fullDateInput)
-                ? "Hapus tanda penuh"
-                : "Tandai penuh"}
-          </button>
+          <ConfirmAction
+            label={markedFull ? "Hapus tanda penuh" : "Tandai penuh"}
+            title={`${markedFull ? "Hapus tanda penuh untuk" : "Tandai penuh"} ${validFullDate ? formatDateId(fullDateInput) : "tanggal ini"}?`}
+            description={markedFull
+              ? "Kalender publik akan kembali mengikuti blokir pada tanggal ini."
+              : "Tanggal ini akan tampil tutup di kalender publik."}
+            onConfirm={onToggleFull}
+            disabled={toggling || !validFullDate}
+          />
         </div>
         {toggleError ? (
           <p role="alert" className="text-sm text-red-600">
@@ -338,7 +326,7 @@ export function BlocksManager() {
                 key={d}
                 className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-900"
               >
-                {d}
+                {formatDateId(d)}
               </li>
             ))}
           </ul>
@@ -347,8 +335,9 @@ export function BlocksManager() {
             Belum ada tanggal yang ditandai penuh.
           </p>
         )}
-      </form>
+      </section>
 
+      <h3 className="pt-2 text-base font-bold">Daftar blokir</h3>
       <input
         type="search"
         value={query}
@@ -364,14 +353,17 @@ export function BlocksManager() {
             className="rounded-xl border border-neutral-200 bg-white p-3"
           >
             {editingId === item.id ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  type="date"
-                  aria-label="Tanggal"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block min-w-0 sm:col-span-2">
+                  <span className="text-sm font-medium">Tanggal</span>
+                  <input
+                    type="date"
+                    autoFocus
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </label>
                 <label className="flex items-center gap-2 sm:col-span-2">
                   <input
                     type="checkbox"
@@ -383,34 +375,40 @@ export function BlocksManager() {
                 </label>
                 {!editAllDay ? (
                   <>
-                    <input
-                      type="time"
-                      aria-label="Jam mulai"
-                      value={editStart}
-                      onChange={(e) => setEditStart(e.target.value)}
-                      className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
-                    <input
-                      type="time"
-                      aria-label="Jam selesai"
-                      value={editEnd}
-                      onChange={(e) => setEditEnd(e.target.value)}
-                      className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                    />
+                    <label className="block min-w-0">
+                      <span className="text-sm font-medium">Jam mulai</span>
+                      <input
+                        type="time"
+                        value={editStart}
+                        onChange={(e) => setEditStart(e.target.value)}
+                        className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="text-sm font-medium">Jam selesai</span>
+                      <input
+                        type="time"
+                        value={editEnd}
+                        onChange={(e) => setEditEnd(e.target.value)}
+                        className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                      />
+                    </label>
                   </>
                 ) : null}
-                <input
-                  type="text"
-                  aria-label="Alasan"
-                  value={editReason}
-                  onChange={(e) => setEditReason(e.target.value)}
-                  className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                />
+                <label className="block min-w-0 sm:col-span-2">
+                  <span className="text-sm font-medium">Alasan</span>
+                  <input
+                    type="text"
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </label>
               </div>
             ) : (
               <div>
                 <p className="text-sm font-semibold">
-                  {item.date} ·{" "}
+                  {formatDateId(item.date)} ·{" "}
                   {item.all_day
                     ? "Sehari penuh"
                     : `${item.start_time}–${item.end_time}`}
@@ -422,21 +420,25 @@ export function BlocksManager() {
                 ) : null}
               </div>
             )}
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               {editingId === item.id ? (
                 <>
                   <button
                     type="button"
                     disabled={rowBusy === item.id}
                     onClick={() => onSaveEdit(item)}
-                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    className="min-h-10 rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60"
                   >
                     {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditingId(null)}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                    disabled={rowBusy === item.id}
+                    onClick={() => {
+                      setEditingId(null);
+                      setRowError(null);
+                    }}
+                    className="min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
                   >
                     Batal
                   </button>
@@ -444,29 +446,27 @@ export function BlocksManager() {
               ) : (
                 <button
                   type="button"
+                  disabled={rowBusy !== null}
                   onClick={() => startEdit(item)}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                  className="min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
                 >
                   Ubah
                 </button>
               )}
-              <button
-                type="button"
-                disabled={rowBusy === item.id}
-                onClick={() => onDelete(item)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                  confirmDeleteId === item.id
-                    ? "bg-red-600 text-white"
-                    : "border border-red-300 text-red-700"
-                }`}
-              >
-                {rowBusy === item.id
-                  ? "Menghapus…"
-                  : confirmDeleteId === item.id
-                    ? "Klik lagi untuk hapus"
-                    : "Hapus"}
-              </button>
+              {editingId !== item.id ? (
+                <ConfirmAction
+                  label="Hapus blokir"
+                  title={`Hapus blokir ${formatDateId(item.date)}?`}
+                  description="Jam yang diblokir dapat tersedia kembali di kalender publik."
+                  onConfirm={() => onDelete(item)}
+                  disabled={rowBusy !== null}
+                  destructive
+                />
+              ) : null}
             </div>
+            {rowError?.id === item.id ? (
+              <p role="alert" className="mt-2 text-sm text-red-700">{rowError.message}</p>
+            ) : null}
           </li>
         ))}
       </ul>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { useCallback, useEffect, useState } from "react";
 import { notifyScheduleChanged } from "@/lib/admin/schedule-events";
 import { formatDateTimeId } from "@/lib/format";
@@ -76,8 +77,8 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
   const [busy, setBusy] = useState<Action | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setLoadError(null);
     try {
       const response = await adminRequest("/api/admin/google-calendar");
@@ -144,7 +145,7 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
           text: body.error ?? "Tes koneksi gagal. Periksa kembali pengaturan Google.",
         });
       }
-      await load();
+      await load(false);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -165,11 +166,6 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
    */
   async function performResync() {
     if (busy) return;
-    const confirmed = window.confirm(
-      "Resync semua Booking hari ini dan ke depan? Event Google yang diubah atau dihapus manual akan diperbaiki, dan event untuk Booking yang tidak lagi terkonfirmasi akan dihapus. Riwayat yang sudah lewat tidak disentuh.",
-    );
-    if (!confirmed) return;
-
     setBusy("resync");
     setNotice(null);
     try {
@@ -205,7 +201,7 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
       // Booking badges derive from the mirror tables, so nudge the other
       // panels to reread them instead of waiting for a reload.
       notifyScheduleChanged();
-      await load();
+      await load(false);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -250,9 +246,16 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
       {loading ? (
         <p className="mt-4 text-sm text-neutral-600">Memuat status…</p>
       ) : loadError ? (
-        <p role="alert" className="mt-4 text-sm text-red-600">
-          {loadError}
-        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p role="alert" className="text-sm text-red-700">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+          >
+            Muat ulang
+          </button>
+        </div>
       ) : status && connection ? (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -311,44 +314,49 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
         </>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void performAction("test")}
-          disabled={busy !== null || !status?.configured}
-          className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-        >
-          {busy === "test" ? "Menguji…" : "Tes koneksi"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void performAction("connect")}
-          disabled={
-            busy !== null || !status?.configured || status.connection.enabled
-          }
-          className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-        >
-          {busy === "connect" ? "Menghubungkan…" : "Hubungkan"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void performResync()}
-          disabled={
-            busy !== null || !status?.configured || !status.connection.enabled
-          }
-          className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-        >
-          {busy === "resync" ? "Menyinkronkan…" : "Resync semua"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void performAction("disconnect")}
-          disabled={busy !== null || !status?.connection.enabled}
-          className="rounded-full border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
-        >
-          {busy === "disconnect" ? "Memutuskan…" : "Putuskan"}
-        </button>
-      </div>
+      {status && !loading && !loadError ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-4">
+          {!status.connection.enabled ? (
+            <button
+              type="button"
+              onClick={() => void performAction("connect")}
+              disabled={busy !== null || !status.configured}
+              className="min-h-10 rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {busy === "connect" ? "Menghubungkan…" : "Hubungkan"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void performAction("test")}
+            disabled={busy !== null || !status.configured}
+            className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+          >
+            {busy === "test" ? "Menguji…" : "Tes koneksi"}
+          </button>
+          {status.connection.enabled ? (
+            <>
+              <ConfirmAction
+                label="Sinkronkan ulang"
+                title="Sinkronkan ulang Google Calendar?"
+                description="Event booking hari ini dan mendatang akan diperbaiki. Event untuk booking yang sudah tidak terkonfirmasi akan dihapus. Riwayat tetap tersimpan."
+                onConfirm={performResync}
+                disabled={busy !== null || !status.configured}
+              />
+              <div className="sm:ml-auto">
+                <ConfirmAction
+                  label="Putuskan koneksi"
+                  title="Putuskan koneksi Google Calendar?"
+                  description="Pembaruan otomatis berhenti. Event yang sudah ada tetap tersimpan di Google Calendar."
+                  onConfirm={() => performAction("disconnect")}
+                  disabled={busy !== null}
+                  destructive
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {notice ? (
         <p
