@@ -15,6 +15,7 @@ import {
   indexInvoicesByBooking,
   invoiceBusiness,
   invoiceSentLabel,
+  paymentPosition,
 } from "@/lib/admin/invoice";
 import {
   LIST_PAGE_SIZE,
@@ -45,7 +46,9 @@ import {
 import {
   createBooking,
   deleteBooking,
+  getBookingById,
   listBookingsAdmin,
+  recordPelunasan,
   setBookingStatus,
   updateBooking,
 } from "@/lib/supabase/admin-bookings";
@@ -700,6 +703,27 @@ export function BookingsManager() {
     }
   }
 
+  async function onRecordPelunasan(item: Booking) {
+    if (rowBusy) return;
+    setRowError(null);
+    setRowBusy(item.id);
+    try {
+      const row = await recordPelunasan(supabaseBrowser(), item);
+      setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
+    } catch (err) {
+      const saved = await getBookingById(supabaseBrowser(), item.id).catch(() => null);
+      if (saved) {
+        setItems((prev) => prev.map((p) => (p.id === item.id ? saved : p)));
+      }
+      setRowError({
+        id: item.id,
+        message: err instanceof Error ? err.message : "Gagal mencatat pelunasan.",
+      });
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
   async function onDelete(item: Booking) {
     if (rowBusy) return;
     setRowError(null);
@@ -731,6 +755,10 @@ export function BookingsManager() {
     const bookingInvoices = invoicesByBooking.get(item.id) ?? [];
     const newestInvoice = bookingInvoices[0] ?? null;
     const mirrorState = mirrorStates.get(item.id) ?? null;
+    const hasPelunasan = item.pelunasan_amount !== null;
+    const payment = item.total_price === null
+      ? null
+      : paymentPosition(item.total_price, item.dp_amount, item.pelunasan_amount);
     return (
       <li
         key={item.id}
@@ -923,6 +951,7 @@ export function BookingsManager() {
                 type="number"
                 min={0}
                 value={editFields.total_price}
+                readOnly={hasPelunasan}
                 onChange={(e) =>
                   setEditFields((f) => ({
                     ...f,
@@ -939,6 +968,7 @@ export function BookingsManager() {
                 type="number"
                 min={0}
                 value={editFields.dp_amount}
+                readOnly={hasPelunasan}
                 onChange={(e) =>
                   setEditFields((f) => ({
                     ...f,
@@ -948,6 +978,11 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            {hasPelunasan ? (
+              <p className="text-xs text-neutral-600 sm:col-span-2">
+                Total dan DP tidak dapat diubah selama pelunasan tercatat.
+              </p>
+            ) : null}
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium">Catatan</span>
               <input
@@ -992,11 +1027,15 @@ export function BookingsManager() {
               hairdo={item.hairdo}
               reference={item.reference}
             />
-            {item.total_price !== null ? (
+            {item.total_price !== null && payment ? (
               <p className="mt-0.5 text-xs text-neutral-600">
                 Total {formatIDR(item.total_price)} · DP{" "}
-                {formatIDR(item.dp_amount)} · Sisa{" "}
-                {formatIDR(remainingBalance(item.total_price, item.dp_amount) ?? 0)}
+                {formatIDR(item.dp_amount)}
+                {item.pelunasan_amount !== null
+                  ? ` · Pelunasan ${formatIDR(item.pelunasan_amount)}`
+                  : ""}
+                {" · Sisa "}{formatIDR(Math.max(0, payment.remaining))}
+                {" · "}{item.dp_amount > 0 || hasPelunasan ? payment.status : "Belum dibayar"}
               </p>
             ) : null}
             {item.notes ? (
@@ -1007,6 +1046,15 @@ export function BookingsManager() {
         <div className="mt-3 flex flex-wrap gap-2">
           {editingId !== item.id ? (
             <>
+              {!hasPelunasan && payment && payment.remaining > 0 ? (
+                <ConfirmAction
+                  label="Catat Pelunasan"
+                  title={`Catat pelunasan ${item.client_name}?`}
+                  description={`Catat sisa pembayaran sebesar ${formatIDR(payment.remaining)} sebagai pelunasan.`}
+                  onConfirm={() => onRecordPelunasan(item)}
+                  disabled={rowBusy !== null}
+                />
+              ) : null}
               <button
                 ref={(el) => {
                   if (el) invoiceButtonRefs.current.set(item.id, el);

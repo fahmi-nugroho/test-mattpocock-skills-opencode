@@ -26,6 +26,7 @@ const BOOKING: Booking = {
   reference: "https://example.test/look/123",
   total_price: 750000,
   dp_amount: 250000,
+  pelunasan_amount: null,
 };
 
 function descriptionLines(booking: Booking, serviceName: string | null) {

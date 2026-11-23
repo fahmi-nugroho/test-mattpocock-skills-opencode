@@ -26,16 +26,14 @@ interface InvoiceSelect extends InvoiceOrders {
   eq(column: string, value: string): InvoiceOrders;
 }
 
-export interface CreateInvoiceInput {
+export interface CreateInvoiceInput extends InvoiceDates {
   bookingId: string;
-  issuedOn: string;
-  dueOn: string;
 }
 
 /**
  * Issue one Invoice through the `create_invoice` allocation function (0018).
  * The function builds the snapshot from the Booking row itself, so the caller
- * sends only the booking id and both dates. Its refusal messages are already
+ * sends only the booking id and applicable dates. Its refusal messages are already
  * plain Indonesian: pass them through unchanged so the dialog can show them.
  */
 export async function createInvoice(
@@ -78,7 +76,7 @@ export async function setInvoiceSent(
 }
 
 /**
- * Correct the two dates of an unsent Invoice. The issue date's year and
+ * Correct the saved dates of an unsent Invoice. The issue date's year and
  * `due_on >= issued_on` are checked by the table (0018) and the freeze trigger
  * (0019), so an invalid write is refused rather than silently renumbered.
  */

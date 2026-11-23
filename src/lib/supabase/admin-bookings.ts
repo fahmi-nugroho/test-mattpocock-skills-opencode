@@ -131,7 +131,7 @@ async function getFullDatesForGuard(client: TypedClient): Promise<string[]> {
   return Array.isArray(dates) ? (dates as string[]) : [];
 }
 
-async function getBookingById(
+export async function getBookingById(
   client: TypedClient,
   id: string,
 ): Promise<Booking> {
@@ -241,6 +241,27 @@ export async function updateBooking(
     mirrorOperation(row.status ?? merged.status),
   );
   return row;
+}
+
+export async function recordPelunasan(
+  client: TypedClient,
+  reviewed: Pick<Booking, "id" | "total_price" | "dp_amount" | "client_name" | "client_phone">,
+): Promise<Booking> {
+  const loose = client as unknown as {
+    rpc(
+      name: "record_pelunasan",
+      args: Database["public"]["Functions"]["record_pelunasan"]["Args"],
+    ): Promise<{ data: Booking; error: { message: string } | null }>;
+  };
+  const { data, error } = await loose.rpc("record_pelunasan", {
+    p_booking_id: reviewed.id,
+    p_expected_total: reviewed.total_price,
+    p_expected_dp: reviewed.dp_amount,
+    p_expected_client_name: reviewed.client_name,
+    p_expected_client_phone: reviewed.client_phone,
+  });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 /**

@@ -47,6 +47,7 @@ export interface Booking {
   reference: string; // "" when none; <= 300 chars (0017)
   total_price: number | null; // null = not quoted yet (0015)
   dp_amount: number; // >= 0, default 0 (0015)
+  pelunasan_amount: number | null;
 }
 
 /**
@@ -88,7 +89,7 @@ export interface Invoice {
   seq: number;
   number: string;
   issued_on: string; // "YYYY-MM-DD"
-  due_on: string; // "YYYY-MM-DD"
+  due_on: string | null; // "YYYY-MM-DD" when saved
   sent_at: string | null;
   client_name: string;
   client_phone: string;
@@ -102,6 +103,7 @@ export interface Invoice {
   end_time: string; // "HH:MM"
   subtotal: number;
   dp_amount: number;
+  pelunasan_amount: number | null;
 }
 
 export interface Block {
@@ -247,11 +249,21 @@ export interface Database {
         Args: { p_token: string; p_payload: Record<string, unknown> };
         Returns: unknown;
       };
+      record_pelunasan: {
+        Args: {
+          p_booking_id: string;
+          p_expected_total: number | null;
+          p_expected_dp: number;
+          p_expected_client_name: string;
+          p_expected_client_phone: string;
+        };
+        Returns: Booking;
+      };
       create_invoice: {
         Args: {
           p_booking_id: string;
           p_issued_on: string;
-          p_due_on: string;
+          p_due_on: string | null;
         };
         Returns: Invoice;
       };

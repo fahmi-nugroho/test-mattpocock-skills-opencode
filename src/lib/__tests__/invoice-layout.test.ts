@@ -39,6 +39,7 @@ const INVOICE: Invoice = {
   end_time: "12:00",
   subtotal: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 const SETTLED: Invoice = { ...INVOICE, dp_amount: INVOICE.subtotal };
@@ -398,6 +399,36 @@ describe("invoice payment section while DP diterima", () => {
 });
 
 describe("invoice payment section once Lunas", () => {
+  it.each([
+    [500_000, 1_000_000, "Rp 500.000", "Rp 1.000.000"],
+    [0, 1_500_000, "Rp 0", "Rp 1.500.000"],
+  ])("prints both recorded payments and no due date (DP Rp%i)", (dp, pelunasan, dpLabel, pelunasanLabel) => {
+    const ops = layout({ ...INVOICE, dp_amount: dp, pelunasan_amount: pelunasan, due_on: null });
+    const values = strings(ops);
+    for (const [label, amount] of [["DP", dpLabel], ["PELUNASAN", pelunasanLabel]]) {
+      const row = texts(ops).find((op) => op.text === label);
+      expect(row).toBeDefined();
+      expect(texts(ops).filter((op) => op.y === row?.y).map((op) => op.text))
+        .toEqual([label, amount]);
+    }
+    expect(values).toContain("LUNAS");
+    expect(values).toContain("20 Oktober 2026");
+    expect(values).toContain("Rp 0");
+    expect(values).not.toContain("Jatuh Tempo:");
+    expect(values).not.toContain("14 November 2026");
+    expect(values).not.toContain("Informasi Pembayaran");
+    expectNoOverlap(ops);
+  });
+
+  it("preserves the saved due date and DP on a legacy paid Invoice", () => {
+    const values = strings(layout(SETTLED));
+    expect(values).toContain("LUNAS");
+    expect(values).toContain("Jatuh Tempo:");
+    expect(values).toContain("14 November 2026");
+    expect(values).toContain("DP");
+    expect(values).not.toContain("PELUNASAN");
+  });
+
   it("drops the bank block, the prompt and the refund note", () => {
     const values = strings(layout(SETTLED));
     for (const gone of [

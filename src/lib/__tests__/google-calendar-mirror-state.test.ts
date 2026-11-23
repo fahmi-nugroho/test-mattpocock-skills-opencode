@@ -50,6 +50,7 @@ function booking(id: string, status: Booking["status"]): Booking {
     reference: "",
     total_price: null,
     dp_amount: 0,
+    pelunasan_amount: null,
   };
 }
 

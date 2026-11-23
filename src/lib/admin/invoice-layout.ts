@@ -233,16 +233,18 @@ export function layoutInvoice(
   }
   doubleRule(contactY + 6);
 
-  // Identity block: number, both Indonesian dates and the client.
+  // Identity block: number, saved dates and the client.
   let y = contactY + 60;
   text("No:", LEFT, y, "left", label);
   text(invoice.number, VALUE_X, y, "left", bodyBold);
   y += 30;
   text("Tanggal:", LEFT, y, "left", label);
   text(formatDateIdLong(invoice.issued_on), VALUE_X, y, "left", body);
-  y += 30;
-  text("Jatuh Tempo:", LEFT, y, "left", label);
-  text(formatDateIdLong(invoice.due_on), VALUE_X, y, "left", body);
+  if (invoice.due_on !== null) {
+    y += 30;
+    text("Jatuh Tempo:", LEFT, y, "left", label);
+    text(formatDateIdLong(invoice.due_on), VALUE_X, y, "left", body);
+  }
   y += 44;
   text("Kepada:", LEFT, y, "left", label);
   const clientStyle = style("body", 18, { weight: 700 });
@@ -294,13 +296,18 @@ export function layoutInvoice(
   rule(itemBottom);
 
   // Totals: every amount comes from the frozen snapshot.
-  const position = paymentPosition(invoice.subtotal, invoice.dp_amount);
+  const position = paymentPosition(invoice.subtotal, invoice.dp_amount, invoice.pelunasan_amount);
   y = itemBottom + 46;
   text("TOTAL", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.subtotal), RIGHT, y, "right", body);
   y += 30;
   text("DP", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.dp_amount), RIGHT, y, "right", body);
+  if (invoice.pelunasan_amount !== null) {
+    y += 30;
+    text("PELUNASAN", MONEY_LABEL_X, y, "left", label);
+    text(invoiceAmount(invoice.pelunasan_amount), RIGHT, y, "right", body);
+  }
   y += 20;
   rule(y, 0.75, MONEY_LABEL_X, RIGHT);
 
@@ -360,7 +367,7 @@ export function layoutInvoice(
     y += 62;
     text("Pembayaran telah lunas.", LEFT, y, "left", sectionTitle);
     y += 34;
-  } else {
+  } else if (invoice.due_on !== null) {
     y += 28;
     const noteStyle = style("body", 16, { color: MUTED });
     const noteLines = wrap(

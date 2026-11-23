@@ -79,7 +79,7 @@ export function formatInvoiceNumber(seq: number, issuedOn: string): string {
   return `invc-${String(seq).padStart(2, "0")}/${invoiceYear(issuedOn)}`;
 }
 
-/** Derived, never stored: `Lunas` once the DP reaches the subtotal. */
+/** Derived from the recorded client payments. */
 export type PaymentStatus = "Lunas" | "DP diterima";
 
 export interface PaymentPosition {
@@ -87,17 +87,15 @@ export interface PaymentPosition {
   status: PaymentStatus;
 }
 
-/**
- * The payment position printed on an Invoice: the balance is always subtotal
- * minus DP, and the status is `Lunas` when the DP is at least the subtotal.
- */
 export function paymentPosition(
   subtotal: number,
   dpAmount: number,
+  pelunasanAmount: number | null = null,
 ): PaymentPosition {
+  const remaining = subtotal - dpAmount - (pelunasanAmount ?? 0);
   return {
-    remaining: subtotal - dpAmount,
-    status: dpAmount >= subtotal ? "Lunas" : "DP diterima",
+    remaining,
+    status: remaining <= 0 ? "Lunas" : "DP diterima",
   };
 }
 
@@ -115,11 +113,12 @@ export function invoiceSentLabel(invoice: Invoice): string {
 
 export interface InvoiceDates {
   issuedOn: string;
-  dueOn: string;
+  dueOn: string | null;
 }
 
-/** The one date-order rule both issuing and correction print. */
-function dueDateRefusal(issuedOn: string, dueOn: string): string | null {
+function dueDateRefusal(issuedOn: string, dueOn: string | null): string | null {
+  if (!dueOn) return "Tanggal jatuh tempo wajib diisi.";
+  if (!DATE_KEY_RE.test(dueOn)) return "Tanggal jatuh tempo tidak valid.";
   return dueOn < issuedOn
     ? "Tanggal jatuh tempo tidak boleh sebelum tanggal terbit."
     : null;
@@ -143,11 +142,13 @@ export function invoiceDateEditRefusal(
   if (!DATE_KEY_RE.test(dates.issuedOn)) {
     return "Tanggal terbit tidak valid.";
   }
-  if (!DATE_KEY_RE.test(dates.dueOn)) {
-    return "Tanggal jatuh tempo tidak valid.";
-  }
   if (invoiceYear(dates.issuedOn) !== invoice.year) {
     return `Tanggal terbit harus tetap di tahun ${invoice.year} agar sesuai dengan ${invoice.number}.`;
+  }
+  if (invoice.due_on === null) {
+    return dates.dueOn === null
+      ? null
+      : "Invoice ini tidak memiliki tanggal jatuh tempo.";
   }
   return dueDateRefusal(dates.issuedOn, dates.dueOn);
 }
@@ -195,6 +196,7 @@ const SNAPSHOT_KEYS = [
   "end_time",
   "subtotal",
   "dp_amount",
+  "pelunasan_amount",
   "issued_on",
   "due_on",
 ] as const;
@@ -223,6 +225,7 @@ type SnapshotBooking = Pick<
   | "end_time"
   | "total_price"
   | "dp_amount"
+  | "pelunasan_amount"
 >;
 
 /**
@@ -234,8 +237,10 @@ export function buildInvoiceSnapshot(
   booking: SnapshotBooking,
   serviceName: string,
   issuedOn: string,
-  dueOn: string,
+  dueOn: string | null,
 ): InvoiceSnapshot {
+  const subtotal = booking.total_price ?? 0;
+  const position = paymentPosition(subtotal, booking.dp_amount, booking.pelunasan_amount);
   return {
     client_name: booking.client_name,
     client_phone: booking.client_phone,
@@ -247,10 +252,11 @@ export function buildInvoiceSnapshot(
     booking_date: booking.date,
     start_time: booking.start_time,
     end_time: booking.end_time,
-    subtotal: booking.total_price ?? 0,
+    subtotal,
     dp_amount: booking.dp_amount,
+    pelunasan_amount: booking.pelunasan_amount,
     issued_on: issuedOn,
-    due_on: dueOn,
+    due_on: position.status === "Lunas" ? null : dueOn,
   };
 }
 
@@ -263,12 +269,10 @@ function snapshotsMatch(a: InvoiceSnapshot, b: InvoiceSnapshot): boolean {
   return SNAPSHOT_KEYS.every((key) => a[key] === b[key]);
 }
 
-export interface InvoiceIssueInput {
+export interface InvoiceIssueInput extends InvoiceDates {
   booking: SnapshotBooking &
     Pick<Booking, "status">;
   serviceName: string;
-  issuedOn: string;
-  dueOn: string;
 }
 
 /**
@@ -289,25 +293,26 @@ export function invoiceIssueRefusal(
   if (booking.total_price === null) {
     return "Booking belum memiliki total yang disepakati.";
   }
-  if (booking.dp_amount <= 0) {
-    return "Booking belum memiliki DP yang tercatat.";
+  const pelunasan = booking.pelunasan_amount ?? 0;
+  if (booking.dp_amount <= 0 && pelunasan <= 0) {
+    return "Booking belum memiliki pembayaran yang tercatat.";
   }
   if (booking.dp_amount > booking.total_price) {
     return "DP tidak boleh melebihi total yang disepakati.";
   }
-  const dateRefusal = dueDateRefusal(issuedOn, dueOn);
-  if (dateRefusal) return dateRefusal;
-
-  if (newest) {
-    const prospective = buildInvoiceSnapshot(
-      booking,
-      serviceName,
-      issuedOn,
-      dueOn,
-    );
-    if (snapshotsMatch(prospective, invoiceSnapshotOf(newest))) {
-      return `Invoice baru akan sama persis dengan ${newest.number}. Kirim ulang invoice itu alih-alih membuat nomor baru.`;
-    }
+  if (!DATE_KEY_RE.test(issuedOn)) {
+    return "Tanggal terbit tidak valid.";
+  }
+  const position = paymentPosition(booking.total_price, booking.dp_amount, pelunasan);
+  if (position.status !== "Lunas") {
+    const dateRefusal = dueDateRefusal(issuedOn, dueOn);
+    if (dateRefusal) return dateRefusal;
+  }
+  if (newest && snapshotsMatch(
+    buildInvoiceSnapshot(booking, serviceName, issuedOn, dueOn),
+    invoiceSnapshotOf(newest),
+  )) {
+    return `Invoice baru akan sama persis dengan ${newest.number}. Kirim ulang invoice itu alih-alih membuat nomor baru.`;
   }
 
   return null;

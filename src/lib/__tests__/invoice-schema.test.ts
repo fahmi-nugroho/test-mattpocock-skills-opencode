@@ -238,3 +238,47 @@ describe("0019 invoice lifecycle contract (local SQL verify, no live DB)", () =>
     );
   });
 });
+
+describe("Pelunasan SQL contract", () => {
+  it("locks the saved Booking and records the balance only after checking the reviewed amounts", () => {
+    const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();
+    expect(code).toMatch(/select \* into v_booking[\s\S]*?where id = p_booking_id\s+for update/);
+    expect(code).toMatch(/v_booking\.pelunasan_amount is not null[\s\S]*?raise exception/);
+    expect(code).toMatch(/v_booking\.total_price is distinct from p_expected_total\s+or v_booking\.dp_amount is distinct from p_expected_dp/);
+    expect(code).toMatch(/v_booking\.client_name is distinct from p_expected_client_name\s+or v_booking\.client_phone is distinct from p_expected_client_phone/);
+    expect(code).toMatch(/v_remaining := v_booking\.total_price - v_booking\.dp_amount/);
+    expect(code).toMatch(/v_remaining is null or v_remaining <= 0[\s\S]*?raise exception/);
+    expect(code).toMatch(/set pelunasan_amount = v_remaining\s+where id = p_booking_id/);
+    expect(code).toMatch(/revoke all on function record_pelunasan\(uuid, integer, integer, text, text\) from public, anon/);
+    expect(code).toMatch(/grant execute on function record_pelunasan\(uuid, integer, integer, text, text\) to authenticated/);
+  });
+
+  it("refuses changes to the total or DP while Pelunasan is recorded", () => {
+    const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();
+    expect(code).toMatch(/old\.pelunasan_amount is not null\s+and \(new\.total_price is distinct from old\.total_price\s+or new\.dp_amount is distinct from old\.dp_amount\)/);
+    expect(code).toMatch(/before update of total_price, dp_amount on bookings/);
+  });
+
+  it("issues from the locked Booking, preserving both payments and requiring a due date only with a balance", () => {
+    const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();
+    const createInvoice = createInvoiceFunction(code);
+    expect(code).toMatch(/alter table invoices[\s\S]*?alter column due_on drop not null/);
+    expect(code).toMatch(/dp_amount > 0 or pelunasan_amount is not null/);
+    expect(createInvoice).toMatch(/from bookings b[\s\S]*?for update of b/);
+    expect(createInvoice).toMatch(/v_booking\.dp_amount = 0 and v_booking\.pelunasan_amount is null[\s\S]*?raise exception/);
+    expect(createInvoice).toMatch(/v_remaining > 0[\s\S]*?p_due_on is null[\s\S]*?p_due_on < p_issued_on/);
+    expect(createInvoice).toMatch(/case when v_remaining = 0 then null else p_due_on end/);
+    expect(createInvoice).toMatch(/v_booking\.total_price, v_booking\.dp_amount, v_booking\.pelunasan_amount/);
+    expect(createInvoice).toMatch(/pg_advisory_xact_lock[\s\S]*?coalesce\(max\(seq\), 0\) \+ 1/);
+    expect(code).toMatch(/\(new\.due_on is null\) <> \(old\.due_on is null\)[\s\S]*?raise exception/);
+    expect(code).not.toMatch(/update\s+invoices\s+set/);
+  });
+
+  it("pads Invoice Numbers to at least two digits without truncating sequence 100", () => {
+    const code = codeOnly(readMigration("0023_paid_invoices.sql")).toLowerCase();
+    expect(code).toContain("lpad(seq::text, greatest(2, length(seq::text)), '0')");
+    expect(createInvoiceFunction(code)).toContain(
+      "lpad(v_seq::text, greatest(2, length(v_seq::text)), '0')",
+    );
+  });
+});

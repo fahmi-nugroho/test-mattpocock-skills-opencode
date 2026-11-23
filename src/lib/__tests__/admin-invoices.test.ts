@@ -42,6 +42,7 @@ const ROW: Invoice = {
   end_time: "12:00",
   subtotal: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 // Seam 2 (adapter): the Invoice table and the allocation function with an
@@ -88,6 +89,20 @@ describe("createInvoice", () => {
         dueOn: "2026-11-14",
       }),
     ).rejects.toThrow(/dibatalkan/i);
+  });
+
+  it("issues a paid Invoice without a due date", async () => {
+    const saved = { ...ROW, due_on: null, dp_amount: 0, pelunasan_amount: 1_500_000 };
+    const rpc = async (fn: string, args: unknown) => {
+      expect(fn).toBe("create_invoice");
+      expect(args).toEqual({
+        p_booking_id: "b1", p_issued_on: "2026-10-20", p_due_on: null,
+      });
+      return ok(saved);
+    };
+    await expect(createInvoice(asClient({ rpc }), {
+      bookingId: "b1", issuedOn: "2026-10-20", dueOn: null,
+    })).resolves.toEqual(saved);
   });
 });
 

@@ -56,6 +56,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     reference: "",
     total_price: 500000,
     dp_amount: 100000,
+    pelunasan_amount: null,
     ...overrides,
   };
 }

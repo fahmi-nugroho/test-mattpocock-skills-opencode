@@ -63,6 +63,16 @@ describe("payment position", () => {
       status: "DP diterima",
     });
   });
+
+  it.each([[500_000, 1_000_000], [0, 1_500_000]])(
+    "counts a final transfer with a DP of Rp%i",
+    (dp, pelunasan) => {
+      expect(paymentPosition(1_500_000, dp, pelunasan)).toEqual({
+        remaining: 0,
+        status: "Lunas",
+      });
+    },
+  );
 });
 
 const BOOKING: Booking = {
@@ -82,6 +92,7 @@ const BOOKING: Booking = {
   reference: "",
   total_price: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 const NEWEST: Invoice = {
@@ -106,11 +117,12 @@ const NEWEST: Invoice = {
   end_time: "12:00",
   subtotal: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 function issue(
   overrides: Partial<Booking> = {},
-  dates: { issuedOn: string; dueOn: string } = {
+  dates: { issuedOn: string; dueOn: string | null } = {
     issuedOn: "2026-10-20",
     dueOn: "2026-11-14",
   },
@@ -144,9 +156,9 @@ describe("invoice issuing guard", () => {
     );
   });
 
-  it("refuses a Booking without a recorded DP", () => {
+  it("refuses a Booking without a recorded payment", () => {
     expect(invoiceIssueRefusal(issue({ dp_amount: 0 }), null)).toMatch(
-      /dp yang tercatat/i,
+      /pembayaran yang tercatat/i,
     );
   });
 
@@ -186,6 +198,38 @@ describe("invoice issuing guard", () => {
       ),
     ).toBeNull();
   });
+
+  it.each([
+    [500_000, 1_000_000],
+    [0, 1_500_000],
+    [1_500_000, null],
+  ])("issues without a due date when recorded payments cover the total (DP Rp%i)", (dp, pelunasan) => {
+    const input = issue({ dp_amount: dp, pelunasan_amount: pelunasan }, {
+      issuedOn: "2026-10-20", dueOn: null,
+    });
+    expect(invoiceIssueRefusal(input, null)).toBeNull();
+    expect(buildInvoiceSnapshot(input.booking, input.serviceName, input.issuedOn, input.dueOn))
+      .toMatchObject({ dp_amount: dp, pelunasan_amount: pelunasan, due_on: null });
+    expect(invoiceIssueRefusal({ ...input, issuedOn: "" }, null)).toMatch(/tanggal terbit/i);
+    expect(invoiceIssueRefusal({ ...input, booking: { ...input.booking, status: "cancelled" } }, null))
+      .toMatch(/dibatalkan/i);
+  });
+
+  it("requires an outstanding Invoice to have a due date", () => {
+    expect(invoiceIssueRefusal({ ...issue(), dueOn: null }, null)).toMatch(/jatuh tempo/i);
+  });
+
+  it("checks Pelunasan when comparing a new issue to the latest snapshot", () => {
+    const input = issue({ pelunasan_amount: 1_000_000 });
+    const paid = {
+      ...NEWEST,
+      ...buildInvoiceSnapshot(input.booking, input.serviceName, input.issuedOn, input.dueOn),
+    };
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, paid)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, { ...paid, pelunasan_amount: null })).toBeNull();
+    expect(NEWEST).toMatchObject({ dp_amount: 500_000, pelunasan_amount: null, due_on: "2026-11-14" });
+  });
 });
 
 // Seam 1 (pure): the date-edit guard on an unsent Invoice. Catches a screen
@@ -193,6 +237,17 @@ describe("invoice issuing guard", () => {
 // before the issue date, and a sent Invoice that still offers editing.
 // Misses the table CHECKs and the freeze trigger (0018/0019).
 describe("invoice date editing guard", () => {
+  it("lets a new paid Invoice correct only its issue date", () => {
+    const paid = { ...NEWEST, due_on: null, pelunasan_amount: 1_000_000 };
+    const dates = { issuedOn: "2026-10-21", dueOn: null };
+    expect(invoiceDateEditRefusal(paid, dates)).toBeNull();
+    expect(invoiceDateEditRefusal(paid, { ...dates, dueOn: "2026-11-14" })).toMatch(/jatuh tempo/i);
+    expect(invoiceDateEditRefusal(paid, { ...dates, issuedOn: "2027-01-01" })).toMatch(/tahun 2026/i);
+    const legacyPaid = { ...NEWEST, dp_amount: NEWEST.subtotal };
+    expect(invoiceDateEditRefusal(legacyPaid, { ...dates, dueOn: "2026-11-15" })).toBeNull();
+    expect(invoiceDateEditRefusal(legacyPaid, dates)).toMatch(/jatuh tempo/i);
+  });
+
   it("accepts both dates while the Invoice is unsent and the year holds", () => {
     expect(
       invoiceDateEditRefusal(NEWEST, {
@@ -284,6 +339,7 @@ describe("invoice snapshot", () => {
       end_time: "12:00",
       subtotal: 1_500_000,
       dp_amount: 500_000,
+      pelunasan_amount: null,
       issued_on: "2026-10-20",
       due_on: "2026-11-14",
     });
@@ -303,6 +359,7 @@ describe("invoice snapshot", () => {
       end_time: "12:00",
       subtotal: 1_500_000,
       dp_amount: 500_000,
+      pelunasan_amount: null,
       issued_on: "2026-10-20",
       due_on: "2026-11-14",
     });

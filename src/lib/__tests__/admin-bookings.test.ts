@@ -4,6 +4,7 @@ import {
   createBooking,
   deleteBooking,
   listBookingsAdmin,
+  recordPelunasan,
   setBookingStatus,
   updateBooking,
 } from "../supabase/admin-bookings";
@@ -196,6 +197,44 @@ describe("listBookingsAdmin", () => {
     await expect(listBookingsAdmin(asClient(client))).rejects.toThrow(
       /db down/,
     );
+  });
+});
+
+describe("recordPelunasan", () => {
+  const reviewedBooking = {
+    id: "b1",
+    client_name: "Sinta",
+    client_phone: "081234567890",
+    total_price: 1_500_000,
+    dp_amount: 500_000,
+  };
+
+  it.each([[500_000, 1_000_000], [0, 1_500_000]])(
+    "records the final transfer separately from a DP of Rp%i",
+    async (dp, pelunasan) => {
+      const reviewed = { ...reviewedBooking, dp_amount: dp };
+      const saved = { ...reviewed, pelunasan_amount: pelunasan };
+      const rpc = async (name: string, args: unknown) => {
+        expect(name).toBe("record_pelunasan");
+        expect(args).toEqual({
+          p_booking_id: "b1",
+          p_expected_total: 1_500_000,
+          p_expected_dp: dp,
+          p_expected_client_name: "Sinta",
+          p_expected_client_phone: "081234567890",
+        });
+        return ok(saved);
+      };
+      await expect(recordPelunasan(asClient({ rpc }), reviewed)).resolves.toEqual(saved);
+    },
+  );
+
+  it.each([
+    "Detail booking berubah. Periksa kembali sisa pembayaran.",
+    "Pelunasan sudah tercatat.",
+  ])("surfaces a refused settlement: %s", async (message) => {
+    const rpc = async () => fail(message);
+    await expect(recordPelunasan(asClient({ rpc }), reviewedBooking)).rejects.toThrow(message);
   });
 });
 
