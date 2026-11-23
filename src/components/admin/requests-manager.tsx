@@ -14,7 +14,6 @@ import {
   bookingRequestCanResend,
   bookingRequestCorrectRefusal,
   bookingRequestDeleteRefusal,
-  bookingRequestRefusalHint,
   buildFormatBookingLink,
   deriveBookingRequestState,
   filterBookingRequests,
@@ -31,6 +30,7 @@ import {
 } from "@/lib/admin/list-window";
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { buildFormatBookingWaLink } from "@/lib/whatsapp";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Dialog } from "@/components/dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -85,7 +85,7 @@ interface RequestsManagerProps {
  * (booking-request-admin-actions ticket 02) narrows the list to one derived
  * state — reusing the same `deriveBookingRequestState` the badge and the accept
  * guard read — and composes with the search box rather than replacing it. Each
- * row can also be deleted (admin-actions ticket 03) after a two-click confirm,
+ * row can also be deleted (admin-actions ticket 03) through a confirmation,
  * behind the guarded adapter that refuses a request already turned into a
  * Booking and points at deleting the Booking instead; a deleted row leaves the
  * list at once, and no schedule event is dispatched because a request never
@@ -154,7 +154,6 @@ export function RequestsManager({
   // not pull focus back down to the trigger.
   const [skipReturnFocus, setSkipReturnFocus] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // A row op in flight: which row and which action, so only that action's
   // button shows a busy label while the row's controls are disabled. Re-issue
   // joins delete and edit here.
@@ -397,20 +396,7 @@ export function RequestsManager({
     window.location.hash = "#booking";
   }
 
-  /**
-   * Two deliberate clicks: the first arms the row's delete (and shows the
-   * warning that the client's link dies with it), the second deletes. The
-   * guarded adapter refuses an accepted request, whose message surfaces in the
-   * row; a deleted request leaves the list at once, and the attention count is
-   * recomputed from the new list so the badge never disagrees with it. A
-   * request never occupies the calendar, so no schedule event is dispatched.
-   */
   async function onDelete(item: BookingRequest) {
-    if (confirmDeleteId !== item.id) {
-      setRowError(null);
-      setConfirmDeleteId(item.id);
-      return;
-    }
     if (rowBusy) return;
     setRowError(null);
     setRowBusy({ id: item.id, action: "delete" });
@@ -421,7 +407,6 @@ export function RequestsManager({
       const count = filterBookingRequests(next, "needs_action", now).length;
       setAttentionCount(count);
       onAttentionCountChange?.(count);
-      setConfirmDeleteId(null);
     } catch (err) {
       setRowError({
         id: item.id,
@@ -430,7 +415,6 @@ export function RequestsManager({
             ? err.message
             : "Gagal menghapus permintaan. Coba lagi.",
       });
-      setConfirmDeleteId(null);
     } finally {
       setRowBusy(null);
     }
@@ -445,7 +429,6 @@ export function RequestsManager({
    */
   function onStartEdit(item: BookingRequest) {
     setRowError(null);
-    setConfirmDeleteId(null);
     setEditingId(item.id);
     setEditName(item.client_name);
     setEditDate(item.date ?? "");
@@ -500,7 +483,6 @@ export function RequestsManager({
   async function onReissue(item: BookingRequest) {
     if (rowBusy) return;
     setRowError(null);
-    setConfirmDeleteId(null);
     setCopiedLink(null);
     setRowBusy({ id: item.id, action: "reissue" });
     try {
@@ -544,10 +526,11 @@ export function RequestsManager({
               </span>
               <input
                 type="text"
+                autoFocus
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder="Nama klien"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           ) : (
@@ -577,7 +560,7 @@ export function RequestsManager({
                 type="date"
                 value={editDate}
                 onChange={(e) => setEditDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -588,7 +571,7 @@ export function RequestsManager({
                 type="time"
                 value={editStart}
                 onChange={(e) => setEditStart(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -599,7 +582,7 @@ export function RequestsManager({
                 type="time"
                 value={editEnd}
                 onChange={(e) => setEditEnd(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -662,30 +645,17 @@ export function RequestsManager({
               </div>
             )}
           </div>
-          <div>
-            {status === "submitted" ? (
+          {status === "submitted" ? (
+            <div>
               <button
                 type="button"
                 onClick={() => onAccept(item)}
-                className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700"
+                className="min-h-10 rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700"
               >
                 Jadikan Booking
               </button>
-            ) : (
-              <div>
-                <button
-                  type="button"
-                  disabled
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold opacity-50"
-                >
-                  Jadikan Booking
-                </button>
-                <p className="mt-1 text-xs text-neutral-500">
-                  {bookingRequestRefusalHint(status)}
-                </p>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : null}
           {bookingRequestCanResend(status) ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -748,29 +718,14 @@ export function RequestsManager({
           ) : null}
           <div>
             {bookingRequestDeleteRefusal(status) === null ? (
-              <>
-                <button
-                  type="button"
-                  disabled={rowBusy?.id === item.id}
-                  onClick={() => onDelete(item)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                    confirmDeleteId === item.id
-                      ? "bg-red-600 text-white"
-                      : "border border-red-300 text-red-700"
-                  }`}
-                >
-                  {busyOn(item.id, "delete")
-                    ? "Menghapus…"
-                    : confirmDeleteId === item.id
-                      ? "Klik lagi untuk hapus"
-                      : "Hapus"}
-                </button>
-                {confirmDeleteId === item.id ? (
-                  <p className="mt-1 text-xs text-red-700">
-                    {BOOKING_REQUEST_DELETE_WARNING}
-                  </p>
-                ) : null}
-              </>
+              <ConfirmAction
+                label="Hapus permintaan"
+                title={`Hapus permintaan ${item.client_name || "ini"}?`}
+                description={BOOKING_REQUEST_DELETE_WARNING}
+                onConfirm={() => onDelete(item)}
+                disabled={rowBusy !== null}
+                destructive
+              />
             ) : (
               <div>
                 <button
@@ -803,14 +758,45 @@ export function RequestsManager({
   return (
     <div className="mt-4">
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <p role="alert" className="text-sm text-red-700">{error}</p>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+          >
+            {refreshing ? "Memuat…" : "Muat ulang"}
+          </button>
+        </div>
       ) : null}
+
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          setSkipReturnFocus(false);
+          setListOpen(true);
+        }}
+        aria-haspopup="dialog"
+        className="mb-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-gold-soft/55 px-4 py-3 text-left transition hover:bg-gold-soft"
+      >
+        <span>
+          <span className="block text-sm font-semibold">
+            Lihat daftar permintaan
+          </span>
+          <span className="mt-0.5 block text-xs text-neutral-600">
+            {error ? "Daftar gagal dimuat" : `${attentionCount} perlu ditindak`}
+          </span>
+        </span>
+        <span aria-hidden="true" className="ml-auto text-lg">
+          ›
+        </span>
+      </button>
 
       <form
         onSubmit={onCreate}
-        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-5"
+        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
       >
         <h3 className="text-sm font-bold">Buat link Format Booking</h3>
         <fieldset className="min-w-0 space-y-3">
@@ -825,7 +811,7 @@ export function RequestsManager({
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="Nama klien"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -837,7 +823,7 @@ export function RequestsManager({
                 value={waNumber}
                 onChange={(e) => setWaNumber(e.target.value)}
                 placeholder="08… (tidak disimpan)"
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -853,7 +839,7 @@ export function RequestsManager({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -862,7 +848,7 @@ export function RequestsManager({
                 type="time"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
@@ -871,7 +857,7 @@ export function RequestsManager({
                 type="time"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
@@ -886,13 +872,15 @@ export function RequestsManager({
             {createError}
           </p>
         ) : null}
-        <button
-          type="submit"
-          disabled={creating}
-          className="rounded-full bg-neutral-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-        >
-          {creating ? "Membuat…" : "Buat link"}
-        </button>
+        <div className="flex justify-end border-t border-neutral-200 pt-4">
+          <button
+            type="submit"
+            disabled={creating}
+            className="min-h-11 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+          >
+            {creating ? "Membuat…" : "Buat link"}
+          </button>
+        </div>
       </form>
 
       {created ? (
@@ -926,28 +914,6 @@ export function RequestsManager({
         </div>
       ) : null}
 
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          setSkipReturnFocus(false);
-          setListOpen(true);
-        }}
-        aria-haspopup="dialog"
-        className="mt-5 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50"
-      >
-        <span>
-          <span className="block text-sm font-semibold">
-            Lihat daftar permintaan
-          </span>
-          <span className="mt-0.5 block text-xs text-neutral-600">
-            {attentionCount} perlu ditindak
-          </span>
-        </span>
-        <span aria-hidden="true" className="ml-auto text-lg">
-          ›
-        </span>
-      </button>
 
       <Dialog
         open={listOpen}
@@ -955,7 +921,7 @@ export function RequestsManager({
         title="Daftar permintaan"
         returnFocusTo={triggerRef}
         restoreFocus={!skipReturnFocus}
-        panelClassName="sm:max-w-3xl"
+        panelClassName="max-w-3xl"
       >
         <div className="flex flex-wrap items-center gap-2">
           <span

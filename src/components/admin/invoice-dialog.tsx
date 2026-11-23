@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type RefObject } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Dialog } from "@/components/dialog";
 import { getTodayKey } from "@/lib/calendar";
 import {
@@ -104,7 +105,6 @@ export function InvoiceDialog({
   const [dateEditId, setDateEditId] = useState<string | null>(null);
   const [editIssuedOn, setEditIssuedOn] = useState("");
   const [editDueOn, setEditDueOn] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // The PNG the preview drew for this Invoice and these business details.
   // Sharing reuses exactly that Blob instead of drawing a second picture.
   const [previewPng, setPreviewPng] = useState<{
@@ -122,7 +122,6 @@ export function InvoiceDialog({
   const resetActions = useCallback(() => {
     setActionError(null);
     setDateEditId(null);
-    setConfirmDeleteId(null);
     setShareNotice(null);
     setShareError(null);
   }, []);
@@ -298,20 +297,13 @@ export function InvoiceDialog({
     );
   }
 
-  /** First click arms; the second click deletes. Sent Invoices never show it. */
   async function onDeleteInvoice(invoice: Invoice) {
-    if (confirmDeleteId !== invoice.id) {
-      setConfirmDeleteId(invoice.id);
-      setActionError(null);
-      return;
-    }
     await runAction(
       "delete",
       "Gagal menghapus invoice. Coba lagi.",
       async () => {
         await deleteInvoice(supabaseBrowser(), invoice.id);
         onDeleted(invoice.id);
-        setConfirmDeleteId(null);
       },
     );
   }
@@ -616,22 +608,14 @@ export function InvoiceDialog({
                       : "Tandai terkirim"}
                 </button>
                 {!selectedSent ? (
-                  <button
-                    type="button"
+                  <ConfirmAction
+                    label="Hapus invoice"
+                    title={`Hapus invoice ${selected.number}?`}
+                    description="Invoice ini akan dihapus dari riwayat booking."
+                    onConfirm={() => onDeleteInvoice(selected)}
                     disabled={busyAction !== null}
-                    onClick={() => onDeleteInvoice(selected)}
-                    className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                      confirmDeleteId === selected.id
-                        ? "bg-red-600 text-white"
-                        : "border border-red-300 text-red-700"
-                    }`}
-                  >
-                    {busyAction === "delete"
-                      ? "Menghapus…"
-                      : confirmDeleteId === selected.id
-                        ? "Klik lagi untuk hapus"
-                        : "Hapus invoice"}
-                  </button>
+                    destructive
+                  />
                 ) : null}
               </div>
               {actionError ? (

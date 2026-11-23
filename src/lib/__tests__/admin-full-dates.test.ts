@@ -69,6 +69,15 @@ describe("toggleFullDate", () => {
     };
   }
 
+  it("keeps the confirmed state when another save already applied it", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const client = asClient(settingsClient(["2026-10-12"], calls));
+
+    await expect(toggleFullDate(client, "2026-10-12", true)).resolves.toEqual(["2026-10-12"]);
+    await expect(toggleFullDate(client, "2026-10-13", false)).resolves.toEqual(["2026-10-12"]);
+    expect(calls.some(([action]) => action === "update")).toBe(false);
+  });
+
   it("adds the date when it is not yet marked full", async () => {
     const calls: Array<[string, ...unknown[]]> = [];
     const dates = await toggleFullDate(

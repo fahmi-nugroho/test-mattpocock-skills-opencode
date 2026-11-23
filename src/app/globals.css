@@ -31,6 +31,14 @@ body:has([aria-modal="true"]) .wa-float {
   display: none;
 }
 
+body:has(dialog[open][aria-modal="true"]) {
+  overflow: hidden;
+}
+
+[data-admin-dashboard] :is(input, textarea)::placeholder {
+  color: var(--color-neutral-500);
+}
+
 ::selection {
   /* Single-sourced from the CSS-first gold.soft token — no hex here. */
   background: var(--color-gold-soft);

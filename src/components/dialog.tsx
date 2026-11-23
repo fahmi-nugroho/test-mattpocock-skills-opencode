@@ -9,6 +9,7 @@ interface DialogProps {
   onClose: () => void;
   /** The dialog's accessible name and its visible heading. */
   title: string;
+  description?: string;
   children: ReactNode;
   /**
    * Extra classes for the panel, for a call site that needs a different
@@ -23,6 +24,7 @@ interface DialogProps {
    * so the browser's own fragment target keeps the next Tab in the right place.
    */
   restoreFocus?: boolean;
+  closeDisabled?: boolean;
 }
 
 /**
@@ -40,41 +42,34 @@ export function Dialog({
   open,
   onClose,
   title,
+  description,
   children,
-  panelClassName = "",
+  panelClassName = "max-w-2xl",
   returnFocusTo,
   restoreFocus = true,
+  closeDisabled = false,
 }: DialogProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  // The latest onClose without making it an effect dependency: managers pass
-  // an inline arrow, and re-running the open effect on every render would
-  // re-lock scroll and steal focus back to the panel.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const descriptionId = useId();
   // Read at close time, so a call site can flip it in the same update that
   // closes the dialog.
   const restoreFocusRef = useRef(restoreFocus);
   restoreFocusRef.current = restoreFocus;
 
   useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panelRef.current?.focus();
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCloseRef.current();
-    }
-    document.addEventListener("keydown", onKeyDown);
+    const panel = panelRef.current;
+    if (!open || !panel) return;
+    const parentDialog = returnFocusTo.current?.closest("dialog");
+    panel.showModal();
+    panel.querySelector<HTMLElement>("[data-dialog-focus]")?.focus();
 
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      // preventScroll: a close must not drag the page away from where the
-      // admin was working.
+      panel.close();
       if (restoreFocusRef.current) {
-        returnFocusTo.current?.focus({ preventScroll: true });
+        const trigger = returnFocusTo.current;
+        const fallback = parentDialog?.querySelector("button");
+        (trigger ?? fallback)?.focus({ preventScroll: true });
       }
     };
   }, [open, returnFocusTo]);
@@ -82,35 +77,42 @@ export function Dialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="absolute inset-0 bg-stone-950/60"
-      />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className={`relative flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none ${panelClassName}`}
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-3">
-          <h2 id={titleId} className="text-base font-bold">
-            {title}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup"
-            className="rounded-full border border-neutral-300 px-3 py-1 text-sm font-semibold transition hover:bg-neutral-100"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+    <dialog
+      ref={panelRef}
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
+        event.preventDefault();
+        if (!closeDisabled) onClose();
+      }}
+      onClick={(event) => {
+        if (!closeDisabled && event.target === event.currentTarget) onClose();
+      }}
+      className={`m-auto max-h-[85dvh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl bg-white text-espresso shadow-2xl backdrop:bg-stone-950/60 open:flex ${panelClassName}`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2">
+        <h2 id={titleId} className="min-w-0 break-words text-base font-bold">
+          {title}
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={closeDisabled}
+          className="min-h-10 rounded-full px-3 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+        >
+          Tutup
+        </button>
       </div>
-    </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+        {description ? (
+          <p id={descriptionId} className="break-words text-sm leading-relaxed text-neutral-700">
+            {description}
+          </p>
+        ) : null}
+        {children}
+      </div>
+    </dialog>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTodayKey } from "@/lib/calendar";
 import { ADMIN_TABS, parseAdminTab, type AdminTabId } from "@/lib/admin/admin-tabs";
@@ -26,13 +26,6 @@ import { BlocksManager } from "@/components/admin/blocks-manager";
 import { AdminCalendar } from "@/components/admin/admin-calendar";
 import { GoogleCalendarSettings } from "@/components/admin/google-calendar-settings";
 
-const EMPTY_SUMMARY: OverviewSummary = {
-  todayConfirmed: 0,
-  todayPending: 0,
-  upcomingConfirmed: 0,
-  upcomingPending: 0,
-};
-
 /**
  * Guarded admin dashboard (ticket 05): browser-session guard redirects
  * to /admin/login without a session; authenticated reads use the same
@@ -44,8 +37,8 @@ const EMPTY_SUMMARY: OverviewSummary = {
 export function AdminDashboard() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
-  const [summary, setSummary] = useState<OverviewSummary>(EMPTY_SUMMARY);
-  const [requestCount, setRequestCount] = useState(0);
+  const [summary, setSummary] = useState<OverviewSummary | null>(null);
+  const [requestCount, setRequestCount] = useState<number | null>(null);
   const [googleStatus, setGoogleStatus] =
     useState<GoogleCalendarStatus | null>(null);
   const [waNumber, setWaNumber] = useState("");
@@ -53,8 +46,12 @@ export function AdminDashboard() {
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [instagramHandle, setInstagramHandle] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [overviewError, setOverviewError] = useState(false);
+  const [overviewAttempt, setOverviewAttempt] = useState(0);
+  const [settingsError, setSettingsError] = useState(false);
+  const [settingsAttempt, setSettingsAttempt] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -67,7 +64,6 @@ export function AdminDashboard() {
       ? parseAdminTab(window.location.hash)
       : "ringkasan",
   );
-  const mobileNavRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,25 +78,6 @@ export function AdminDashboard() {
         return;
       }
       setAuthed(true);
-      try {
-        const today = getTodayKey();
-        const [settings, bookings] = await Promise.all([
-          getSettings(supabase),
-          getOverviewBookings(supabase, today),
-        ]);
-        if (cancelled) return;
-        setSummary(summarizeBookings(bookings, today));
-        setWaNumber(settings.wa_number);
-        setBankName(settings.bank_name);
-        setAccountName(settings.account_name);
-        setAccountNumber(settings.account_number);
-        setInstagramHandle(settings.instagram_handle);
-        setSettingsReady(true);
-      } catch {
-        if (!cancelled) setLoadError("Gagal memuat data admin. Coba lagi.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
     })();
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -115,59 +92,54 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!authed) return;
-    // Booking/block/full-toggle saves elsewhere on this page change the
-    // same rows the overview counts derive from — refetch on the shared
-    // schedule signal so Ringkasan Booking never visibly lags a
-    // confirm/cancel until reload (same pattern as AdminCalendar).
-    let cancelled = false;
-    const onChange = () => {
-      (async () => {
-        try {
-          const today = getTodayKey();
-          const bookings = await getOverviewBookings(
-            supabaseBrowser(),
-            today,
-          );
-          if (!cancelled) setSummary(summarizeBookings(bookings, today));
-        } catch {
-          // Keep the last good summary; the mutating panel already
-          // surfaces its own error next to the failed action.
-        }
-      })();
+    let latestLoad = 0;
+    async function loadOverview() {
+      const load = ++latestLoad;
+      setOverviewError(false);
+      try {
+        const today = getTodayKey();
+        const bookings = await getOverviewBookings(supabaseBrowser(), today);
+        if (load === latestLoad) setSummary(summarizeBookings(bookings, today));
+      } catch {
+        if (load === latestLoad) setOverviewError(true);
+      }
+    }
+    void loadOverview();
+    window.addEventListener(SCHEDULE_CHANGED_EVENT, loadOverview);
+    return () => {
+      latestLoad += 1;
+      window.removeEventListener(SCHEDULE_CHANGED_EVENT, loadOverview);
     };
-    window.addEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+  }, [authed, overviewAttempt]);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    setSettingsError(false);
+    (async () => {
+      try {
+        const settings = await getSettings(supabaseBrowser());
+        if (cancelled) return;
+        setWaNumber(settings.wa_number);
+        setBankName(settings.bank_name);
+        setAccountName(settings.account_name);
+        setAccountNumber(settings.account_number);
+        setInstagramHandle(settings.instagram_handle);
+        setSettingsReady(true);
+      } catch {
+        if (!cancelled) setSettingsError(true);
+      }
+    })();
     return () => {
       cancelled = true;
-      window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
     };
-  }, [authed]);
+  }, [authed, settingsAttempt]);
 
   useEffect(() => {
     const onHashChange = () => setActiveTab(parseAdminTab(window.location.hash));
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
-  // Keep the active pill in view on the scrolling mobile tab strip, so a
-  // deep link to a late tab (Pengaturan) does not land on a hidden label.
-  useEffect(() => {
-    const strip = mobileNavRef.current;
-    if (!strip) return;
-    // rAF: the strip mounts with the authenticated shell, so layout must be
-    // settled before the active pill's offset means anything.
-    const frame = requestAnimationFrame(() => {
-      const active = strip.querySelector<HTMLElement>('[aria-current="page"]');
-      if (!active) return;
-      const stripRect = strip.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
-      strip.scrollLeft +=
-        activeRect.left -
-        stripRect.left -
-        stripRect.width / 2 +
-        activeRect.width / 2;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [activeTab, authed, loading]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -204,8 +176,17 @@ export function AdminDashboard() {
   }
 
   async function onSignOut() {
-    await supabaseBrowser().auth.signOut();
-    router.replace("/admin/login");
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(false);
+    try {
+      const { error } = await supabaseBrowser().auth.signOut();
+      if (error) throw error;
+      router.replace("/admin/login");
+    } catch {
+      setSigningOut(false);
+      setSignOutError(true);
+    }
   }
   /**
    * Tabs are views, not anchors: the panel is swapped in place and the hash
@@ -221,80 +202,52 @@ export function AdminDashboard() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (!authed || loading) {
+  if (!authed) {
     return (
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
         <h1 className="font-display text-2xl font-bold">Dashboard Admin</h1>
-        {loadError ? (
-          <p
-            role="alert"
-            className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-          >
-            {loadError}
-          </p>
-        ) : (
-          <>
-            <p role="status" className="sr-only">
-              Memuat dashboard…
-            </p>
-            <div aria-hidden="true" className="mt-8 grid gap-3 sm:grid-cols-2">
-              <div className="h-28 animate-pulse rounded-xl border border-neutral-200 bg-white" />
-              <div className="h-28 animate-pulse rounded-xl border border-neutral-200 bg-white" />
-            </div>
-          </>
-        )}
+        <p role="status" className="mt-4 text-sm text-neutral-600">Memeriksa sesi admin…</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
+    <main data-admin-dashboard className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
       <header>
         <div className="flex items-start justify-between gap-4">
           <h1 className="font-display text-2xl font-bold">Dashboard Admin</h1>
           <button
             type="button"
             onClick={onSignOut}
-            className="shrink-0 rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100"
+            disabled={signingOut}
+            className="min-h-10 shrink-0 rounded-full border border-neutral-300 px-4 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
           >
-            Keluar
+            {signingOut ? "Keluar…" : "Keluar"}
           </button>
         </div>
-        <p className="mt-1 text-sm text-neutral-600">
-          Jadwal, permintaan, dan konten landing.
-        </p>
+        {signOutError ? (
+          <p role="alert" className="mt-2 text-right text-sm text-red-700">Gagal keluar. Coba lagi.</p>
+        ) : null}
       </header>
 
       <nav
         aria-label="Navigasi dashboard"
-        className="sticky top-0 z-20 -mx-4 mt-6 border-b border-neutral-200 bg-cream/95 px-4 backdrop-blur lg:hidden"
+        className="sticky top-0 z-20 -mx-4 mt-4 border-b border-neutral-200 bg-cream px-4 py-3 sm:-mx-6 sm:px-6 lg:hidden"
       >
-        <ul ref={mobileNavRef} className="flex gap-1.5 overflow-x-auto py-2">
-          {ADMIN_TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <li key={tab.id} className="shrink-0">
-                <button
-                  type="button"
-                  onClick={() => openTab(tab.id)}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition ${
-                    active
-                      ? "border-gold-soft bg-gold-soft font-semibold text-gold-deep"
-                      : "border-neutral-200 bg-white font-medium text-neutral-600 hover:border-neutral-300 hover:text-espresso"
-                  }`}
-                >
-                  {tab.label}
-                  {tab.id === "permintaan" && requestCount > 0 ? (
-                    <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                      {requestCount}
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <label className="flex items-center gap-3 text-sm font-medium">
+          Bagian
+          <select
+            value={activeTab}
+            onChange={(event) => openTab(parseAdminTab(event.target.value))}
+            className="min-h-11 min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold"
+          >
+            {ADMIN_TABS.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label}{tab.id === "permintaan" && (requestCount ?? 0) > 0 ? ` (${requestCount} baru)` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
       </nav>
 
       <div className="lg:mt-8 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-10">
@@ -311,15 +264,15 @@ export function AdminDashboard() {
                     type="button"
                     onClick={() => openTab(tab.id)}
                     aria-current={active ? "page" : undefined}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
                       active
                         ? "bg-gold-soft font-semibold text-gold-deep"
                         : "text-neutral-600 hover:bg-neutral-100 hover:text-espresso"
                     }`}
                   >
                     {tab.label}
-                    {tab.id === "permintaan" && requestCount > 0 ? (
-                      <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {tab.id === "permintaan" && (requestCount ?? 0) > 0 ? (
+                      <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
                         {requestCount}
                       </span>
                     ) : null}
@@ -357,15 +310,6 @@ export function AdminDashboard() {
             </div>
           ) : null}
 
-          {loadError ? (
-            <p
-              role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-            >
-              {loadError}
-            </p>
-          ) : null}
-
           <section
             id="ringkasan"
             aria-labelledby="ringkasan-title"
@@ -375,14 +319,16 @@ export function AdminDashboard() {
             <PanelHeading
               id="ringkasan-title"
               title="Ringkasan"
-              description="Yang perlu ditindak, plus booking hari ini dan mendatang."
+              description="Tinjau pekerjaan yang menunggu dan jadwal booking terdekat."
             />
             <div className="mt-5">
               <AdminOverviewPanel
                 summary={summary}
                 requestCount={requestCount}
                 onOpenTab={openTab}
+                onRetryBookings={overviewError ? () => setOverviewAttempt((attempt) => attempt + 1) : undefined}
               />
+
             </div>
           </section>
 
@@ -395,15 +341,9 @@ export function AdminDashboard() {
             <PanelHeading
               id="kalender-title"
               title="Kalender Booking"
-              description="Status hari dihitung dari booking confirmed + blokir + tanda penuh — sama seperti kalender publik."
+              description="Pilih tanggal untuk melihat booking, jam yang diblokir, dan status di kalender publik."
             />
-            {settingsReady ? (
-              <AdminCalendar />
-            ) : (
-              <p className="mt-4 text-sm text-neutral-600">
-                {loadError ?? "Menunggu pengaturan…"}
-              </p>
-            )}
+            <AdminCalendar />
           </section>
 
           <section
@@ -415,7 +355,7 @@ export function AdminDashboard() {
             <PanelHeading
               id="booking-title"
               title="Booking"
-              description="Catat hasil negosiasi WA — konfirmasi / batalkan untuk mengubah status hari di kalender publik."
+              description="Kelola jadwal, status, dan invoice, atau catat booking dari WhatsApp."
             />
             <BookingsManager />
           </section>
@@ -429,7 +369,7 @@ export function AdminDashboard() {
             <PanelHeading
               id="permintaan-title"
               title="Permintaan"
-              description="Kirim link Format Booking ke klien, lalu terima permintaan yang masuk menjadi booking lewat form yang sudah ada."
+              description="Tinjau formulir dari klien dan buat link Format Booking baru."
             />
             <RequestsManager onAttentionCountChange={setRequestCount} />
           </section>
@@ -443,7 +383,7 @@ export function AdminDashboard() {
             <PanelHeading
               id="blokir-title"
               title="Blokir & Tanggal Penuh"
-              description="Tutup hari atau jam tertentu — bentrok dengan booking confirmed ditolak dengan pesan."
+              description="Tutup satu hari atau jam tertentu di kalender publik."
             />
             <BlocksManager />
           </section>
@@ -457,7 +397,7 @@ export function AdminDashboard() {
             <PanelHeading
               id="portfolio-title"
               title="Portfolio"
-              description="Karya tampil di landing — perubahan tersimpan langsung terbaca grid publik."
+              description="Atur karya, kategori, dan urutan di portfolio publik."
             />
             <PortfolioManager />
           </section>
@@ -471,7 +411,7 @@ export function AdminDashboard() {
             <PanelHeading
               id="harga-title"
               title="Harga & Layanan"
-              description="Daftar harga tampil di landing — perubahan tersimpan langsung terbaca kartu harga publik."
+              description="Atur harga, durasi, dan layanan yang ditampilkan di situs."
             />
             <ServicesManager />
           </section>
@@ -485,18 +425,18 @@ export function AdminDashboard() {
             <PanelHeading
               id="profil-testimoni-title"
               title="Profil & Testimoni"
-              description="Profil dan review klien tampil di landing — perubahan tersimpan langsung terbaca blok hero publik."
+              description="Kelola profil, pencapaian, dan ulasan klien di halaman publik."
             />
-            <h3 className="mt-6 text-sm font-bold text-neutral-800">Profil</h3>
             <ProfileForm />
-            <h3 className="mt-8 text-sm font-bold text-neutral-800">
-              Stat pencapaian (maks 4 tampil di landing)
-            </h3>
-            <StatsManager />
-            <h3 className="mt-8 text-sm font-bold text-neutral-800">
-              Testimoni
-            </h3>
-            <TestimonialsManager />
+            <div className="mt-8 border-t border-neutral-200 pt-5">
+              <h3 className="text-base font-bold">Pencapaian</h3>
+              <p className="mt-1 text-sm text-neutral-600">Hingga 4 pencapaian tampil di halaman publik.</p>
+              <StatsManager />
+            </div>
+            <div className="mt-8 border-t border-neutral-200 pt-5">
+              <h3 className="text-base font-bold">Testimoni</h3>
+              <TestimonialsManager />
+            </div>
           </section>
 
           <section
@@ -508,97 +448,117 @@ export function AdminDashboard() {
             <PanelHeading
               id="pengaturan-title"
               title="Pengaturan Operasional"
-              description="Nomor WA dipakai link WhatsApp. Data bank dan Instagram dicetak di invoice. Kalender publik membaca jadwal langsung tanpa batasan jam operasional."
+              description="Kelola kontak bisnis, detail yang tercetak di invoice, dan sinkronisasi kalender."
             />
             <form
               onSubmit={onSave}
-              className="mt-4 space-y-4 rounded-xl border border-neutral-200 bg-white p-5"
+              onChange={() => {
+                setSaved(false);
+                setFormError(null);
+              }}
+              className="mt-4 space-y-4 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
             >
-              <h3 className="text-sm font-bold">Kontak &amp; pembayaran</h3>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-medium">Nomor WhatsApp</span>
-                  <input
-                    type="tel"
-                    required
-                    disabled={!settingsReady}
-                    value={waNumber}
-                    onChange={(e) => setWaNumber(e.target.value)}
-                    placeholder="6281234567890"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">Instagram</span>
-                  <input
-                    type="text"
-                    disabled={!settingsReady}
-                    value={instagramHandle}
-                    onChange={(e) => setInstagramHandle(e.target.value)}
-                    placeholder="wandanamakeup"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">Nama Bank</span>
-                  <input
-                    type="text"
-                    disabled={!settingsReady}
-                    value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    placeholder="BCA"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Nama Pemilik Rekening
-                  </span>
-                  <input
-                    type="text"
-                    disabled={!settingsReady}
-                    value={accountName}
-                    onChange={(e) => setAccountName(e.target.value)}
-                    placeholder="Nama pemilik rekening"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">Nomor Rekening</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    disabled={!settingsReady}
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    placeholder="1234567890"
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100"
-                  />
-                </label>
-              </div>
-              <p className="text-xs text-neutral-500">
-                Bank, nama pemilik, nomor rekening, dan Instagram boleh
-                dikosongkan — invoice mencetak tanda — pada bagian yang kosong.
-              </p>
-              {formError ? (
-                <p role="alert" className="text-sm text-red-600">
-                  {formError}
-                </p>
+              <h3 className="text-base font-bold">Kontak &amp; pembayaran</h3>
+              {settingsError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert" className="text-sm text-red-700">Pengaturan gagal dimuat.</p>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsAttempt((attempt) => attempt + 1)}
+                    className="min-h-10 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100"
+                  >
+                    Muat ulang
+                  </button>
+                </div>
+              ) : !settingsReady ? (
+                <p role="status" className="text-sm text-neutral-600">Memuat pengaturan…</p>
+              ) : (
+                <fieldset disabled={saving} className="min-w-0 space-y-5 disabled:opacity-70">
+                  <legend className="sr-only">Kontak &amp; pembayaran</legend>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block min-w-0">
+                      <span className="text-sm font-medium">Nomor WhatsApp</span>
+                      <input
+                        type="tel"
+                        required
+                        autoComplete="tel"
+                        aria-describedby="admin-whatsapp-hint"
+                        value={waNumber}
+                        onChange={(e) => setWaNumber(e.target.value)}
+                        placeholder="6281234567890"
+                        className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+                      />
+                      <span id="admin-whatsapp-hint" className="mt-1 block text-xs text-neutral-600">
+                        Pakai kode negara, misalnya 62 untuk Indonesia.
+                      </span>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="text-sm font-medium">Instagram (opsional)</span>
+                      <input
+                        type="text"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        value={instagramHandle}
+                        onChange={(e) => setInstagramHandle(e.target.value)}
+                        placeholder="@wandanamakeup"
+                        className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <fieldset className="min-w-0 border-t border-neutral-200 pt-3">
+                    <legend className="pr-2 text-sm font-semibold">Rekening untuk invoice</legend>
+                    <p className="mb-3 text-xs text-neutral-600">Detail rekening boleh dikosongkan.</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block min-w-0">
+                        <span className="text-sm font-medium">Nama bank</span>
+                        <input
+                          type="text"
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          placeholder="BCA"
+                          className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+                        />
+                      </label>
+                      <label className="block min-w-0">
+                        <span className="text-sm font-medium">Nomor rekening</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={accountNumber}
+                          onChange={(e) => setAccountNumber(e.target.value)}
+                          placeholder="1234567890"
+                          className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+                        />
+                      </label>
+                      <label className="block min-w-0 sm:col-span-2">
+                        <span className="text-sm font-medium">Nama pemilik rekening</span>
+                        <input
+                          type="text"
+                          value={accountName}
+                          onChange={(e) => setAccountName(e.target.value)}
+                          placeholder="Nama sesuai rekening"
+                          className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
+                        />
+                      </label>
+                    </div>
+                  </fieldset>
+                </fieldset>
+              )}
+              {settingsReady ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-4">
+                  <div>
+                    {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
+                    {saved ? <p role="status" className="text-sm text-green-800">Pengaturan tersimpan.</p> : null}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="ml-auto min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+                  >
+                    {saving ? "Menyimpan…" : "Simpan pengaturan"}
+                  </button>
+                </div>
               ) : null}
-              {saved ? (
-                <p role="status" className="text-sm text-green-700">
-                  Pengaturan tersimpan — kalender publik ikut terbaru.
-                </p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-3 border-t border-neutral-200 pt-4">
-                <button
-                  type="submit"
-                  disabled={saving || !settingsReady}
-                  className="rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-                >
-                  {saving ? "Menyimpan…" : "Simpan pengaturan"}
-                </button>
-              </div>
             </form>
 
             <GoogleCalendarSettings onStatusChange={setGoogleStatus} />

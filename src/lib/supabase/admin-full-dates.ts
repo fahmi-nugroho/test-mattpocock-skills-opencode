@@ -57,6 +57,8 @@ export async function getFullDates(client: TypedClient): Promise<string[]> {
  * removes it when present, and persists the sorted array on settings
  * id=1. Returns the new array so the admin calendar can re-render
  * without a refetch.
+ * A confirmed action can specify the intended state so a retry or a change
+ * made by another admin before confirmation cannot reverse the action.
  *
  * Deliberate override semantics: toggling full over existing confirmed
  * bookings is ALLOWED (the date is meant to read "blocked" in public
@@ -69,14 +71,18 @@ export async function getFullDates(client: TypedClient): Promise<string[]> {
 export async function toggleFullDate(
   client: TypedClient,
   date: string,
+  markFull?: boolean,
 ): Promise<string[]> {
   if (!DATE_RE.test(date)) {
     throw new Error("Tanggal harus format YYYY-MM-DD");
   }
   const current = await readFullDates(client);
-  const next = current.includes(date)
-    ? current.filter((d) => d !== date)
-    : [...current, date].sort();
+  const alreadyFull = current.includes(date);
+  const nextFull = markFull ?? !alreadyFull;
+  if (alreadyFull === nextFull) return current;
+  const next = nextFull
+    ? [...current, date].sort()
+    : current.filter((d) => d !== date);
   await writeFullDates(client, next);
   return next;
 }

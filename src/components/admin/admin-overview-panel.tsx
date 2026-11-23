@@ -4,10 +4,11 @@ import type { AdminTabId } from "@/lib/admin/admin-tabs";
 import type { OverviewSummary } from "@/lib/admin/overview";
 
 interface AdminOverviewPanelProps {
-  summary: OverviewSummary;
+  summary: OverviewSummary | null;
   /** Submitted requests the Permintaan panel counts as needing action. */
-  requestCount: number;
+  requestCount: number | null;
   onOpenTab: (tab: AdminTabId) => void;
+  onRetryBookings?: () => void;
 }
 
 interface ActionRow {
@@ -28,11 +29,12 @@ export function AdminOverviewPanel({
   summary,
   requestCount,
   onOpenTab,
+  onRetryBookings,
 }: AdminOverviewPanelProps) {
-  const pending = summary.todayPending + summary.upcomingPending;
+  const pending = summary ? summary.todayPending + summary.upcomingPending : 0;
   const actions: ActionRow[] = [];
 
-  if (requestCount > 0) {
+  if (requestCount !== null && requestCount > 0) {
     actions.push({
       id: "permintaan",
       title: `${requestCount} permintaan perlu ditindak`,
@@ -41,7 +43,7 @@ export function AdminOverviewPanel({
       cta: "Buka Permintaan",
     });
   }
-  if (pending > 0) {
+  if (summary && pending > 0) {
     const detail =
       summary.todayPending > 0 && summary.upcomingPending > 0
         ? `${summary.todayPending} hari ini, ${summary.upcomingPending} mendatang.`
@@ -79,13 +81,13 @@ export function AdminOverviewPanel({
                 <button
                   type="button"
                   onClick={() => onOpenTab(action.target)}
-                  className="shrink-0 rounded-full border border-neutral-300 px-3.5 py-1.5 text-xs font-semibold transition hover:border-neutral-400 hover:bg-neutral-100"
+                  className="min-h-10 shrink-0 rounded-full border border-neutral-300 px-4 text-sm font-semibold transition hover:border-neutral-400 hover:bg-neutral-100"
                 >
                   {action.cta}
                 </button>
               </li>
             ))
-          ) : (
+          ) : summary && requestCount !== null && !onRetryBookings ? (
             <li className="px-4 py-3.5">
               <p className="text-sm text-neutral-600">
                 Tidak ada yang menunggu tindakan.
@@ -93,12 +95,35 @@ export function AdminOverviewPanel({
               <button
                 type="button"
                 onClick={() => onOpenTab("booking")}
-                className="mt-1.5 text-sm font-semibold text-gold-deep underline-offset-4 hover:underline"
+                className="mt-1 inline-flex min-h-10 items-center text-sm font-semibold text-gold-deep underline underline-offset-4"
               >
                 Catat booking baru
               </button>
             </li>
-          )}
+          ) : null}
+          {requestCount === null ? (
+            <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <p className="text-sm text-neutral-600">Jumlah permintaan belum tersedia.</p>
+              <button
+                type="button"
+                onClick={() => onOpenTab("permintaan")}
+                className="min-h-10 text-sm font-semibold text-gold-deep underline underline-offset-4"
+              >
+                Buka Permintaan
+              </button>
+            </li>
+          ) : (!summary || onRetryBookings) && actions.length === 0 ? (
+            <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <p className="text-sm text-neutral-600">Jumlah booking menunggu belum tersedia.</p>
+              <button
+                type="button"
+                onClick={() => onOpenTab("booking")}
+                className="min-h-10 text-sm font-semibold text-gold-deep underline underline-offset-4"
+              >
+                Buka Booking
+              </button>
+            </li>
+          ) : null}
         </ul>
       </section>
 
@@ -106,18 +131,34 @@ export function AdminOverviewPanel({
         <h3 id="overview-bookings" className="text-sm font-semibold">
           Booking
         </h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <StatCard
-            title="Hari ini"
-            confirmed={summary.todayConfirmed}
-            pending={summary.todayPending}
-          />
-          <StatCard
-            title="Mendatang"
-            confirmed={summary.upcomingConfirmed}
-            pending={summary.upcomingPending}
-          />
-        </div>
+        {onRetryBookings ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <p role="alert" className="text-sm text-red-700">Ringkasan booking gagal dimuat.</p>
+            <button
+              type="button"
+              onClick={onRetryBookings}
+              className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+            >
+              Muat ulang
+            </button>
+          </div>
+        ) : null}
+        {summary ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <StatCard
+              title="Hari ini"
+              confirmed={summary.todayConfirmed}
+              pending={summary.todayPending}
+            />
+            <StatCard
+              title="Mendatang"
+              confirmed={summary.upcomingConfirmed}
+              pending={summary.upcomingPending}
+            />
+          </div>
+        ) : !onRetryBookings ? (
+          <p role="status" className="mt-3 text-sm text-neutral-600">Memuat ringkasan booking…</p>
+        ) : null}
       </section>
     </div>
   );

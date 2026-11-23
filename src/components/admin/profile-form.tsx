@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { validateProfileInput } from "@/lib/admin/validate-profile";
 import { checkImageFile } from "@/lib/admin/validate-image";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -26,6 +26,7 @@ import {
 export function ProfileForm() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [headline, setHeadline] = useState("");
   const [subcopy, setSubcopy] = useState("");
   const [currentPortrait, setCurrentPortrait] = useState<string | null>(null);
@@ -33,7 +34,6 @@ export function ProfileForm() {
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -57,7 +57,7 @@ export function ProfileForm() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   // Local preview for a newly picked file; revoked when replaced.
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -71,16 +71,12 @@ export function ProfileForm() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const previewUrl = useMemo(() => {
-    if (objectUrl) return objectUrl;
-    const manual = manualUrl.trim();
-    if (manual) return manual;
-    return currentPortrait;
-  }, [objectUrl, manualUrl, currentPortrait]);
+  const previewUrl = objectUrl ?? (manualUrl.trim() || null);
+  const portraitRemoved = Boolean(currentPortrait && !manualUrl.trim() && !file);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
-    if (saving || removing) return;
+    if (saving || loadError) return;
     setFormError(null);
     setNotice(null);
     setSaved(false);
@@ -154,68 +150,52 @@ export function ProfileForm() {
     }
   }
 
-  async function onRemovePortrait() {
-    if (removing || saving || !currentPortrait) return;
-    setFormError(null);
-    setNotice(null);
+  function stagePortraitRemoval() {
     setSaved(false);
-    let validated;
-    try {
-      validated = validateProfileInput({
-        headline,
-        subcopy,
-        portrait_url: null,
-      });
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Input tidak valid");
-      return;
-    }
-    setRemoving(true);
-    try {
-      const supabase = supabaseBrowser();
-      const previousPortrait = currentPortrait;
-      await updateProfileSettings(supabase, validated);
-      setCurrentPortrait(null);
-      setManualUrl("");
-      setFile(null);
-      setFileInputKey((k) => k + 1);
-      const ok = await deleteImageBestEffort(
-        supabase,
-        "profile",
-        previousPortrait,
-      );
-      if (!ok) {
-        setNotice(
-          "Foto dihapus dari profil, tapi file lama gagal dibersihkan dari penyimpanan.",
-        );
-      }
-      setSaved(true);
-    } catch {
-      setFormError("Gagal menghapus foto. Coba lagi.");
-    } finally {
-      setRemoving(false);
-    }
+    setFormError(null);
+    setManualUrl("");
+    setFile(null);
+    setFileInputKey((key) => key + 1);
   }
 
   if (loading) {
     return <p className="mt-3 text-sm text-neutral-600">Memuat profil…</p>;
   }
 
+  if (loadError) {
+    return (
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <p role="alert" className="text-sm text-red-700">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoadError(null);
+            setLoading(true);
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+          className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+        >
+          Muat ulang
+        </button>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={onSave}
+      onChange={() => {
+        setSaved(false);
+        setFormError(null);
+      }}
       className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
     >
-      <h3 className="text-sm font-bold">Edit profil</h3>
-      {loadError ? (
-        <p role="alert" className="text-sm text-red-600">
-          {loadError}
-        </p>
-      ) : null}
-      <div className="grid gap-3">
+      <h3 className="text-base font-bold">Edit profil</h3>
+      <fieldset disabled={saving} className="grid min-w-0 gap-4 disabled:opacity-70">
+        <legend className="sr-only">Detail profil</legend>
         <label className="block">
           <span className="text-sm font-medium">
-            Headline (maks 120 karakter)
+            Judul profil (maks 120 karakter)
           </span>
           <input
             type="text"
@@ -224,12 +204,12 @@ export function ProfileForm() {
             onChange={(e) => setHeadline(e.target.value)}
             maxLength={120}
             placeholder="mis. Tampil memukau di hari spesialmu"
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
           />
         </label>
         <label className="block">
           <span className="text-sm font-medium">
-            Subcopy (maks 300 karakter)
+            Deskripsi profil (maks 300 karakter)
           </span>
           <textarea
             required
@@ -238,7 +218,7 @@ export function ProfileForm() {
             maxLength={300}
             rows={3}
             placeholder="mis. Lihat portfolio, pilih layanan, lalu chat WhatsApp."
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
           />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -260,10 +240,11 @@ export function ProfileForm() {
             </span>
             <input
               type="url"
+              disabled={file !== null}
               value={manualUrl}
               onChange={(e) => setManualUrl(e.target.value)}
               placeholder="https://…"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
             />
           </label>
         </div>
@@ -277,18 +258,30 @@ export function ProfileForm() {
             />
             <p className="text-xs text-neutral-500">
               Pratinjau portrait —{" "}
-              {file
-                ? "file baru yang akan diupload."
+              {file || manualUrl.trim() !== currentPortrait
+                ? "foto ini akan dipakai saat profil disimpan."
                 : "foto yang tersimpan sekarang."}
             </p>
           </div>
         ) : (
-          <p className="text-xs text-neutral-500">
-            Belum ada foto — landing memakai cover portfolio pertama sebagai
-            pengganti.
+          <p role="status" className="text-sm text-neutral-600">
+            {portraitRemoved
+              ? "Foto akan dihapus saat profil disimpan. Halaman publik akan memakai cover portfolio."
+              : "Tanpa foto profil, halaman publik memakai cover portfolio pertama."}
           </p>
         )}
-      </div>
+        {currentPortrait ? (
+          <div>
+            <button
+              type="button"
+              onClick={portraitRemoved ? () => setManualUrl(currentPortrait) : stagePortraitRemoval}
+              className="min-h-10 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100"
+            >
+              {portraitRemoved ? "Urungkan hapus foto" : "Hapus foto dari draf"}
+            </button>
+          </div>
+        ) : null}
+      </fieldset>
       {formError ? (
         <p role="alert" className="text-sm text-red-600">
           {formError}
@@ -304,24 +297,14 @@ export function ProfileForm() {
           Profil tersimpan — landing ikut terbaru.
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex justify-end border-t border-neutral-200 pt-4">
         <button
           type="submit"
-          disabled={saving || removing}
-          className="rounded-full bg-neutral-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+          disabled={saving}
+          className="min-h-11 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
         >
           {saving ? "Menyimpan…" : "Simpan profil"}
         </button>
-        {currentPortrait ? (
-          <button
-            type="button"
-            disabled={saving || removing}
-            onClick={onRemovePortrait}
-            className="rounded-full border border-red-300 px-6 py-2 text-sm font-semibold text-red-700 disabled:opacity-60"
-          >
-            {removing ? "Menghapus…" : "Hapus foto"}
-          </button>
-        ) : null}
       </div>
     </form>
   );

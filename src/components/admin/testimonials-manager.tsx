@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateTestimonialInput } from "@/lib/admin/validate-testimonial";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
@@ -30,14 +31,14 @@ export function TestimonialsManager() {
   const [sort, setSort] = useState("0");
   const [visible, setVisible] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuote, setEditQuote] = useState("");
   const [editClientName, setEditClientName] = useState("");
   const [editSort, setEditSort] = useState("0");
   const [rowBusy, setRowBusy] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [query, setQuery] = useState("");
 
   // Client-side search over visible text fields only; CRUD/data flow
@@ -69,6 +70,7 @@ export function TestimonialsManager() {
     e.preventDefault();
     if (saving) return;
     setFormError(null);
+    setCreated(false);
     let validated;
     try {
       validated = validateTestimonialInput({
@@ -85,6 +87,8 @@ export function TestimonialsManager() {
     try {
       const row = await createTestimonial(supabaseBrowser(), validated);
       setItems((prev) => [...prev, row].sort((a, b) => a.sort - b.sort));
+      setQuery("");
+      setCreated(true);
       setQuote("");
       setClientName("");
       setSort("0");
@@ -106,7 +110,7 @@ export function TestimonialsManager() {
       });
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
     } catch {
-      setRowError("Gagal mengubah visibilitas. Coba lagi.");
+      setRowError({ id: item.id, message: "Gagal mengubah visibilitas. Coba lagi." });
     } finally {
       setRowBusy(null);
     }
@@ -132,7 +136,7 @@ export function TestimonialsManager() {
         visible: item.visible,
       });
     } catch (err) {
-      setRowError(err instanceof Error ? err.message : "Input tidak valid");
+      setRowError({ id: item.id, message: err instanceof Error ? err.message : "Input tidak valid" });
       return;
     }
     setRowBusy(item.id);
@@ -143,27 +147,22 @@ export function TestimonialsManager() {
       );
       setEditingId(null);
     } catch {
-      setRowError("Gagal menyimpan perubahan. Coba lagi.");
+      setRowError({ id: item.id, message: "Gagal menyimpan perubahan. Coba lagi." });
     } finally {
       setRowBusy(null);
     }
   }
 
   async function onDelete(item: TestimonialRow) {
-    if (confirmDeleteId !== item.id) {
-      setConfirmDeleteId(item.id);
-      return;
-    }
     if (rowBusy) return;
     setRowError(null);
     setRowBusy(item.id);
     try {
       await deleteTestimonial(supabaseBrowser(), item.id);
       setItems((prev) => prev.filter((p) => p.id !== item.id));
-      setConfirmDeleteId(null);
       if (editingId === item.id) setEditingId(null);
     } catch {
-      setRowError("Gagal menghapus testimoni. Coba lagi.");
+      setRowError({ id: item.id, message: "Gagal menghapus testimoni. Coba lagi." });
     } finally {
       setRowBusy(null);
     }
@@ -180,73 +179,76 @@ export function TestimonialsManager() {
           {error}
         </p>
       ) : null}
-      {rowError ? (
-        <p role="alert" className="mt-2 text-sm text-red-600">
-          {rowError}
-        </p>
-      ) : null}
 
-      <form onSubmit={onCreate} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
-        <h3 className="text-sm font-bold">Tambah testimoni</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="text-sm font-medium">Kutipan (maks 300 karakter)</span>
-            <textarea
-              required
-              value={quote}
-              onChange={(e) => setQuote(e.target.value)}
-              maxLength={300}
-              placeholder="mis. Riasannya natural tapi tahan lama."
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              rows={2}
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Nama klien</span>
-            <input
-              type="text"
-              required
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="mis. Dinda, Pengantin"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Urutan</span>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              required
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex items-end gap-2 pb-2">
-            <input
-              type="checkbox"
-              checked={visible}
-              onChange={(e) => setVisible(e.target.checked)}
-              className="h-4 w-4 accent-espresso"
-            />
-            <span className="text-sm font-medium">Tampilkan di landing</span>
-          </label>
-        </div>
-        {formError ? (
-          <p role="alert" className="text-sm text-red-600">
-            {formError}
-          </p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-full bg-neutral-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-        >
-          {saving ? "Menyimpan…" : "Tambah testimoni"}
-        </button>
-      </form>
+      <details className="rounded-xl border border-neutral-200 bg-white">
+        <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-bold hover:bg-neutral-50">Tambah testimoni</summary>
+        <form onSubmit={onCreate} onChange={() => setCreated(false)} className="space-y-3 border-t border-neutral-200 p-4">
+          <fieldset disabled={saving} className="min-w-0 space-y-3 disabled:opacity-70">
+            <legend className="sr-only">Tambah testimoni</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-medium">Kutipan (maks 300 karakter)</span>
+                <textarea
+                  required
+                  value={quote}
+                  onChange={(e) => setQuote(e.target.value)}
+                  maxLength={300}
+                  placeholder="mis. Riasannya natural tapi tahan lama."
+                  className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                  rows={2}
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium">Nama klien</span>
+                <input
+                  type="text"
+                  required
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  placeholder="mis. Dinda, Pengantin"
+                  className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium">Urutan</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  required
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex min-h-11 items-center gap-2 self-end">
+                <input
+                  type="checkbox"
+                  checked={visible}
+                  onChange={(e) => setVisible(e.target.checked)}
+                  className="h-4 w-4 accent-espresso"
+                />
+                <span className="text-sm font-medium">Tampilkan di landing</span>
+              </label>
+            </div>
+            {formError ? (
+              <p role="alert" className="text-sm text-red-600">
+                {formError}
+              </p>
+            ) : null}
+          </fieldset>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-neutral-200 pt-3">
+            {created ? <p role="status" className="mr-auto text-sm text-green-800">Testimoni ditambahkan.</p> : null}
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-11 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {saving ? "Menyimpan…" : "Simpan testimoni"}
+            </button>
+          </div>
+        </form>
+      </details>
 
       <input
         type="search"
@@ -254,7 +256,7 @@ export function TestimonialsManager() {
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Cari testimoni…"
         aria-label="Cari testimoni"
-        className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+        className="mt-4 min-h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
       />
       <ul className="mt-4 space-y-2">
         {filteredItems.map((item) => (
@@ -265,30 +267,37 @@ export function TestimonialsManager() {
             <div className="min-w-0 flex-1">
               {editingId === item.id ? (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <textarea
-                    aria-label="Kutipan"
-                    value={editQuote}
-                    onChange={(e) => setEditQuote(e.target.value)}
-                    maxLength={300}
-                    rows={2}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm sm:col-span-2"
-                  />
-                  <input
-                    type="text"
-                    aria-label="Nama klien"
-                    value={editClientName}
-                    onChange={(e) => setEditClientName(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    aria-label="Urutan"
-                    min={0}
-                    step={1}
-                    value={editSort}
-                    onChange={(e) => setEditSort(e.target.value)}
-                    className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
+                  <label className="block min-w-0 sm:col-span-2">
+                    <span className="text-sm font-medium">Kutipan</span>
+                    <textarea
+                      autoFocus
+                      value={editQuote}
+                      onChange={(e) => setEditQuote(e.target.value)}
+                      maxLength={300}
+                      rows={2}
+                      className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-sm font-medium">Nama klien</span>
+                    <input
+                      type="text"
+                      value={editClientName}
+                      onChange={(e) => setEditClientName(e.target.value)}
+                      className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-sm font-medium">Urutan</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={editSort}
+                      onChange={(e) => setEditSort(e.target.value)}
+                      className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                    />
+                  </label>
                 </div>
               ) : (
                 <>
@@ -300,21 +309,25 @@ export function TestimonialsManager() {
                 </>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               {editingId === item.id ? (
                 <>
                   <button
                     type="button"
                     disabled={rowBusy === item.id}
                     onClick={() => onSaveEdit(item)}
-                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    className="min-h-10 rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-60"
                   >
                     {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditingId(null)}
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                    disabled={rowBusy === item.id}
+                    onClick={() => {
+                      setEditingId(null);
+                      setRowError(null);
+                    }}
+                    className="min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
                   >
                     Batal
                   </button>
@@ -322,37 +335,37 @@ export function TestimonialsManager() {
               ) : (
                 <button
                   type="button"
+                  disabled={rowBusy !== null}
                   onClick={() => startEdit(item)}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
+                  className="min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
                 >
                   Ubah
                 </button>
               )}
-              <button
-                type="button"
-                disabled={rowBusy === item.id}
-                onClick={() => onToggleVisible(item)}
-                className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-              >
-                {item.visible ? "Sembunyikan" : "Tampilkan"}
-              </button>
-              <button
-                type="button"
-                disabled={rowBusy === item.id}
-                onClick={() => onDelete(item)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                  confirmDeleteId === item.id
-                    ? "bg-red-600 text-white"
-                    : "border border-red-300 text-red-700"
-                }`}
-              >
-                {rowBusy === item.id
-                  ? "Menghapus…"
-                  : confirmDeleteId === item.id
-                    ? "Klik lagi untuk hapus"
-                    : "Hapus"}
-              </button>
+              {editingId !== item.id ? (
+                <button
+                  type="button"
+                  disabled={rowBusy === item.id}
+                  onClick={() => onToggleVisible(item)}
+                  className="min-h-10 rounded-full border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+                >
+                  {item.visible ? "Sembunyikan" : "Tampilkan"}
+                </button>
+              ) : null}
+              {editingId !== item.id ? (
+                <ConfirmAction
+                  label="Hapus testimoni"
+                  title={`Hapus testimoni ${item.client_name}?`}
+                  description="Testimoni ini akan dihapus dari profil publik."
+                  onConfirm={() => onDelete(item)}
+                  disabled={rowBusy !== null}
+                  destructive
+                />
+              ) : null}
             </div>
+            {rowError?.id === item.id ? (
+              <p role="alert" className="mt-2 text-sm text-red-700">{rowError.message}</p>
+            ) : null}
           </li>
         ))}
       </ul>
