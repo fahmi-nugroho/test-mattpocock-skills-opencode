@@ -69,6 +69,14 @@ zero to the Agreed Total once known.
 A treatment or package selected for a Booking. A Booking can include several
 Services, all listed on its Invoice under the names chosen for the Booking.
 
+**Unit Price**:
+The price the client and makeup artist agree on for one unit of a Service in a
+Booking.
+
+**Service Quantity**:
+How many units of a selected Service the client booked. It can differ from
+Booking Headcount.
+
 **Headcount**:
 The number of people to be made up in one Booking.
 _Avoid_: Guest count, pax, quantity.

@@ -22,3 +22,11 @@ Booking information and is excluded from the client Invoice. When recording
 Pelunasan, the form suggests the Agreed Total if Bagian MUA is blank. The admin
 can accept, change, or clear the suggestion before saving. A previously entered
 amount, including zero, stays in place.
+
+For itemized Bookings, the admin confirms a Unit Price and Service Quantity
+for each selected Service. The line amounts add up to the Agreed Total.
+Each new Invoice freezes those figures with the Service names. Earlier
+Invoices keep their original breakdown, and an older Booking can retain its
+saved total until the admin enters item prices. Current catalog rates can
+suggest a price for a new selection. Historical rates and quantities need to
+come from the admin because the old total cannot tell us the original split.

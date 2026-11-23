@@ -36,7 +36,7 @@ describe("validateBookingInput", () => {
       client_name: "Sinta",
       client_phone: "081234567890",
       status: "pending",
-      service_ids: ["s1", "s2", "s1"],
+      selected_services: [{ id: "s1" }, { id: "s2" }, { id: "s1" }],
       headcount: 3,
     };
     expect(validateBookingInput({ ...booking, total_price: 725_000 })).toMatchObject({
@@ -45,6 +45,29 @@ describe("validateBookingInput", () => {
       total_price: 725_000,
     });
     expect(() => validateBookingInput(booking)).toThrow(/total harga/i);
+  });
+
+  it("derives the Agreed Total from edited unit prices and independent quantities", () => {
+    const selected_services = [
+      { id: "s1", pricing: { unit_price: 200_000, quantity: 4 } },
+      { id: "s2", pricing: { unit_price: 150_000, quantity: 1 } },
+    ];
+    const result = validateBookingInput({ ...booking, headcount: 4, total_price: 1, selected_services });
+    expect(result.selected_services).toEqual(selected_services);
+    expect(result.total_price).toBe(950_000);
+  });
+
+  it.each([
+    { id: "s2" },
+    { id: "s2", pricing: { unit_price: -1, quantity: 1 } },
+    { id: "s2", pricing: { unit_price: 50_000, quantity: 1.5 } },
+    { id: "s2", pricing: { unit_price: 2_000_000_000, quantity: 2 } },
+  ])("rejects incomplete or invalid itemized pricing for %j", (second) => {
+    const selected_services = [
+      { id: "s1", pricing: { unit_price: 100_000, quantity: 4 } },
+      second,
+    ];
+    expect(() => validateBookingInput({ ...booking, selected_services })).toThrow(/harga satuan/i);
   });
 
   it("accepts a valid booking", () => {

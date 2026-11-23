@@ -23,11 +23,8 @@ import {
   windowRows,
 } from "@/lib/admin/list-window";
 import { summarizeBookings } from "@/lib/admin/overview";
-import { validateBookingInput } from "@/lib/admin/validate-booking";
-import {
-  remainingBalance,
-  suggestTotal,
-} from "@/lib/admin/booking-request";
+import { servicePriceTotal, validateBookingInput } from "@/lib/admin/validate-booking";
+import { remainingBalance } from "@/lib/admin/booking-request";
 import {
   ACCEPT_REQUEST_EVENT,
   type AcceptRequestDetail,
@@ -105,12 +102,39 @@ function BagianMuaField({ total, ...input }: { total: string } &
   );
 }
 
+interface ServiceDraft {
+  id: string;
+  name: string;
+  pricing?: { unit_price: string; quantity: string };
+}
+
+function serviceDraft({ id, name, pricing }: BookingService): ServiceDraft {
+  return {
+    id,
+    name,
+    pricing: pricing && {
+      unit_price: String(pricing.unit_price),
+      quantity: String(pricing.quantity),
+    },
+  };
+}
+
+function serviceSelections(items: readonly ServiceDraft[]) {
+  return items.map(({ id, pricing }) => ({
+    id,
+    pricing: pricing && {
+      unit_price: parseIntField(pricing.unit_price, NaN),
+      quantity: parseIntField(pricing.quantity, NaN),
+    },
+  }));
+}
+
 function bookingEditFields(item: Booking) {
   return {
     date: item.date,
     start_time: item.start_time,
     end_time: item.end_time,
-    selected_services: item.selected_services,
+    selected_services: item.selected_services.map(serviceDraft),
     client_name: item.client_name,
     client_phone: item.client_phone,
     notes: item.notes,
@@ -120,36 +144,41 @@ function bookingEditFields(item: Booking) {
     venue: item.venue,
     hairdo: isStyle(item.hairdo) ? item.hairdo : "",
     reference: item.reference,
-    total_price: item.total_price === null ? null : String(item.total_price),
+    total_price: String(item.total_price ?? ""),
     dp_amount: String(item.dp_amount),
     bagian_mua: String(item.bagian_mua ?? ""),
   };
 }
 
-function suggestedBookingTotal(
-  selected: BookingService[],
-  catalog: Service[],
-  headcount: string,
-): number | null {
-  if (selected.length !== 1) return null;
-  const service = catalog.find(({ id }) => id === selected[0].id);
-  return suggestTotal(service?.price_idr ?? null, parseIntField(headcount, 1));
-}
-
 function BookingServicesPicker({
   selected,
   catalog,
+  headcount,
   saved = [],
   onChange,
 }: {
-  selected: BookingService[];
+  selected: ServiceDraft[];
   catalog: Service[];
+  headcount: string;
   saved?: BookingService[];
-  onChange: (services: BookingService[]) => void;
+  onChange: (services: ServiceDraft[]) => void;
 }) {
   const picker = useRef<HTMLSelectElement>(null);
   const group = useRef<HTMLFieldSetElement>(null);
   const available = catalog.filter(({ id }) => !selected.some((service) => service.id === id));
+  const count = parseIntField(headcount, 1);
+  const firstQuantity = Number.isInteger(count) && count > 0 ? headcount || "1" : "1";
+
+  function itemize(services: ServiceDraft[]) {
+    return services.map((service, index) => service.pricing ? service : {
+      ...service,
+      pricing: { unit_price: "", quantity: index === 0 ? firstQuantity : "1" },
+    });
+  }
+
+  function changePricing(id: string, pricing: NonNullable<ServiceDraft["pricing"]>) {
+    onChange(selected.map((service) => service.id === id ? { ...service, pricing } : service));
+  }
 
   return (
     <fieldset ref={group} tabIndex={-1} className="min-w-0 sm:col-span-2">
@@ -163,10 +192,17 @@ function BookingServicesPicker({
         disabled={available.length === 0}
         onChange={(e) => {
           const service = available.find(({ id }) => id === e.target.value);
-          if (service) {
-            const { id, name } = service;
-            onChange([...selected, saved.find((entry) => entry.id === id) ?? { id, name }]);
-          }
+          if (!service) return;
+          const previous = saved.find(({ id }) => id === service.id);
+          const newService = serviceDraft({
+            id: service.id,
+            name: previous?.name ?? service.name,
+            pricing: previous?.pricing ?? {
+              unit_price: service.price_idr,
+              quantity: selected.length === 0 ? Number(firstQuantity) : 1,
+            },
+          });
+          onChange([...itemize(selected), newService]);
         }}
         className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50"
       >
@@ -176,10 +212,10 @@ function BookingServicesPicker({
         {available.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
       </select>
       {selected.length > 0 ? (
-        <ul className="mt-2 space-y-1">
-          {selected.map(({ id, name }) => (
-            <li key={id} className="flex items-center justify-between gap-2 text-sm">
-              <span className="min-w-0 break-words">{name}</span>
+        <ul className="mt-2 divide-y divide-neutral-200">
+          {selected.map(({ id, name, pricing }) => (
+            <li key={id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-2 text-sm">
+              <span className="break-words font-medium">{name}</span>
               <button
                 type="button"
                 aria-label={`Hapus layanan ${name}`}
@@ -194,10 +230,52 @@ function BookingServicesPicker({
               >
                 Hapus
               </button>
+              {pricing && (
+                <div className="col-span-2 grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-3">
+                  <label className="min-w-0">
+                    <span className="text-xs font-medium">Harga satuan (Rp)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      required
+                      aria-label={`Harga satuan (Rp) ${name}`}
+                      value={pricing.unit_price}
+                      onChange={(e) => changePricing(id, { ...pricing, unit_price: e.target.value })}
+                      className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 text-base sm:text-sm"
+                    />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="text-xs font-medium">Jumlah</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      aria-label={`Jumlah ${name}`}
+                      value={pricing.quantity}
+                      onChange={(e) => changePricing(id, { ...pricing, quantity: e.target.value })}
+                      className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 text-base sm:text-sm"
+                    />
+                  </label>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       ) : null}
+      {selected.length > 0 && selected.every(({ pricing }) => !pricing) && (
+        <button
+          type="button"
+          onClick={() => {
+            onChange(itemize(selected));
+            requestAnimationFrame(() => group.current?.querySelector<HTMLInputElement>('input[type="number"]')?.focus());
+          }}
+          className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-100"
+        >
+          Rinci harga layanan
+        </button>
+      )}
     </fieldset>
   );
 }
@@ -237,7 +315,7 @@ export function BookingsManager() {
   const [date, setDate] = useState(() => getTodayKey());
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("10:00");
-  const [selectedServices, setSelectedServices] = useState<BookingService[]>([]);
+  const [selectedServices, setSelectedServices] = useState<ServiceDraft[]>([]);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -250,7 +328,7 @@ export function BookingsManager() {
   // A request accepted from before the change carries free text in the reused
   // column; the radio cannot show it, so it is kept here and shown read-only.
   const [legacyPrefillHairdo, setLegacyPrefillHairdo] = useState("");
-  const [manualTotal, setManualTotal] = useState<string | null>(null);
+  const [manualTotal, setManualTotal] = useState("");
   const [dpAmount, setDpAmount] = useState("0");
   const [bagianMua, setBagianMua] = useState("");
   // Set when "Jadikan Booking" prefilled this form from a request; the next
@@ -263,7 +341,7 @@ export function BookingsManager() {
     date: "",
     start_time: "",
     end_time: "",
-    selected_services: [] as BookingService[],
+    selected_services: [] as ServiceDraft[],
     client_name: "",
     client_phone: "",
     notes: "",
@@ -273,15 +351,13 @@ export function BookingsManager() {
     venue: "",
     hairdo: "",
     reference: "",
-    total_price: null as string | null,
+    total_price: "",
     dp_amount: "0",
     bagian_mua: "",
   });
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const editingId = editingBooking?.id ?? null;
   const savedServices = editingBooking?.selected_services ?? [];
-  const servicesChanged = editFields.selected_services.length !== savedServices.length ||
-    editFields.selected_services.some(({ id }, index) => id !== savedServices[index].id);
   // A row op's failure, kept with the row it belongs to so the reason appears
   // in that row even when the dialog shows twenty of them.
   const [rowError, setRowError] = useState<{
@@ -605,7 +681,7 @@ export function BookingsManager() {
       if (draft.end_time) setEnd(draft.end_time);
       setPendingRequestId(requestId);
       setSelectedServices([]);
-      setManualTotal(null);
+      setManualTotal("");
       setBagianMua("");
       setFormError(null);
       requestAnimationFrame(() => {
@@ -618,7 +694,14 @@ export function BookingsManager() {
     return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
   }, []);
 
-  const totalPrice = manualTotal ?? String(suggestedBookingTotal(selectedServices, services, headcount) ?? "");
+  const createSelections = serviceSelections(selectedServices);
+  const totalPrice = selectedServices.length
+    ? String(servicePriceTotal(createSelections) ?? "")
+    : manualTotal;
+  const editItemized = editFields.selected_services.some(({ pricing }) => pricing !== undefined);
+  const editTotal = editItemized
+    ? String(servicePriceTotal(serviceSelections(editFields.selected_services)) ?? "")
+    : editFields.total_price;
 
   const createRemaining = remainingBalance(
     parseIntField(totalPrice, null),
@@ -635,7 +718,7 @@ export function BookingsManager() {
         date,
         start_time: start,
         end_time: end,
-        service_ids: selectedServices.map(({ id }) => id),
+        selected_services: createSelections,
         client_name: clientName,
         client_phone: clientPhone,
         notes,
@@ -670,7 +753,7 @@ export function BookingsManager() {
       setHairdo("");
       setReference("");
       setLegacyPrefillHairdo("");
-      setManualTotal(null);
+      setManualTotal("");
       setDpAmount("0");
       setBagianMua("");
       // A prefilled accept path links the request to the booking it just
@@ -719,7 +802,7 @@ export function BookingsManager() {
         date: editFields.date,
         start_time: editFields.start_time,
         end_time: editFields.end_time,
-        service_ids: editFields.selected_services.map(({ id }) => id),
+        selected_services: serviceSelections(editFields.selected_services),
         client_name: editFields.client_name,
         client_phone: editFields.client_phone,
         notes: editFields.notes,
@@ -733,13 +816,23 @@ export function BookingsManager() {
         dp_amount: parseIntField(editFields.dp_amount, 0),
         bagian_mua: parseIntField(editFields.bagian_mua, null),
       });
+      if (editingBooking.pelunasan_amount !== null && details.total_price !== editingBooking.total_price) {
+        throw new Error("Total rincian layanan harus sama dengan total saat pelunasan dicatat.");
+      }
       const originalFields = bookingEditFields(editingBooking);
       const submittedFields = { ...editFields, total_price: totalPrice };
       patch = Object.fromEntries(Object.entries(details).filter(([key]) => {
         const field = key as keyof typeof details;
         return submittedFields[field] !== (originalFields[field] ?? "");
       }));
-      if (servicesChanged) patch.selected_services = selected_services;
+      if (selected_services.length !== savedServices.length ||
+          selected_services.some(({ id, pricing }, index) => {
+            const saved = savedServices[index];
+            return id !== saved.id || pricing?.unit_price !== saved.pricing?.unit_price ||
+              pricing?.quantity !== saved.pricing?.quantity;
+          })) {
+        patch.selected_services = selected_services;
+      }
     } catch (err) {
       setRowError({
         id: item.id,
@@ -848,11 +941,6 @@ export function BookingsManager() {
     const newestInvoice = bookingInvoices[0] ?? null;
     const mirrorState = mirrorStates.get(item.id) ?? null;
     const hasPelunasan = item.pelunasan_amount !== null;
-    const editSuggested = editingId === item.id && !hasPelunasan
-      ? suggestedBookingTotal(editFields.selected_services, services, editFields.headcount)
-      : null;
-    const scopeChanged = servicesChanged || editFields.headcount !== String(editingBooking?.headcount);
-    const editTotal = editFields.total_price ?? (scopeChanged ? String(editSuggested ?? "") : "");
     const payment = item.total_price === null
       ? null
       : paymentPosition(item.total_price, item.dp_amount, item.pelunasan_amount);
@@ -958,12 +1046,6 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
-            <BookingServicesPicker
-              selected={editFields.selected_services}
-              catalog={services}
-              saved={savedServices}
-              onChange={(selected_services) => setEditFields((fields) => ({ ...fields, selected_services }))}
-            />
             <label className="block">
               <span className="text-sm font-medium">Jenis acara</span>
               <input
@@ -994,6 +1076,13 @@ export function BookingsManager() {
                 className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            <BookingServicesPicker
+              selected={editFields.selected_services}
+              catalog={services}
+              headcount={editFields.headcount}
+              saved={savedServices}
+              onChange={(selected_services) => setEditFields((fields) => ({ ...fields, selected_services }))}
+            />
             <label className="block">
               <span className="text-sm font-medium">Lokasi</span>
               <input
@@ -1059,30 +1148,25 @@ export function BookingsManager() {
               />
             </label>
             <label className="block">
-              <span className="text-sm font-medium">Total harga (Rp)</span>
+              <span className="text-sm font-medium">
+                Total harga (Rp){editItemized ? " · otomatis" : ""}
+              </span>
               <input
                 type="number"
                 min={0}
                 value={editTotal}
-                readOnly={hasPelunasan}
-                required={editFields.selected_services.length > 1}
-                onChange={(e) =>
+                readOnly={hasPelunasan || editItemized}
+                required={!editItemized && editFields.selected_services.length > 1}
+                onChange={editItemized ? undefined : (e) =>
                   setEditFields((f) => ({
                     ...f,
                     total_price: e.target.value,
                   }))
                 }
-                placeholder={editFields.selected_services.length > 1
-                  ? "Isi total untuk semua layanan"
-                  : "Kosongkan bila belum disepakati"}
-                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                placeholder={editItemized ? "Lengkapi rincian layanan" : "Kosongkan bila belum disepakati"}
+                className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm read-only:bg-neutral-50"
               />
             </label>
-            {editSuggested !== null && String(editSuggested) !== editTotal ? (
-              <p className="text-xs text-neutral-600 sm:col-span-2">
-                Saran total dari katalog: {formatIDR(editSuggested)}
-              </p>
-            ) : null}
             <label className="block">
               <span className="text-sm font-medium">DP (Rp)</span>
               <input
@@ -1106,7 +1190,10 @@ export function BookingsManager() {
             />
             {hasPelunasan ? (
               <p className="text-xs text-neutral-600 sm:col-span-2">
-                Tutup editor, lalu pilih Batalkan Pelunasan untuk mengubah total atau DP.
+                {editItemized && item.total_price !== null
+                  ? `Total saat pelunasan dicatat: ${formatIDR(item.total_price)}. `
+                  : ""}
+                Pilih Batalkan Pelunasan untuk mengubah total atau DP.
               </p>
             ) : null}
             <label className="block sm:col-span-2">
@@ -1410,11 +1497,6 @@ export function BookingsManager() {
             Layanan dan detail acara
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <BookingServicesPicker
-              selected={selectedServices}
-              catalog={services}
-              onChange={setSelectedServices}
-            />
             <label className="block">
               <span className="text-sm font-medium">Jenis acara</span>
               <input
@@ -1435,6 +1517,12 @@ export function BookingsManager() {
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
+            <BookingServicesPicker
+              selected={selectedServices}
+              catalog={services}
+              headcount={headcount}
+              onChange={setSelectedServices}
+            />
             <label className="block">
               <span className="text-sm font-medium">Lokasi</span>
               <input
@@ -1508,17 +1596,17 @@ export function BookingsManager() {
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block min-w-0">
-              <span className="text-sm font-medium">Total harga (Rp)</span>
+              <span className="text-sm font-medium">
+                Total harga (Rp){selectedServices.length ? " · otomatis" : ""}
+              </span>
               <input
                 type="number"
                 min={0}
                 value={totalPrice}
-                onChange={(e) => setManualTotal(e.target.value)}
-                required={selectedServices.length > 1}
-                placeholder={selectedServices.length > 1
-                  ? "Isi total untuk semua layanan"
-                  : "Kosongkan bila belum disepakati"}
-                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                readOnly={selectedServices.length > 0}
+                onChange={selectedServices.length ? undefined : (e) => setManualTotal(e.target.value)}
+                placeholder={selectedServices.length ? "Lengkapi rincian layanan" : "Kosongkan bila belum disepakati"}
+                className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm read-only:bg-neutral-50"
               />
             </label>
             <label className="block">

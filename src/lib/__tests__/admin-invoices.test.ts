@@ -33,6 +33,7 @@ const ROW: Invoice = {
   client_name: "Sari",
   client_phone: "081234567890",
   service_names: ["Makeup Wisuda", "Hairdo"],
+  service_items: [],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung A",

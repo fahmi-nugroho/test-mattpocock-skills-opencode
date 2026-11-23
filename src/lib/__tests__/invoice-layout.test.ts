@@ -30,6 +30,7 @@ const INVOICE: Invoice = {
   client_name: "Sari Dewi",
   client_phone: "081234567890",
   service_names: ["Makeup Wisuda"],
+  service_items: [],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung Serbaguna",
@@ -381,12 +382,42 @@ describe("invoice line item and totals", () => {
     expect(badge.y).toBeLessThanOrEqual(fill.y + fill.height);
   });
 
-  it("badges a settled Invoice as LUNAS with nothing left to pay", () => {
+  it("stamps a settled Invoice beside the totals with nothing left to pay", () => {
     const settled = { ...INVOICE, dp_amount: INVOICE.subtotal };
-    const values = strings(layout(settled));
-    expect(values).toContain("LUNAS");
+    const ops = layout(settled);
+    const values = strings(ops);
+    const stamp = texts(ops).find(({ text }) => text === "LUNAS");
+    expect(stamp).toMatchObject({ align: "center", rotation: -Math.PI / 12 });
+    const outline = ops.filter((op) => op.kind === "rule" && op.color === stamp?.color);
+    expect(outline).toHaveLength(4);
+    for (const op of outline) {
+      if (op.kind === "rule") expect(Math.max(op.x1, op.x2)).toBeLessThan(500);
+    }
     expect(values).not.toContain("DP DITERIMA");
     expect(values).toContain("Rp 0");
+  });
+
+  it("prints each saved Unit Price, Service Quantity and line total in the same row", () => {
+    const result = page({
+      ...INVOICE,
+      service_names: ["Make Family", "Hairdo"],
+      service_items: [
+        { name: "Make Family", unit_price: 200_000, quantity: 4 },
+        { name: "Hairdo", unit_price: 150_000, quantity: 1 },
+      ],
+      subtotal: 950_000,
+    });
+    const all = texts(result.ops);
+    function row(name: string) {
+      const y = all.find((op) => op.text === name)?.y;
+      return all.filter((op) => op.y === y).map((op) => op.text);
+    }
+    expect(row("ITEM")).toEqual(["ITEM", "HARGA SATUAN", "JUMLAH", "TOTAL"]);
+    expect(row("Make Family")).toEqual(["Make Family", "Rp 200.000", "4", "Rp 800.000"]);
+    expect(row("Hairdo")).toEqual(["Hairdo", "Rp 150.000", "1", "Rp 150.000"]);
+    expect(strings(result.ops)).toContain("Rp 950.000");
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
   });
 
   it("never prints a negative balance for an overpaid Invoice", () => {

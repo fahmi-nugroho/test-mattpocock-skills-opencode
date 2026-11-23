@@ -30,10 +30,18 @@ export interface PortfolioItem {
   visible: boolean;
 }
 
+export interface ServicePricing {
+  unit_price: number;
+  quantity: number;
+}
+
 export interface BookingService {
   id: string;
   name: string;
+  pricing?: ServicePricing;
 }
+
+export type InvoiceServiceItem = ServicePricing & Pick<BookingService, "name">;
 
 export interface Booking {
   id: string;
@@ -100,6 +108,7 @@ export interface Invoice {
   client_name: string;
   client_phone: string;
   service_names: string[];
+  service_items: InvoiceServiceItem[];
   event_type: string;
   headcount: number;
   venue: string;

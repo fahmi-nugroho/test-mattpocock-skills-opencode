@@ -128,7 +128,15 @@ function paintInvoice(
     ctx.font = canvasFont(op, families);
     ctx.textAlign = op.align;
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(op.text, op.x, op.y);
+    if (op.rotation === undefined) {
+      ctx.fillText(op.text, op.x, op.y);
+    } else {
+      ctx.save();
+      ctx.translate(op.x, op.y);
+      ctx.rotate(op.rotation);
+      ctx.fillText(op.text, 0, 0);
+      ctx.restore();
+    }
   }
 }
 

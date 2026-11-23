@@ -109,6 +109,7 @@ const NEWEST: Invoice = {
   client_name: "Sari",
   client_phone: "081234567890",
   service_names: ["Makeup Wisuda"],
+  service_items: [],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung A",
@@ -255,6 +256,25 @@ describe("invoice issuing guard", () => {
     expect(invoiceIssueRefusal(input, { ...paid, pelunasan_amount: null })).toBeNull();
     expect(NEWEST).toMatchObject({ dp_amount: 500_000, pelunasan_amount: null, due_on: "2026-11-14" });
   });
+
+  it("allows a new Invoice when the Service breakdown changes at the same Agreed Total", () => {
+    const input = issue({
+      selected_services: [
+        { ...BOOKING.selected_services[0], pricing: { unit_price: 750_000, quantity: 2 } },
+      ],
+    });
+    const snapshot = buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn);
+    const itemized = { ...NEWEST, ...snapshot };
+    expect(snapshot.service_items).toEqual([
+      { name: "Makeup Wisuda", unit_price: 750_000, quantity: 2 },
+    ]);
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, itemized)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, {
+      ...itemized,
+      service_items: [{ name: "Makeup Wisuda", unit_price: 500_000, quantity: 3 }],
+    })).toBeNull();
+  });
 });
 
 // Seam 1 (pure): the date-edit guard on an unsent Invoice. Catches a screen
@@ -355,6 +375,7 @@ describe("invoice snapshot", () => {
       client_name: "Sari",
       client_phone: "081234567890",
       service_names: ["Makeup Wisuda"],
+      service_items: [],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",
@@ -375,6 +396,7 @@ describe("invoice snapshot", () => {
       client_name: "Sari",
       client_phone: "081234567890",
       service_names: ["Makeup Wisuda"],
+      service_items: [],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",

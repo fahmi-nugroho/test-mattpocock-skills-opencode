@@ -1,11 +1,13 @@
-import type { BookingService, BookingStatus } from "../supabase/database";
+import type { BookingService, BookingStatus, ServicePricing } from "../supabase/database";
 import { REFERENCE_MAX, isStyle } from "../style-reference";
+
+type SelectedService = Pick<BookingService, "id" | "pricing">;
 
 export interface BookingInput {
   date: string;
   start_time: string;
   end_time: string;
-  service_ids?: string[];
+  selected_services?: SelectedService[];
   client_name: string;
   client_phone: string;
   notes?: string;
@@ -24,7 +26,7 @@ export interface ValidatedBookingInput {
   date: string;
   start_time: string;
   end_time: string;
-  selected_services: Pick<BookingService, "id">[];
+  selected_services: SelectedService[];
   client_name: string;
   client_phone: string;
   notes: string;
@@ -49,6 +51,21 @@ const STATUSES: readonly BookingStatus[] = [
 // Caps mirror the 0015 column checks.
 const EVENT_TYPE_MAX = 100;
 const VENUE_MAX = 200;
+const MAX_IDR = 2_147_483_647;
+
+export function servicePriceTotal(items: readonly { pricing?: ServicePricing }[]): number | null {
+  if (items.length === 0) return null;
+  let total = 0;
+  for (const { pricing } of items) {
+    if (!pricing) return null;
+    const { unit_price, quantity } = pricing;
+    if (!Number.isInteger(unit_price) || unit_price < 0 ||
+        !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_IDR) return null;
+    total += unit_price * quantity;
+    if (total > MAX_IDR) return null;
+  }
+  return total;
+}
 
 export function validateBagianMua(amount: number | null, total: number | null): void {
   if (amount === null) return;
@@ -94,7 +111,11 @@ export function validateBookingInput(
   if (!(STATUSES as readonly string[]).includes(input.status)) {
     throw new Error("Status booking harus pending, confirmed, atau cancelled");
   }
-  const serviceIds = new Set(input.service_ids ?? []);
+  const services = new Map<string, SelectedService>();
+  for (const service of input.selected_services ?? []) {
+    if (!services.has(service.id)) services.set(service.id, service);
+  }
+  const selected_services = [...services.values()];
 
   const event_type = (input.event_type ?? "").trim();
   if (event_type.length > EVENT_TYPE_MAX) {
@@ -121,17 +142,19 @@ export function validateBookingInput(
     throw new Error("Jumlah orang harus angka bulat minimal 1");
   }
 
-  const total_price =
-    input.total_price === undefined || input.total_price === null
-      ? null
-      : input.total_price;
+  const itemized = selected_services.some(({ pricing }) => pricing !== undefined);
+  const serviceTotal = servicePriceTotal(selected_services);
+  if (itemized && serviceTotal === null) {
+    throw new Error("Isi harga satuan dan jumlah bulat untuk semua layanan. Pastikan total harga tidak melebihi Rp2.147.483.647.");
+  }
+  const total_price = itemized ? serviceTotal : input.total_price ?? null;
   if (
     total_price !== null &&
     (!Number.isInteger(total_price) || total_price < 0)
   ) {
     throw new Error("Total harga harus angka minimal 0");
   }
-  if (serviceIds.size > 1 && total_price === null) {
+  if (selected_services.length > 1 && total_price === null) {
     throw new Error("Total harga wajib diisi jika memilih lebih dari satu layanan");
   }
 
@@ -146,7 +169,7 @@ export function validateBookingInput(
     date: input.date,
     start_time: input.start_time,
     end_time: input.end_time,
-    selected_services: Array.from(serviceIds, (id) => ({ id })),
+    selected_services,
     client_name,
     client_phone,
     notes: (input.notes ?? "").trim(),

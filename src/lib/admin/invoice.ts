@@ -187,6 +187,7 @@ const SNAPSHOT_KEYS = [
   "client_name",
   "client_phone",
   "service_names",
+  "service_items",
   "event_type",
   "headcount",
   "venue",
@@ -245,6 +246,7 @@ export function buildInvoiceSnapshot(
     client_name: booking.client_name,
     client_phone: booking.client_phone,
     service_names: booking.selected_services.map(({ name }) => name),
+    service_items: booking.selected_services.flatMap(({ name, pricing }) => pricing ? [{ name, ...pricing }] : []),
     event_type: booking.event_type,
     headcount: booking.headcount,
     venue: booking.venue,
@@ -267,6 +269,13 @@ export function invoiceSnapshotOf(invoice: Invoice): InvoiceSnapshot {
 
 function snapshotsMatch(a: InvoiceSnapshot, b: InvoiceSnapshot): boolean {
   return SNAPSHOT_KEYS.every((key) => {
+    if (key === "service_items") {
+      return a.service_items.length === b.service_items.length &&
+        a.service_items.every(({ name, unit_price, quantity }, index) => {
+          const prior = b.service_items[index];
+          return name === prior.name && unit_price === prior.unit_price && quantity === prior.quantity;
+        });
+    }
     if (key !== "service_names") return a[key] === b[key];
     return a.service_names.length === b.service_names.length &&
       a.service_names.every((name, index) => name === b.service_names[index]);
