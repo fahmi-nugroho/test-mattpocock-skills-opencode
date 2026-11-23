@@ -50,6 +50,7 @@ import {
   listBookingsAdmin,
   recordPelunasan,
   setBookingStatus,
+  undoPelunasan,
   updateBooking,
 } from "@/lib/supabase/admin-bookings";
 import { listInvoicesAdmin } from "@/lib/supabase/admin-invoices";
@@ -756,12 +757,15 @@ export function BookingsManager() {
     }
   }
 
-  async function onRecordPelunasan(item: Booking) {
+  async function onChangePelunasan(item: Booking) {
     if (rowBusy) return;
+    const undo = item.pelunasan_amount !== null;
     setRowError(null);
     setRowBusy(item.id);
+    const action = undo ? undoPelunasan : recordPelunasan;
+    const failureMessage = undo ? "Gagal membatalkan pelunasan." : "Gagal mencatat pelunasan.";
     try {
-      const row = await recordPelunasan(supabaseBrowser(), item);
+      const row = await action(supabaseBrowser(), item);
       setItems((prev) => prev.map((p) => (p.id === item.id ? row : p)));
     } catch (err) {
       const saved = await getBookingById(supabaseBrowser(), item.id).catch(() => null);
@@ -770,7 +774,7 @@ export function BookingsManager() {
       }
       setRowError({
         id: item.id,
-        message: err instanceof Error ? err.message : "Gagal mencatat pelunasan.",
+        message: err instanceof Error ? err.message : failureMessage,
       });
     } finally {
       setRowBusy(null);
@@ -817,6 +821,8 @@ export function BookingsManager() {
     const payment = item.total_price === null
       ? null
       : paymentPosition(item.total_price, item.dp_amount, item.pelunasan_amount);
+    const settlementAmount = item.pelunasan_amount ?? payment?.remaining ?? 0;
+    const settlementLabel = hasPelunasan ? "Batalkan Pelunasan" : "Catat Pelunasan";
     return (
       <li
         key={item.id}
@@ -1052,7 +1058,7 @@ export function BookingsManager() {
             </label>
             {hasPelunasan ? (
               <p className="text-xs text-neutral-600 sm:col-span-2">
-                Total dan DP tidak dapat diubah selama pelunasan tercatat.
+                Tutup editor, lalu pilih Batalkan Pelunasan untuk mengubah total atau DP.
               </p>
             ) : null}
             <label className="block sm:col-span-2">
@@ -1118,12 +1124,15 @@ export function BookingsManager() {
         <div className="mt-3 flex flex-wrap gap-2">
           {editingId !== item.id ? (
             <>
-              {!hasPelunasan && payment && payment.remaining > 0 ? (
+              {settlementAmount > 0 ? (
                 <ConfirmAction
-                  label="Catat Pelunasan"
-                  title={`Catat pelunasan ${item.client_name}?`}
-                  description={`Catat sisa pembayaran sebesar ${formatIDR(payment.remaining)} sebagai pelunasan.`}
-                  onConfirm={() => onRecordPelunasan(item)}
+                  label={settlementLabel}
+                  title={`${settlementLabel} ${item.client_name}?`}
+                  description={hasPelunasan
+                    ? `Hapus catatan pelunasan sebesar ${formatIDR(settlementAmount)} dari booking ini. Invoice yang sudah terbit tetap tersimpan.`
+                    : `Catat sisa pembayaran sebesar ${formatIDR(settlementAmount)} sebagai pelunasan.`}
+                  onConfirm={() => onChangePelunasan(item)}
+                  destructive={hasPelunasan}
                   disabled={rowBusy !== null}
                 />
               ) : null}

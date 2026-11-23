@@ -264,6 +264,32 @@ export async function recordPelunasan(
   return data;
 }
 
+export async function undoPelunasan(
+  client: TypedClient,
+  reviewed: Pick<Booking, "id" | "total_price" | "dp_amount" | "pelunasan_amount">,
+): Promise<Booking> {
+  const { id, total_price, dp_amount, pelunasan_amount } = reviewed;
+  if (pelunasan_amount === null) throw new Error("Belum ada pelunasan yang tercatat.");
+
+  const bookings = client.from("bookings") as unknown as {
+    update(patch: Pick<Booking, "pelunasan_amount">): {
+      match(conditions: typeof reviewed): {
+        select(): {
+          maybeSingle(): Promise<{ data: Booking | null; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+  const { data, error } = await bookings
+    .update({ pelunasan_amount: null })
+    .match({ id, total_price, dp_amount, pelunasan_amount })
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`Gagal membatalkan pelunasan: ${error.message}`);
+  if (!data) throw new Error("Detail booking berubah. Periksa kembali pelunasan.");
+  return data;
+}
+
 /**
  * Confirm / cancel / re-pending a booking (ticket 07). Confirming runs
  * the overlap guard (public day-status derives from confirmed rows via

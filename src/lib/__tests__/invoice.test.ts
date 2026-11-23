@@ -398,4 +398,47 @@ describe("invoice snapshot", () => {
     expect(prospective).not.toEqual(before);
     expect(invoiceSnapshotOf(NEWEST)).toEqual(before);
   });
+
+  it("accepts a corrected paid Invoice while earlier Invoices keep their payment and date facts", () => {
+    const sentAt = "2026-10-21T09:00:00.000Z";
+    const paid: Invoice = {
+      ...NEWEST,
+      id: "i2",
+      seq: 8,
+      number: "invc-08/2026",
+      issued_on: "2026-10-21",
+      due_on: null,
+      sent_at: sentAt,
+      pelunasan_amount: 1_000_000,
+    };
+    const corrected = issue({ total_price: 1_750_000, dp_amount: 650_000, pelunasan_amount: 1_100_000 }, {
+      issuedOn: "2026-10-22",
+      dueOn: null,
+    });
+    expect(invoiceIssueRefusal(corrected, paid)).toBeNull();
+    expect(buildInvoiceSnapshot(corrected.booking, corrected.issuedOn, corrected.dueOn)).toMatchObject({
+      subtotal: 1_750_000, dp_amount: 650_000, pelunasan_amount: 1_100_000,
+      issued_on: "2026-10-22", due_on: null,
+    });
+
+    const history = indexInvoicesByBooking([NEWEST, paid]).get(BOOKING.id) ?? [];
+    expect(history.map(invoiceSentLabel)).toEqual(["Terkirim", "Belum dikirim"]);
+    expect(history.map((row) => {
+      const snapshot = invoiceSnapshotOf(row);
+      return {
+        number: row.number,
+        sentAt: row.sent_at,
+        issuedOn: snapshot.issued_on,
+        dueOn: snapshot.due_on,
+        dp: snapshot.dp_amount,
+        pelunasan: snapshot.pelunasan_amount,
+        payment: paymentPosition(snapshot.subtotal, snapshot.dp_amount, snapshot.pelunasan_amount),
+      };
+    })).toEqual([
+      { number: "invc-08/2026", sentAt, issuedOn: "2026-10-21", dueOn: null, dp: 500_000,
+        pelunasan: 1_000_000, payment: { remaining: 0, status: "Lunas" } },
+      { number: "invc-07/2026", sentAt: null, issuedOn: "2026-10-20", dueOn: "2026-11-14", dp: 500_000,
+        pelunasan: null, payment: { remaining: 1_000_000, status: "DP diterima" } },
+    ]);
+  });
 });
