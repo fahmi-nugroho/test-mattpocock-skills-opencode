@@ -13,7 +13,6 @@ import type {
   GoogleCalendarConnection,
   GoogleCalendarEventRow,
   GoogleCalendarWorkRow,
-  Service,
 } from "../supabase/database";
 
 type TypedClient = SupabaseClient<Database>;
@@ -44,7 +43,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     date: "2026-11-01",
     start_time: "09:00",
     end_time: "11:00",
-    service_id: "s1",
+    selected_services: [{ id: "s1", name: "Makeup Wisuda" }],
     client_name: "Sinta",
     client_phone: "081234567890",
     notes: "",
@@ -56,20 +55,11 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     reference: "",
     total_price: 500000,
     dp_amount: 100000,
+    pelunasan_amount: null,
+    bagian_mua: null,
     ...overrides,
   };
 }
-
-const SERVICE: Service = {
-  id: "s1",
-  name: "Makeup Wisuda",
-  description: "",
-  price_idr: 500000,
-  duration_min: 90,
-  active: true,
-  cover_image_url: null,
-  sort: 0,
-};
 
 function tracked(bookingId = "b1", eventId = "g1"): GoogleCalendarEventRow {
   return {
@@ -100,7 +90,6 @@ function work(
 interface Seed {
   connection?: Partial<GoogleCalendarConnection>;
   bookings?: Booking[];
-  services?: Service[];
   events?: GoogleCalendarEventRow[];
   work?: GoogleCalendarWorkRow[];
   claimable?: boolean;
@@ -115,7 +104,6 @@ function fakeClient(seed: Seed = {}) {
   const state = {
     connection: { ...CONNECTION, ...seed.connection },
     bookings: [...(seed.bookings ?? [])],
-    services: [...(seed.services ?? [])],
     events: [...(seed.events ?? [])],
     work: [...(seed.work ?? [])],
   };
@@ -124,7 +112,6 @@ function fakeClient(seed: Seed = {}) {
   function table(name: string) {
     const rows = () => {
       if (name === "bookings") return state.bookings;
-      if (name === "services") return state.services;
       if (name === "google_calendar_events") return state.events;
       if (name === "google_calendar_work") return state.work;
       return [];
@@ -307,20 +294,27 @@ const runtime = (port: GoogleCalendarPort) => () => ({ config: CONFIG, port });
 describe("drainMirrorQueue", () => {
   it("creates one event and stores its Google id before the intent is processed", async () => {
     const { client, state, calls } = fakeClient({
-      bookings: [booking()],
-      services: [SERVICE],
+      bookings: [booking({
+        selected_services: [{ id: "s1", name: "Makeup Wisuda" }, { id: "s2", name: "Hairdo" }],
+        bagian_mua: 321_000,
+      })],
       work: [work()],
     });
     const port = fakePort();
 
     const result = await drainMirrorQueue(client, runtime(port), NOW);
 
+    expect(calls.filter(([op, table]) => op === "select" && table === "bookings")).not.toContainEqual([
+      "select", "bookings", expect.stringMatching(/\*|bagian_mua/),
+    ]);
     expect(port.calls.filter((call) => call[0] === "create")).toHaveLength(1);
     const create = port.calls.find((call) => call[0] === "create");
     expect(create?.[2]).toMatchObject({
       summary: "Sinta — Makeup Wisuda",
+      description: expect.stringContaining("Layanan: Makeup Wisuda, Hairdo"),
       location: "Bandung",
     });
+    expect(JSON.stringify(create?.[2])).not.toMatch(/bagian.?mua|321\.?000/i);
     expect(state.events).toEqual([
       expect.objectContaining({ booking_id: "b1", google_event_id: "g-created-1" }),
     ]);
@@ -347,7 +341,6 @@ describe("drainMirrorQueue", () => {
   it("updates the stored Google event when a Booking is edited", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       events: [tracked()],
       work: [work()],
     });
@@ -400,7 +393,6 @@ describe("drainMirrorQueue", () => {
   it("leaves the intent open with its error when Google fails, without throwing", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     const port = fakePort({ createErrors: [new Error("Google sedang down")] });
@@ -433,7 +425,6 @@ describe("drainMirrorQueue", () => {
   it("retries the open intent on a later drain and succeeds", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     const failing = fakePort({ createErrors: [new Error("timeout")] });
@@ -460,7 +451,6 @@ describe("drainMirrorQueue", () => {
         booking({ id: "future", date: "2026-12-01" }),
         booking({ id: "later", date: "2026-12-02" }),
       ],
-      services: [SERVICE],
       events: [tracked("future", "g-future")],
     });
     const port = fakePort();
@@ -482,7 +472,6 @@ describe("drainMirrorQueue", () => {
   it("creates no duplicate when the same drain runs twice", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
     });
     const port = fakePort();
 
@@ -496,7 +485,6 @@ describe("drainMirrorQueue", () => {
   it("takes a per-Booking lock and re-reads the tracked row before creating", async () => {
     const { client, calls } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     const port = fakePort();
@@ -517,7 +505,6 @@ describe("drainMirrorQueue", () => {
   it("does nothing for a Booking another drain already holds", async () => {
     const { client } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
       claimable: false,
     });
@@ -535,7 +522,6 @@ describe("drainMirrorQueue", () => {
         booking({ id: "b1" }),
         booking({ id: "b2", date: "2026-11-02" }),
       ],
-      services: [SERVICE],
       work: [work({ booking_id: "b1" }), work({ booking_id: "b2" })],
     });
     const port = fakePort({ createErrors: [new Error("gagal b1")] });
@@ -558,7 +544,6 @@ describe("drainMirrorQueue", () => {
   it("adopts an owned event instead of creating a duplicate when the id was lost", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     const port = fakePort({ owned: [{ id: "g-owned" }] });
@@ -595,7 +580,6 @@ describe("drainMirrorQueue", () => {
   it("keeps a newer intent open when the Booking changes mid-drain", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     let changed = false;

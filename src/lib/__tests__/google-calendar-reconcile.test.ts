@@ -19,7 +19,6 @@ import type {
   GoogleCalendarConnection,
   GoogleCalendarEventRow,
   GoogleCalendarWorkRow,
-  Service,
 } from "../supabase/database";
 
 type TypedClient = SupabaseClient<Database>;
@@ -49,7 +48,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     date: "2026-11-01",
     start_time: "09:00",
     end_time: "11:00",
-    service_id: "s1",
+    selected_services: [{ id: "s1", name: "Makeup Wisuda" }],
     client_name: "Sinta",
     client_phone: "081234567890",
     notes: "",
@@ -61,20 +60,11 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     reference: "",
     total_price: 500000,
     dp_amount: 100000,
+    pelunasan_amount: null,
+    bagian_mua: null,
     ...overrides,
   };
 }
-
-const SERVICE: Service = {
-  id: "s1",
-  name: "Makeup Wisuda",
-  description: "",
-  price_idr: 500000,
-  duration_min: 90,
-  active: true,
-  cover_image_url: null,
-  sort: 0,
-};
 
 function tracked(bookingId = "b1", eventId = "g1"): GoogleCalendarEventRow {
   return {
@@ -105,7 +95,6 @@ function work(
 interface Seed {
   connection?: Partial<GoogleCalendarConnection>;
   bookings?: Booking[];
-  services?: Service[];
   events?: GoogleCalendarEventRow[];
   work?: GoogleCalendarWorkRow[];
   claimable?: boolean;
@@ -120,7 +109,6 @@ function fakeClient(seed: Seed = {}) {
   const state = {
     connection: { ...CONNECTION, ...seed.connection },
     bookings: [...(seed.bookings ?? [])],
-    services: [...(seed.services ?? [])],
     events: [...(seed.events ?? [])],
     work: [...(seed.work ?? [])],
   };
@@ -129,7 +117,6 @@ function fakeClient(seed: Seed = {}) {
   function table(name: string) {
     const rows = () => {
       if (name === "bookings") return state.bookings;
-      if (name === "services") return state.services;
       if (name === "google_calendar_events") return state.events;
       if (name === "google_calendar_work") return state.work;
       return [];
@@ -321,7 +308,6 @@ describe("reconcileMirror", () => {
   it("creates an event for a confirmed Booking that has no tracked event", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
     });
     const port = fakePort();
 
@@ -352,7 +338,6 @@ describe("reconcileMirror", () => {
           end_time: "15:00",
         }),
       ],
-      services: [SERVICE],
       events: [tracked()],
     });
     const port = fakePort();
@@ -379,7 +364,6 @@ describe("reconcileMirror", () => {
   it("recreates a tracked event that was hand-deleted in Google", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       events: [tracked()],
     });
     const port = fakePort({ updateErrors: [missingEventError()] });
@@ -454,7 +438,6 @@ describe("reconcileMirror", () => {
         booking({ id: "past-cancelled", date: "2026-09-01", status: "cancelled" }),
         booking({ id: "past-untracked", date: "2026-08-01" }),
       ],
-      services: [SERVICE],
       events: [tracked("past-confirmed", "g-past"), tracked("past-cancelled", "g-cancelled")],
       // A leftover intent from a past edit is not a reconcile repair.
       work: [work({ booking_id: "past-confirmed" })],
@@ -482,7 +465,6 @@ describe("reconcileMirror", () => {
   it("never lists, updates, or deletes a Google event it did not track", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
     });
     // The fake port would hand this event back if reconcile asked for owned
     // events, so an adoption path would touch it.
@@ -514,7 +496,6 @@ describe("reconcileMirror", () => {
         booking({ id: "b1" }),
         booking({ id: "b2", date: "2026-11-02" }),
       ],
-      services: [SERVICE],
     });
     const port = fakePort({ createErrors: [new Error("Google sedang down")] });
 
@@ -542,7 +523,6 @@ describe("reconcileMirror", () => {
   it("is idempotent: a second reconcile updates rather than duplicates", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
     });
     const port = fakePort();
 
@@ -563,7 +543,6 @@ describe("reconcileMirror", () => {
   it("drains leftover queue work as part of the reconcile", async () => {
     const { client, state } = fakeClient({
       bookings: [booking()],
-      services: [SERVICE],
       work: [work({ attempt_count: 2, last_error: "timeout" })],
     });
     const port = fakePort();
@@ -583,7 +562,6 @@ describe("reconcileMirror", () => {
     const { client, state } = fakeClient({
       connection: { enabled: false },
       bookings: [booking()],
-      services: [SERVICE],
       work: [work()],
     });
     const port = fakePort();

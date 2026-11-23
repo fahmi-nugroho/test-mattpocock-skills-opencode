@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Dialog } from "@/components/dialog";
 
 export function ConfirmAction({
@@ -8,13 +8,15 @@ export function ConfirmAction({
   title,
   description,
   onConfirm,
+  children,
   disabled = false,
   destructive = false,
 }: {
   label: string;
   title: string;
   description: string;
-  onConfirm: () => Promise<void>;
+  onConfirm: (form: FormData) => Promise<void>;
+  children?: ReactNode;
   disabled?: boolean;
   destructive?: boolean;
 }) {
@@ -23,15 +25,18 @@ export function ConfirmAction({
     label: string;
     title: string;
     description: string;
-    onConfirm: () => Promise<void>;
+    onConfirm: (form: FormData) => Promise<void>;
+    children?: ReactNode;
   } | null>(null);
   const [pending, setPending] = useState(false);
 
-  async function confirm() {
+  async function confirm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (pending || disabled || !confirmation) return;
+    const form = new FormData(event.currentTarget);
     setPending(true);
     try {
-      await confirmation.onConfirm();
+      await confirmation.onConfirm(form);
     } finally {
       setConfirmation(null);
       setPending(false);
@@ -45,7 +50,7 @@ export function ConfirmAction({
         type="button"
         aria-haspopup="dialog"
         disabled={disabled}
-        onClick={() => setConfirmation({ label, title, description, onConfirm })}
+        onClick={() => setConfirmation({ label, title, description, onConfirm, children })}
         className={`min-h-10 rounded-full border px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
           destructive
             ? "border-transparent text-red-700 hover:bg-red-50"
@@ -64,27 +69,33 @@ export function ConfirmAction({
           panelClassName="max-w-md"
           closeDisabled={pending}
         >
-          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-4">
-            <button
-              type="button"
-              data-dialog-focus
-              disabled={pending}
-              onClick={() => setConfirmation(null)}
-              className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              disabled={pending || disabled}
-              onClick={confirm}
-              className={`min-h-10 rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
-                destructive ? "bg-red-700 hover:bg-red-800" : "bg-neutral-900 hover:bg-neutral-700"
-              }`}
-            >
-              {pending ? "Memproses…" : confirmation.label}
-            </button>
-          </div>
+          <form onSubmit={confirm}>
+            {confirmation.children ? (
+              <fieldset disabled={pending} className="mt-4">
+                {confirmation.children}
+              </fieldset>
+            ) : null}
+            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-4">
+              <button
+                type="button"
+                data-dialog-focus
+                disabled={pending}
+                onClick={() => setConfirmation(null)}
+                className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={pending || disabled}
+                className={`min-h-10 rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                  destructive ? "bg-red-700 hover:bg-red-800" : "bg-neutral-900 hover:bg-neutral-700"
+                }`}
+              >
+                {pending ? "Memproses…" : confirmation.label}
+              </button>
+            </div>
+          </form>
         </Dialog>
       ) : null}
     </>

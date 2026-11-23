@@ -63,6 +63,16 @@ describe("payment position", () => {
       status: "DP diterima",
     });
   });
+
+  it.each([[500_000, 1_000_000], [0, 1_500_000]])(
+    "counts a final transfer with a DP of Rp%i",
+    (dp, pelunasan) => {
+      expect(paymentPosition(1_500_000, dp, pelunasan)).toEqual({
+        remaining: 0,
+        status: "Lunas",
+      });
+    },
+  );
 });
 
 const BOOKING: Booking = {
@@ -70,7 +80,7 @@ const BOOKING: Booking = {
   date: "2026-11-14",
   start_time: "08:00",
   end_time: "12:00",
-  service_id: "s1",
+  selected_services: [{ id: "s1", name: "Makeup Wisuda" }],
   client_name: "Sari",
   client_phone: "081234567890",
   notes: "",
@@ -82,6 +92,8 @@ const BOOKING: Booking = {
   reference: "",
   total_price: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
+  bagian_mua: 900_000,
 };
 
 const NEWEST: Invoice = {
@@ -96,7 +108,8 @@ const NEWEST: Invoice = {
   sent_at: null,
   client_name: "Sari",
   client_phone: "081234567890",
-  service_name: "Makeup Wisuda",
+  service_names: ["Makeup Wisuda"],
+  service_items: [],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung A",
@@ -106,18 +119,18 @@ const NEWEST: Invoice = {
   end_time: "12:00",
   subtotal: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 function issue(
   overrides: Partial<Booking> = {},
-  dates: { issuedOn: string; dueOn: string } = {
+  dates: { issuedOn: string; dueOn: string | null } = {
     issuedOn: "2026-10-20",
     dueOn: "2026-11-14",
   },
 ) {
   return {
     booking: { ...BOOKING, ...overrides },
-    serviceName: "Makeup Wisuda",
     issuedOn: dates.issuedOn,
     dueOn: dates.dueOn,
   };
@@ -144,9 +157,9 @@ describe("invoice issuing guard", () => {
     );
   });
 
-  it("refuses a Booking without a recorded DP", () => {
+  it("refuses a Booking without a recorded payment", () => {
     expect(invoiceIssueRefusal(issue({ dp_amount: 0 }), null)).toMatch(
-      /dp yang tercatat/i,
+      /pembayaran yang tercatat/i,
     );
   });
 
@@ -171,6 +184,20 @@ describe("invoice issuing guard", () => {
     expect(refusal).toMatch(/kirim ulang/i);
   });
 
+  it("keeps Invoice eligibility, duplicate decisions and client payments after a private amount edit", () => {
+    const before = issue();
+    const edited = issue({ bagian_mua: 0 });
+    expect(invoiceIssueRefusal(edited, null)).toBeNull();
+    expect(invoiceIssueRefusal(edited, NEWEST)).toMatch(/kirim ulang/i);
+    const snapshot = buildInvoiceSnapshot(edited.booking, edited.issuedOn, edited.dueOn);
+    expect(snapshot).toEqual(buildInvoiceSnapshot(before.booking, before.issuedOn, before.dueOn));
+    expect(snapshot).not.toHaveProperty("bagian_mua");
+    expect(paymentPosition(snapshot.subtotal, snapshot.dp_amount, snapshot.pelunasan_amount)).toEqual({
+      remaining: 1_000_000,
+      status: "DP diterima",
+    });
+  });
+
   it("allows a changed Booking detail to become a new Invoice", () => {
     expect(invoiceIssueRefusal(issue({ client_name: "Sari Dewi" }), NEWEST)).toBeNull();
     expect(
@@ -186,6 +213,68 @@ describe("invoice issuing guard", () => {
       ),
     ).toBeNull();
   });
+
+  it.each([
+    [500_000, 1_000_000],
+    [0, 1_500_000],
+    [1_500_000, null],
+  ])("issues without a due date when recorded payments cover the total (DP Rp%i)", (dp, pelunasan) => {
+    const input = issue({ dp_amount: dp, pelunasan_amount: pelunasan }, {
+      issuedOn: "2026-10-20", dueOn: null,
+    });
+    expect(invoiceIssueRefusal(input, null)).toBeNull();
+    expect(buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn))
+      .toMatchObject({ dp_amount: dp, pelunasan_amount: pelunasan, due_on: null });
+    expect(invoiceIssueRefusal({ ...input, issuedOn: "" }, null)).toMatch(/tanggal terbit/i);
+    expect(invoiceIssueRefusal({ ...input, booking: { ...input.booking, status: "cancelled" } }, null))
+      .toMatch(/dibatalkan/i);
+  });
+
+  it("requires an outstanding Invoice to have a due date", () => {
+    expect(invoiceIssueRefusal({ ...issue(), dueOn: null }, null)).toMatch(/jatuh tempo/i);
+  });
+
+  it("compares every saved Service name when checking for a duplicate", () => {
+    const input = issue({
+      selected_services: [...BOOKING.selected_services, { id: "s2", name: "Hairdo" }],
+    });
+    const newest = { ...NEWEST, service_names: ["Makeup Wisuda", "Hairdo"] };
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, newest)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, { ...newest, service_names: ["Makeup Wisuda", "Hijabdo"] }))
+      .toBeNull();
+  });
+
+  it("checks Pelunasan when comparing a new issue to the latest snapshot", () => {
+    const input = issue({ pelunasan_amount: 1_000_000 });
+    const paid = {
+      ...NEWEST,
+      ...buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn),
+    };
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, paid)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, { ...paid, pelunasan_amount: null })).toBeNull();
+    expect(NEWEST).toMatchObject({ dp_amount: 500_000, pelunasan_amount: null, due_on: "2026-11-14" });
+  });
+
+  it("allows a new Invoice when the Service breakdown changes at the same Agreed Total", () => {
+    const input = issue({
+      selected_services: [
+        { ...BOOKING.selected_services[0], pricing: { unit_price: 750_000, quantity: 2 } },
+      ],
+    });
+    const snapshot = buildInvoiceSnapshot(input.booking, input.issuedOn, input.dueOn);
+    const itemized = { ...NEWEST, ...snapshot };
+    expect(snapshot.service_items).toEqual([
+      { name: "Makeup Wisuda", unit_price: 750_000, quantity: 2 },
+    ]);
+    expect(invoiceIssueRefusal(input, NEWEST)).toBeNull();
+    expect(invoiceIssueRefusal(input, itemized)).toMatch(/kirim ulang/i);
+    expect(invoiceIssueRefusal(input, {
+      ...itemized,
+      service_items: [{ name: "Makeup Wisuda", unit_price: 500_000, quantity: 3 }],
+    })).toBeNull();
+  });
 });
 
 // Seam 1 (pure): the date-edit guard on an unsent Invoice. Catches a screen
@@ -193,6 +282,17 @@ describe("invoice issuing guard", () => {
 // before the issue date, and a sent Invoice that still offers editing.
 // Misses the table CHECKs and the freeze trigger (0018/0019).
 describe("invoice date editing guard", () => {
+  it("lets a new paid Invoice correct only its issue date", () => {
+    const paid = { ...NEWEST, due_on: null, pelunasan_amount: 1_000_000 };
+    const dates = { issuedOn: "2026-10-21", dueOn: null };
+    expect(invoiceDateEditRefusal(paid, dates)).toBeNull();
+    expect(invoiceDateEditRefusal(paid, { ...dates, dueOn: "2026-11-14" })).toMatch(/jatuh tempo/i);
+    expect(invoiceDateEditRefusal(paid, { ...dates, issuedOn: "2027-01-01" })).toMatch(/tahun 2026/i);
+    const legacyPaid = { ...NEWEST, dp_amount: NEWEST.subtotal };
+    expect(invoiceDateEditRefusal(legacyPaid, { ...dates, dueOn: "2026-11-15" })).toBeNull();
+    expect(invoiceDateEditRefusal(legacyPaid, dates)).toMatch(/jatuh tempo/i);
+  });
+
   it("accepts both dates while the Invoice is unsent and the year holds", () => {
     expect(
       invoiceDateEditRefusal(NEWEST, {
@@ -270,11 +370,12 @@ describe("invoice list helpers", () => {
 describe("invoice snapshot", () => {
   it("copies the Booking's displayed fields and both dates", () => {
     expect(
-      buildInvoiceSnapshot(BOOKING, "Makeup Wisuda", "2026-10-20", "2026-11-14"),
+      buildInvoiceSnapshot(BOOKING, "2026-10-20", "2026-11-14"),
     ).toEqual({
       client_name: "Sari",
       client_phone: "081234567890",
-      service_name: "Makeup Wisuda",
+      service_names: ["Makeup Wisuda"],
+      service_items: [],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",
@@ -284,6 +385,7 @@ describe("invoice snapshot", () => {
       end_time: "12:00",
       subtotal: 1_500_000,
       dp_amount: 500_000,
+      pelunasan_amount: null,
       issued_on: "2026-10-20",
       due_on: "2026-11-14",
     });
@@ -293,7 +395,8 @@ describe("invoice snapshot", () => {
     expect(invoiceSnapshotOf(NEWEST)).toEqual({
       client_name: "Sari",
       client_phone: "081234567890",
-      service_name: "Makeup Wisuda",
+      service_names: ["Makeup Wisuda"],
+      service_items: [],
       event_type: "Wisuda",
       headcount: 2,
       venue: "Gedung A",
@@ -303,6 +406,7 @@ describe("invoice snapshot", () => {
       end_time: "12:00",
       subtotal: 1_500_000,
       dp_amount: 500_000,
+      pelunasan_amount: null,
       issued_on: "2026-10-20",
       due_on: "2026-11-14",
     });
@@ -313,6 +417,7 @@ describe("invoice snapshot", () => {
     const editedBooking = {
       ...BOOKING,
       client_name: "Sari Dewi",
+      selected_services: [{ id: "s2", name: "Hairdo" }],
       date: "2026-12-01",
       start_time: "09:00",
       end_time: "13:00",
@@ -322,12 +427,55 @@ describe("invoice snapshot", () => {
     };
     const prospective = buildInvoiceSnapshot(
       editedBooking,
-      "Makeup Wisuda",
       "2026-10-20",
       "2026-12-01",
     );
 
+    expect(prospective.service_names).toEqual(["Hairdo"]);
     expect(prospective).not.toEqual(before);
     expect(invoiceSnapshotOf(NEWEST)).toEqual(before);
+  });
+
+  it("accepts a corrected paid Invoice while earlier Invoices keep their payment and date facts", () => {
+    const sentAt = "2026-10-21T09:00:00.000Z";
+    const paid: Invoice = {
+      ...NEWEST,
+      id: "i2",
+      seq: 8,
+      number: "invc-08/2026",
+      issued_on: "2026-10-21",
+      due_on: null,
+      sent_at: sentAt,
+      pelunasan_amount: 1_000_000,
+    };
+    const corrected = issue({ total_price: 1_750_000, dp_amount: 650_000, pelunasan_amount: 1_100_000 }, {
+      issuedOn: "2026-10-22",
+      dueOn: null,
+    });
+    expect(invoiceIssueRefusal(corrected, paid)).toBeNull();
+    expect(buildInvoiceSnapshot(corrected.booking, corrected.issuedOn, corrected.dueOn)).toMatchObject({
+      subtotal: 1_750_000, dp_amount: 650_000, pelunasan_amount: 1_100_000,
+      issued_on: "2026-10-22", due_on: null,
+    });
+
+    const history = indexInvoicesByBooking([NEWEST, paid]).get(BOOKING.id) ?? [];
+    expect(history.map(invoiceSentLabel)).toEqual(["Terkirim", "Belum dikirim"]);
+    expect(history.map((row) => {
+      const snapshot = invoiceSnapshotOf(row);
+      return {
+        number: row.number,
+        sentAt: row.sent_at,
+        issuedOn: snapshot.issued_on,
+        dueOn: snapshot.due_on,
+        dp: snapshot.dp_amount,
+        pelunasan: snapshot.pelunasan_amount,
+        payment: paymentPosition(snapshot.subtotal, snapshot.dp_amount, snapshot.pelunasan_amount),
+      };
+    })).toEqual([
+      { number: "invc-08/2026", sentAt, issuedOn: "2026-10-21", dueOn: null, dp: 500_000,
+        pelunasan: 1_000_000, payment: { remaining: 0, status: "Lunas" } },
+      { number: "invc-07/2026", sentAt: null, issuedOn: "2026-10-20", dueOn: "2026-11-14", dp: 500_000,
+        pelunasan: null, payment: { remaining: 1_000_000, status: "DP diterima" } },
+    ]);
   });
 });

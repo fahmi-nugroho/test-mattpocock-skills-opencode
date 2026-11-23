@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findBookingConflict } from "../admin/booking-conflicts";
-import type { ValidatedBookingInput } from "../admin/validate-booking";
+import { validateBagianMua, type ValidatedBookingInput } from "../admin/validate-booking";
 import type {
   Booking,
   BookingStatus,
@@ -131,7 +131,7 @@ async function getFullDatesForGuard(client: TypedClient): Promise<string[]> {
   return Array.isArray(dates) ? (dates as string[]) : [];
 }
 
-async function getBookingById(
+export async function getBookingById(
   client: TypedClient,
   id: string,
 ): Promise<Booking> {
@@ -211,8 +211,8 @@ export async function createBooking(
 
 /**
  * Admin booking update / reschedule (ticket 07): merges the patch over
- * the stored row, re-runs the same overlap guard (excluding self so a
- * no-change save never self-conflicts), then patches by id.
+ * the stored row, checks for overlap on edits beyond the private amount,
+ * then patches by id.
  */
 export async function updateBooking(
   client: TypedClient,
@@ -221,13 +221,19 @@ export async function updateBooking(
 ): Promise<Booking> {
   const current = await getBookingById(client, id);
   const merged = { ...current, ...patch, id };
-  const [bookings, blocks, fullDates] = await Promise.all([
-    listBookingsForDate(client, merged.date),
-    listBlocksForDate(client, merged.date),
-    getFullDatesForGuard(client),
-  ]);
-  const conflict = findBookingConflict(merged, bookings, blocks, fullDates);
-  if (conflict) throw new Error(conflict);
+  if (patch.bagian_mua !== undefined || patch.total_price !== undefined) {
+    validateBagianMua(merged.bagian_mua, merged.total_price);
+  }
+  const privateAmountOnly = patch.bagian_mua !== undefined && Object.keys(patch).length === 1;
+  if (!privateAmountOnly) {
+    const [bookings, blocks, fullDates] = await Promise.all([
+      listBookingsForDate(client, merged.date),
+      listBlocksForDate(client, merged.date),
+      getFullDatesForGuard(client),
+    ]);
+    const conflict = findBookingConflict(merged, bookings, blocks, fullDates);
+    if (conflict) throw new Error(conflict);
+  }
   const row = await updateRowById<Booking>(
     client,
     "bookings",
@@ -235,12 +241,59 @@ export async function updateBooking(
     patch,
     "Failed to update booking",
   );
-  await queueMirror(
-    client,
-    id,
-    mirrorOperation(row.status ?? merged.status),
-  );
+  if (!privateAmountOnly) await queueMirror(client, id, mirrorOperation(row.status ?? merged.status));
   return row;
+}
+
+export async function recordPelunasan(
+  client: TypedClient,
+  reviewed: Pick<Booking, "id" | "total_price" | "dp_amount" | "client_name" | "client_phone" | "bagian_mua">,
+  bagianMua: number | null,
+): Promise<Booking> {
+  validateBagianMua(bagianMua, reviewed.total_price);
+  const loose = client as unknown as {
+    rpc(
+      name: "record_pelunasan",
+      args: Database["public"]["Functions"]["record_pelunasan"]["Args"],
+    ): Promise<{ data: Booking; error: { message: string } | null }>;
+  };
+  const { data, error } = await loose.rpc("record_pelunasan", {
+    p_booking_id: reviewed.id,
+    p_expected_total: reviewed.total_price,
+    p_expected_dp: reviewed.dp_amount,
+    p_expected_client_name: reviewed.client_name,
+    p_expected_client_phone: reviewed.client_phone,
+    p_expected_bagian_mua: reviewed.bagian_mua,
+    p_bagian_mua: bagianMua,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function undoPelunasan(
+  client: TypedClient,
+  reviewed: Pick<Booking, "id" | "total_price" | "dp_amount" | "pelunasan_amount">,
+): Promise<Booking> {
+  const { id, total_price, dp_amount, pelunasan_amount } = reviewed;
+  if (pelunasan_amount === null) throw new Error("Belum ada pelunasan yang tercatat.");
+
+  const bookings = client.from("bookings") as unknown as {
+    update(patch: Pick<Booking, "pelunasan_amount">): {
+      match(conditions: typeof reviewed): {
+        select(): {
+          maybeSingle(): Promise<{ data: Booking | null; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+  const { data, error } = await bookings
+    .update({ pelunasan_amount: null })
+    .match({ id, total_price, dp_amount, pelunasan_amount })
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`Gagal membatalkan pelunasan: ${error.message}`);
+  if (!data) throw new Error("Detail booking berubah. Periksa kembali pelunasan.");
+  return data;
 }
 
 /**

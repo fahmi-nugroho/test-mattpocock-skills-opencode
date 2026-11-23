@@ -46,15 +46,39 @@ issued.
 _Avoid_: Reference number, document number.
 
 **Payment Status**:
-The payment position an Invoice records: `Lunas` when the DP is at least the agreed
-total, otherwise `DP diterima`. It is derived from the Invoice's own copied amounts,
-never stored and never set by hand.
+The payment position recorded by an Invoice. It is `Lunas` when the DP and any
+Pelunasan together cover the Agreed Total, or `DP diterima` when the DP leaves a
+balance and Pelunasan has yet to be received.
 _Avoid_: Payment state, paid flag.
 
+**Agreed Total**:
+The price the client owes for all Services in a Booking.
+
+**DP**:
+The deposit the client pays toward the Agreed Total.
+
+**Pelunasan**:
+The client payment that covers the remaining balance in full.
+
+**Bagian MUA**:
+The amount the makeup artist has actually kept from a Booking after collaborators
+have received their shares. It is private to the makeup artist and ranges from
+zero to the Agreed Total once known.
+
+**Service**:
+A treatment or package selected for a Booking. A Booking can include several
+Services, all listed on its Invoice under the names chosen for the Booking.
+
+**Unit Price**:
+The price the client and makeup artist agree on for one unit of a Service in a
+Booking.
+
+**Service Quantity**:
+How many units of a selected Service the client booked. It can differ from
+Booking Headcount.
+
 **Headcount**:
-The number of people to be made up in one booking. One service per booking, and the
-price is multiplied by the headcount; an Invoice still prints the agreed total, not
-price × headcount.
+The number of people to be made up in one Booking.
 _Avoid_: Guest count, pax, quantity.
 
 **Style**:

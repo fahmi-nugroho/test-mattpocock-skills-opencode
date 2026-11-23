@@ -29,7 +29,8 @@ const INVOICE: Invoice = {
   sent_at: null,
   client_name: "Sari Dewi",
   client_phone: "081234567890",
-  service_name: "Makeup Wisuda",
+  service_names: ["Makeup Wisuda"],
+  service_items: [],
   event_type: "Wisuda",
   headcount: 2,
   venue: "Gedung Serbaguna",
@@ -39,6 +40,7 @@ const INVOICE: Invoice = {
   end_time: "12:00",
   subtotal: 1_500_000,
   dp_amount: 500_000,
+  pelunasan_amount: null,
 };
 
 const SETTLED: Invoice = { ...INVOICE, dp_amount: INVOICE.subtotal };
@@ -172,7 +174,7 @@ describe("invoice page and margins", () => {
       "No:",
       INVOICE.number,
       "ITEM",
-      INVOICE.service_name,
+      INVOICE.service_names[0],
       INVOICE.event_type,
       "SISA PEMBAYARAN",
       "DP DITERIMA",
@@ -310,6 +312,32 @@ describe("invoice line item and totals", () => {
     expect(values).not.toContain("1");
   });
 
+  it.each([INVOICE, SETTLED])("prints a long Service list with one Booking Headcount and total", (invoice) => {
+    const names = Array.from({ length: 40 }, (_, index) => `Paket Rias ${index + 1}`);
+    const result = page({ ...invoice, service_names: names });
+    const values = strings(result.ops);
+    expect(values.filter((value) => names.includes(value))).toEqual(names);
+    const ops = texts(result.ops);
+    const itemStart = ops.find((op) => op.text === "ITEM")!.y;
+    const event = ops.find((op) => op.text === "Wisuda")!.y;
+    const item = ops.filter((op) => op.y > itemStart && op.y < event).map((op) => op.text);
+    expect(item.filter((value) => value === "2 orang")).toHaveLength(1);
+    expect(item.filter((value) => value.startsWith("Rp"))).toEqual(["Rp 1.500.000"]);
+    expect(values).toContain(invoice === SETTLED ? "LUNAS" : "DP DITERIMA");
+    expect(result.height).toBeGreaterThan(INVOICE_PAGE.minHeight);
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
+  });
+
+  it("keeps a long unbroken Service name clear of the price and other names", () => {
+    const name = "PaketMakeupTanpaSpasi".repeat(8);
+    const result = page({ ...INVOICE, service_names: [name, "Hairdo"] });
+    const values = strings(result.ops);
+    expect(values.slice(values.indexOf("TOTAL") + 1, values.indexOf("Hairdo")).join("")).toBe(name);
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
+  });
+
   it("prints the agreed total, never price x Headcount", () => {
     const values = strings(layout({ ...INVOICE, headcount: 3 }));
     expect(values).toContain("3 orang");
@@ -354,12 +382,42 @@ describe("invoice line item and totals", () => {
     expect(badge.y).toBeLessThanOrEqual(fill.y + fill.height);
   });
 
-  it("badges a settled Invoice as LUNAS with nothing left to pay", () => {
+  it("stamps a settled Invoice beside the totals with nothing left to pay", () => {
     const settled = { ...INVOICE, dp_amount: INVOICE.subtotal };
-    const values = strings(layout(settled));
-    expect(values).toContain("LUNAS");
+    const ops = layout(settled);
+    const values = strings(ops);
+    const stamp = texts(ops).find(({ text }) => text === "LUNAS");
+    expect(stamp).toMatchObject({ align: "center", rotation: -Math.PI / 12 });
+    const outline = ops.filter((op) => op.kind === "rule" && op.color === stamp?.color);
+    expect(outline).toHaveLength(4);
+    for (const op of outline) {
+      if (op.kind === "rule") expect(Math.max(op.x1, op.x2)).toBeLessThan(500);
+    }
     expect(values).not.toContain("DP DITERIMA");
     expect(values).toContain("Rp 0");
+  });
+
+  it("prints each saved Unit Price, Service Quantity and line total in the same row", () => {
+    const result = page({
+      ...INVOICE,
+      service_names: ["Make Family", "Hairdo"],
+      service_items: [
+        { name: "Make Family", unit_price: 200_000, quantity: 4 },
+        { name: "Hairdo", unit_price: 150_000, quantity: 1 },
+      ],
+      subtotal: 950_000,
+    });
+    const all = texts(result.ops);
+    function row(name: string) {
+      const y = all.find((op) => op.text === name)?.y;
+      return all.filter((op) => op.y === y).map((op) => op.text);
+    }
+    expect(row("ITEM")).toEqual(["ITEM", "HARGA SATUAN", "JUMLAH", "TOTAL"]);
+    expect(row("Make Family")).toEqual(["Make Family", "Rp 200.000", "4", "Rp 800.000"]);
+    expect(row("Hairdo")).toEqual(["Hairdo", "Rp 150.000", "1", "Rp 150.000"]);
+    expect(strings(result.ops)).toContain("Rp 950.000");
+    expectInsideMargins(result);
+    expectNoOverlap(result.ops);
   });
 
   it("never prints a negative balance for an overpaid Invoice", () => {
@@ -398,6 +456,44 @@ describe("invoice payment section while DP diterima", () => {
 });
 
 describe("invoice payment section once Lunas", () => {
+  it("excludes the private Booking amount from the preview and export draw list", () => {
+    const invoice = { ...INVOICE, pelunasan_amount: 1_000_000, due_on: null };
+    const extraBookingData = { ...invoice, bagian_mua: 900_000 };
+    const ops = layout(extraBookingData);
+    expect(ops).toEqual(layout(invoice));
+    expect(strings(ops).join(" ")).not.toMatch(/bagian mua|900\.000/i);
+  });
+
+  it.each([
+    [500_000, 1_000_000, "Rp 500.000", "Rp 1.000.000"],
+    [0, 1_500_000, "Rp 0", "Rp 1.500.000"],
+  ])("prints both recorded payments and no due date (DP Rp%i)", (dp, pelunasan, dpLabel, pelunasanLabel) => {
+    const ops = layout({ ...INVOICE, dp_amount: dp, pelunasan_amount: pelunasan, due_on: null });
+    const values = strings(ops);
+    for (const [label, amount] of [["DP", dpLabel], ["PELUNASAN", pelunasanLabel]]) {
+      const row = texts(ops).find((op) => op.text === label);
+      expect(row).toBeDefined();
+      expect(texts(ops).filter((op) => op.y === row?.y).map((op) => op.text))
+        .toEqual([label, amount]);
+    }
+    expect(values).toContain("LUNAS");
+    expect(values).toContain("20 Oktober 2026");
+    expect(values).toContain("Rp 0");
+    expect(values).not.toContain("Jatuh Tempo:");
+    expect(values).not.toContain("14 November 2026");
+    expect(values).not.toContain("Informasi Pembayaran");
+    expectNoOverlap(ops);
+  });
+
+  it("preserves the saved due date and DP on a legacy paid Invoice", () => {
+    const values = strings(layout(SETTLED));
+    expect(values).toContain("LUNAS");
+    expect(values).toContain("Jatuh Tempo:");
+    expect(values).toContain("14 November 2026");
+    expect(values).toContain("DP");
+    expect(values).not.toContain("PELUNASAN");
+  });
+
   it("drops the bank block, the prompt and the refund note", () => {
     const values = strings(layout(SETTLED));
     for (const gone of [
@@ -567,7 +663,7 @@ describe("invoice wrapping and footer", () => {
     const long: Invoice = {
       ...INVOICE,
       client_name: "Sari Dewi Kusumawardhani Putri ".repeat(6),
-      service_name: "Makeup Wisuda Paket Lengkap ".repeat(8),
+      service_names: ["Makeup Wisuda Paket Lengkap ".repeat(8)],
       venue: words.repeat(12),
     };
     for (const invoice of [long, { ...long, dp_amount: long.subtotal }]) {

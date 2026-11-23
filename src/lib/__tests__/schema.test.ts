@@ -28,6 +28,15 @@ function submitFunction(sql: string): string {
 // spec'd tables/columns/RLS/storage/RPC/seed. Catches missing backend
 // pieces without a live DB. Misses live Postgres semantics.
 describe("supabase migrations (local SQL verify, no live DB)", () => {
+  it("keeps Bagian MUA behind the Booking policy and the authenticated settlement RPC", () => {
+    const rls = codeOnly(readMigration("0002_rls.sql")).toLowerCase();
+    expect(rls).toMatch(/create policy bookings_admin_all on bookings\s+for all to authenticated/);
+    const code = codeOnly(readMigration("0025_booking_bagian_mua.sql")).toLowerCase();
+    expect(code).toContain("revoke all on function record_pelunasan(uuid, integer, integer, text, text, integer, integer) from public, anon");
+    expect(code).toContain("grant execute on function record_pelunasan(uuid, integer, integer, text, text, integer, integer) to authenticated");
+    expect(code).not.toMatch(/create policy|security definer|get_day_schedule|get_month_availability|get_booking_request|submit_booking_request/);
+  });
+
   it("0001 creates all five tables with spec columns", () => {
     const sql = readMigration("0001_schema.sql");
     for (const table of [
@@ -334,6 +343,7 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     }
     // Window-free: no hours reads, no clamp helpers, no coverage walk.
     const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("bagian_mua");
     expect(code).not.toContain("open_hour");
     expect(code).not.toContain("close_hour");
     expect(code).not.toContain("hhmm_to_min");
@@ -363,6 +373,7 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
     expect(lower).toMatch(/v_status\s*:=\s*'available'/);
     // Window-free: no hours reads, no clamp helpers, no coverage walk.
     const code = codeOnly(sql).toLowerCase();
+    expect(code).not.toContain("bagian_mua");
     expect(code).not.toContain("open_hour");
     expect(code).not.toContain("close_hour");
     expect(code).not.toContain("hhmm_to_min");
@@ -623,6 +634,7 @@ describe("supabase migrations (local SQL verify, no live DB)", () => {
       "notes",
       "total_price",
       "dp_amount",
+      "bagian_mua",
       "status",
       "accepted_booking_id",
       "hairdo",

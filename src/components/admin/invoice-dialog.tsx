@@ -44,8 +44,6 @@ function sameBusiness(a: InvoiceBusiness, b: InvoiceBusiness): boolean {
 interface InvoiceDialogProps {
   /** The Booking whose Invoices are shown; null while the dialog is closed. */
   booking: Booking | null;
-  /** The Booking's service name, or "" when the service is gone (as 0018 stores it). */
-  serviceName: string;
   /** Every loaded Invoice for this Booking, newest first. */
   invoices: readonly Invoice[];
   /** Business name and the payment details printed on the picture. */
@@ -80,7 +78,6 @@ interface InvoiceDialogProps {
  */
 export function InvoiceDialog({
   booking,
-  serviceName,
   invoices,
   business,
   businessLoadFailed = false,
@@ -108,7 +105,7 @@ export function InvoiceDialog({
   // The PNG the preview drew for this Invoice and these business details.
   // Sharing reuses exactly that Blob instead of drawing a second picture.
   const [previewPng, setPreviewPng] = useState<{
-    invoiceId: string;
+    invoice: Invoice;
     business: InvoiceBusiness;
     blob: Blob;
   } | null>(null);
@@ -158,25 +155,30 @@ export function InvoiceDialog({
   const newest = rows[0] ?? null;
   const selected = rows.find((invoice) => invoice.id === selectedId) ?? null;
   const selectedSent = selected ? invoiceIsSent(selected) : false;
+  const bookingPaid =
+    booking && booking.total_price !== null &&
+    paymentPosition(booking.total_price, booking.dp_amount, booking.pelunasan_amount).status === "Lunas";
+  const issueDates = { issuedOn, dueOn: bookingPaid ? null : dueOn };
+  const editedDates = {
+    issuedOn: editIssuedOn,
+    dueOn: selected?.due_on == null ? null : editDueOn,
+  };
   // Only the preview's own Blob for this Invoice and these settings may be
   // shared, so the file is literally the picture on screen.
   const readyPng =
     selected &&
     previewPng &&
-    previewPng.invoiceId === selected.id &&
+    previewPng.invoice === selected &&
     sameBusiness(previewPng.business, business)
       ? previewPng.blob
       : null;
   const datesRefusal =
     selected && dateEditId === selected.id
-      ? invoiceDateEditRefusal(selected, {
-          issuedOn: editIssuedOn,
-          dueOn: editDueOn,
-        })
+      ? invoiceDateEditRefusal(selected, editedDates)
       : null;
   const refusal = booking
     ? invoiceIssueRefusal(
-        { booking, serviceName, issuedOn, dueOn },
+        { booking, ...issueDates },
         newest,
       )
     : null;
@@ -189,8 +191,7 @@ export function InvoiceDialog({
     try {
       const invoice = await createInvoice(supabaseBrowser(), {
         bookingId: booking.id,
-        issuedOn,
-        dueOn,
+        ...issueDates,
       });
       onCreated(invoice);
       setSelectedId(invoice.id);
@@ -276,7 +277,7 @@ export function InvoiceDialog({
     resetActions();
     setDateEditId(invoice.id);
     setEditIssuedOn(invoice.issued_on);
-    setEditDueOn(invoice.due_on);
+    setEditDueOn(invoice.due_on ?? "");
   }
 
   async function onSaveDates(e: React.FormEvent) {
@@ -289,7 +290,7 @@ export function InvoiceDialog({
         const updated = await updateInvoiceDates(
           supabaseBrowser(),
           selected.id,
-          { issuedOn: editIssuedOn, dueOn: editDueOn },
+          editedDates,
         );
         onUpdated(updated);
         setDateEditId(null);
@@ -334,16 +335,18 @@ export function InvoiceDialog({
                   className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
                 />
               </label>
-              <label className="block">
-                <span className="text-sm font-medium">Jatuh tempo</span>
-                <input
-                  type="date"
-                  required
-                  value={dueOn}
-                  onChange={(e) => setDueOn(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-              </label>
+              {!bookingPaid ? (
+                <label className="block">
+                  <span className="text-sm font-medium">Jatuh tempo</span>
+                  <input
+                    type="date"
+                    required
+                    value={dueOn}
+                    onChange={(e) => setDueOn(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+              ) : null}
             </div>
             {refusal ? (
               <p role="status" className="text-sm text-amber-800">
@@ -376,6 +379,7 @@ export function InvoiceDialog({
                   const position = paymentPosition(
                     invoice.subtotal,
                     invoice.dp_amount,
+                    invoice.pelunasan_amount,
                   );
                   const selected = invoice.id === selectedId;
                   return (
@@ -405,12 +409,15 @@ export function InvoiceDialog({
                           </span>
                         </span>
                         <span className="mt-1 block text-xs text-neutral-600">
-                          Terbit {invoice.issued_on} · Jatuh tempo{" "}
-                          {invoice.due_on}
+                          Terbit {invoice.issued_on}
+                          {invoice.due_on !== null ? ` · Jatuh tempo ${invoice.due_on}` : ""}
                         </span>
                         <span className="mt-0.5 block text-xs text-neutral-600">
-                          DP {formatIDR(invoice.dp_amount)} · Sisa{" "}
-                          {formatIDR(position.remaining)} · {position.status}
+                          DP {formatIDR(invoice.dp_amount)}
+                          {invoice.pelunasan_amount !== null
+                            ? ` · Pelunasan ${formatIDR(invoice.pelunasan_amount)}`
+                            : ""}
+                          {" · Sisa "}{formatIDR(position.remaining)} · {position.status}
                         </span>
                         {selected ? (
                           <span className="mt-1 block text-xs font-medium text-neutral-700">
@@ -448,7 +455,7 @@ export function InvoiceDialog({
                   business={business}
                   onRendered={(blob) =>
                     setPreviewPng({
-                      invoiceId: selected.id,
+                      invoice: selected,
                       business,
                       blob,
                     })
@@ -544,17 +551,19 @@ export function InvoiceDialog({
                         className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
                       />
                     </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Jatuh tempo</span>
-                      <input
-                        type="date"
-                        required
-                        min={editIssuedOn || `${selected.year}-01-01`}
-                        value={editDueOn}
-                        onChange={(e) => setEditDueOn(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                      />
-                    </label>
+                    {selected.due_on !== null ? (
+                      <label className="block">
+                        <span className="text-sm font-medium">Jatuh tempo</span>
+                        <input
+                          type="date"
+                          required
+                          min={editIssuedOn || `${selected.year}-01-01`}
+                          value={editDueOn}
+                          onChange={(e) => setEditDueOn(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                        />
+                      </label>
+                    ) : null}
                   </div>
                   {datesRefusal ? (
                     <p role="status" className="text-sm text-amber-800">

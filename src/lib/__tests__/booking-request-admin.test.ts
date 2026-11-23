@@ -405,7 +405,7 @@ describe("requestToBookingDraft", () => {
     });
     // Money, status, service, and notes stay with the admin: the draft must
     // never carry them, so the form's own defaults stand.
-    expect(draft).not.toHaveProperty("service_id");
+    expect(draft).not.toHaveProperty("service_ids");
     expect(draft).not.toHaveProperty("notes");
     expect(draft).not.toHaveProperty("total_price");
     expect(draft).not.toHaveProperty("dp_amount");

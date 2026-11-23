@@ -44,6 +44,7 @@ const INK = "#2e2620";
 const MUTED = "#756553";
 const RULE = "#c9b79a";
 const GOLD = "#8a5a2b";
+const STAMP_RED = "#a92d24";
 
 export type InvoiceFont = "body" | "display" | "script";
 export type InvoiceTextAlign = "left" | "center" | "right";
@@ -62,6 +63,7 @@ export interface InvoiceTextOp extends InvoiceTextStyle {
   x: number;
   y: number;
   align: InvoiceTextAlign;
+  rotation?: number;
 }
 
 export interface InvoiceRuleOp {
@@ -131,7 +133,7 @@ function style(
   };
 }
 
-/** Split on words, accumulating only while the injected measurement fits. */
+/** Keep words together when they fit the available width. */
 function wrap(
   value: string,
   textStyle: InvoiceTextStyle,
@@ -140,15 +142,28 @@ function wrap(
 ): string[] {
   const text = value.trim();
   if (text === "") return [EM_DASH];
-  const words = text.split(/\s+/);
   const lines: string[] = [];
-  let line = words[0];
-  for (const word of words.slice(1)) {
-    const candidate = `${line} ${word}`;
-    if (measure(candidate, textStyle) <= maxWidth) line = candidate;
-    else {
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    if (line) {
+      const candidate = `${line} ${word}`;
+      if (measure(candidate, textStyle) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
       lines.push(line);
+      line = "";
+    }
+    if (measure(word, textStyle) <= maxWidth) {
       line = word;
+      continue;
+    }
+    for (const character of word) {
+      if (line && measure(line + character, textStyle) > maxWidth) {
+        lines.push(line);
+        line = "";
+      }
+      line += character;
     }
   }
   lines.push(line);
@@ -156,8 +171,8 @@ function wrap(
 }
 
 /**
- * Lay one Invoice out in reading order: header, identity, the single
- * item, the money column, Payment Information, Format Order and the script
+ * Lay one Invoice out in reading order: header, identity, Services,
+ * the money column, Payment Information, Format Order and the script
  * footer, behind a cream fill sized to the height reported with the list.
  * `measure` is the only width source, so the tests can drive wrapping
  * without a canvas.
@@ -233,16 +248,18 @@ export function layoutInvoice(
   }
   doubleRule(contactY + 6);
 
-  // Identity block: number, both Indonesian dates and the client.
+  // Identity block: number, saved dates and the client.
   let y = contactY + 60;
   text("No:", LEFT, y, "left", label);
   text(invoice.number, VALUE_X, y, "left", bodyBold);
   y += 30;
   text("Tanggal:", LEFT, y, "left", label);
   text(formatDateIdLong(invoice.issued_on), VALUE_X, y, "left", body);
-  y += 30;
-  text("Jatuh Tempo:", LEFT, y, "left", label);
-  text(formatDateIdLong(invoice.due_on), VALUE_X, y, "left", body);
+  if (invoice.due_on !== null) {
+    y += 30;
+    text("Jatuh Tempo:", LEFT, y, "left", label);
+    text(formatDateIdLong(invoice.due_on), VALUE_X, y, "left", body);
+  }
   y += 44;
   text("Kepada:", LEFT, y, "left", label);
   const clientStyle = style("body", 18, { weight: 700 });
@@ -257,50 +274,68 @@ export function layoutInvoice(
     clientY += 24;
   }
 
-  // One line item, its event type beneath, and the right-aligned money column.
+  // The saved Service lines, with a Booking-wide row for earlier Invoices.
+  const itemized = invoice.service_items.length > 0;
+  const unitPriceX = 527;
+  const quantityX = 641;
   let cursor = Math.max(444, clientY + 16);
   rule(cursor, 1.5);
   cursor += 34;
   text("ITEM", LEFT, cursor, "left", label);
-  text("ORANG", 590, cursor, "right", label);
+  if (itemized) {
+    text("HARGA SATUAN", unitPriceX, cursor, "right", label);
+    text("JUMLAH", quantityX, cursor, "right", label);
+  } else {
+    text("ORANG", 590, cursor, "right", label);
+  }
   text("TOTAL", RIGHT, cursor, "right", label);
   cursor += 14;
   rule(cursor);
   cursor += 38;
 
   const serviceStyle = style("body", 17, { weight: 700 });
-  const serviceLines = wrap(
-    invoice.service_name,
-    serviceStyle,
-    RIGHT - LEFT - 320,
-    measure,
-  );
+  const serviceNames = itemized
+    ? invoice.service_items.map(({ name }) => name)
+    : invoice.service_names.length ? invoice.service_names : [""];
   const itemTop = cursor;
-  for (const line of serviceLines) {
-    text(line, LEFT, cursor, "left", serviceStyle);
+  for (const [index, name] of serviceNames.entries()) {
+    if (index > 0) cursor += 5;
+    const lineY = cursor;
+    for (const line of wrap(name, serviceStyle, itemized ? 270 : RIGHT - LEFT - 320, measure)) {
+      text(line, LEFT, cursor, "left", serviceStyle);
+      cursor += 24;
+    }
+    const item = invoice.service_items[index];
+    if (item) {
+      text(invoiceAmount(item.unit_price), unitPriceX, lineY, "right", body);
+      text(String(item.quantity), quantityX, lineY, "right", body);
+      text(invoiceAmount(item.unit_price * item.quantity), RIGHT, lineY, "right", bodyBold);
+    }
+  }
+  for (const line of wrap(valueOrDash(invoice.event_type), label, CONTENT_WIDTH, measure)) {
+    text(line, LEFT, cursor + 2, "left", label);
     cursor += 24;
   }
-  text(
-    valueOrDash(invoice.event_type),
-    LEFT,
-    cursor + 2,
-    "left",
-    style("body", 16, { color: MUTED }),
-  );
-  const itemBottom = Math.max(cursor + 30, itemTop + 58);
-  text(`${invoice.headcount} orang`, 590, itemTop, "right", body);
-  // The agreed total as saved, never price x Headcount.
-  text(invoiceAmount(invoice.subtotal), RIGHT, itemTop, "right", bodyBold);
+  const itemBottom = Math.max(cursor + 6, itemTop + 58);
+  if (!itemized) {
+    text(`${invoice.headcount} orang`, 590, itemTop, "right", body);
+    text(invoiceAmount(invoice.subtotal), RIGHT, itemTop, "right", bodyBold);
+  }
   rule(itemBottom);
 
   // Totals: every amount comes from the frozen snapshot.
-  const position = paymentPosition(invoice.subtotal, invoice.dp_amount);
+  const position = paymentPosition(invoice.subtotal, invoice.dp_amount, invoice.pelunasan_amount);
   y = itemBottom + 46;
   text("TOTAL", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.subtotal), RIGHT, y, "right", body);
   y += 30;
   text("DP", MONEY_LABEL_X, y, "left", label);
   text(invoiceAmount(invoice.dp_amount), RIGHT, y, "right", body);
+  if (invoice.pelunasan_amount !== null) {
+    y += 30;
+    text("PELUNASAN", MONEY_LABEL_X, y, "left", label);
+    text(invoiceAmount(invoice.pelunasan_amount), RIGHT, y, "right", body);
+  }
   y += 20;
   rule(y, 0.75, MONEY_LABEL_X, RIGHT);
 
@@ -324,21 +359,48 @@ export function layoutInvoice(
     style("body", 34, { weight: 700, color: GOLD }),
   );
 
-  // Badge: the derived Payment Status in capitals, right-aligned beneath.
-  y += 24;
-  const badgeStyle = style("body", 16, { weight: 700, color: PAPER });
-  const badgeText = position.status.toUpperCase();
-  const badgeWidth = measure(badgeText, badgeStyle) + 28;
-  ops.push({
-    kind: "fill",
-    x: RIGHT - badgeWidth,
-    y,
-    width: badgeWidth,
-    height: 30,
-    color: INK,
-  });
-  text(badgeText, RIGHT - 14, y + 21, "right", badgeStyle);
-  y += 30;
+  if (position.status === "Lunas") {
+    const stampStyle = style("body", 60, { weight: 700, color: STAMP_RED });
+    const halfWidth = (measure("LUNAS", stampStyle) + 64) / 2;
+    const halfHeight = 42;
+    const angle = -Math.PI / 12;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const stampX = LEFT + 155;
+    const stampY = itemBottom + 104;
+    function stampPoint(x: number, y: number) {
+      return { x: stampX + x * cos - y * sin, y: stampY + x * sin + y * cos };
+    }
+    const corners = [
+      stampPoint(-halfWidth, -halfHeight),
+      stampPoint(halfWidth, -halfHeight),
+      stampPoint(halfWidth, halfHeight),
+      stampPoint(-halfWidth, halfHeight),
+    ];
+    for (const [i, from] of corners.entries()) {
+      const to = corners[(i + 1) % corners.length];
+      ops.push({ kind: "rule", x1: from.x, y1: from.y, x2: to.x, y2: to.y, width: 5, color: STAMP_RED });
+    }
+    ops.push({
+      kind: "text", text: "LUNAS", ...stampPoint(0, 19),
+      align: "center", rotation: angle, ...stampStyle,
+    });
+  } else {
+    y += 24;
+    const badgeStyle = style("body", 16, { weight: 700, color: PAPER });
+    const badgeText = position.status.toUpperCase();
+    const badgeWidth = measure(badgeText, badgeStyle) + 28;
+    ops.push({
+      kind: "fill",
+      x: RIGHT - badgeWidth,
+      y,
+      width: badgeWidth,
+      height: 30,
+      color: INK,
+    });
+    text(badgeText, RIGHT - 14, y + 21, "right", badgeStyle);
+    y += 30;
+  }
 
   /** One label/value row; the value wraps at the page's right margin. */
   function valueRow(name: string, value: string, valueStyle: InvoiceTextStyle) {
@@ -360,7 +422,7 @@ export function layoutInvoice(
     y += 62;
     text("Pembayaran telah lunas.", LEFT, y, "left", sectionTitle);
     y += 34;
-  } else {
+  } else if (invoice.due_on !== null) {
     y += 28;
     const noteStyle = style("body", 16, { color: MUTED });
     const noteLines = wrap(

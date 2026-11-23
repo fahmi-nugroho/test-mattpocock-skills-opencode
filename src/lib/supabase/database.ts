@@ -4,7 +4,7 @@
  * Time columns stay date + "HH:MM" text (see 0001_schema.sql header), so
  * Booking/Block rows share field names and semantics with the
  * BookingForDay/BlockForDay seam in src/lib/availability.ts. Nullable
- * variants (service unlinked, all-day blocks) use `string | null`;
+ * variants (such as all-day blocks) use `string | null`;
  * narrow to the seam shape after null checks at the call site.
  */
 
@@ -30,12 +30,25 @@ export interface PortfolioItem {
   visible: boolean;
 }
 
+export interface ServicePricing {
+  unit_price: number;
+  quantity: number;
+}
+
+export interface BookingService {
+  id: string;
+  name: string;
+  pricing?: ServicePricing;
+}
+
+export type InvoiceServiceItem = ServicePricing & Pick<BookingService, "name">;
+
 export interface Booking {
   id: string;
   date: string; // "YYYY-MM-DD"
   start_time: string; // "HH:MM"
   end_time: string; // "HH:MM"
-  service_id: string | null;
+  selected_services: BookingService[];
   client_name: string;
   client_phone: string;
   notes: string;
@@ -47,6 +60,8 @@ export interface Booking {
   reference: string; // "" when none; <= 300 chars (0017)
   total_price: number | null; // null = not quoted yet (0015)
   dp_amount: number; // >= 0, default 0 (0015)
+  pelunasan_amount: number | null;
+  bagian_mua: number | null;
 }
 
 /**
@@ -88,11 +103,12 @@ export interface Invoice {
   seq: number;
   number: string;
   issued_on: string; // "YYYY-MM-DD"
-  due_on: string; // "YYYY-MM-DD"
+  due_on: string | null; // "YYYY-MM-DD" when saved
   sent_at: string | null;
   client_name: string;
   client_phone: string;
-  service_name: string;
+  service_names: string[];
+  service_items: InvoiceServiceItem[];
   event_type: string;
   headcount: number;
   venue: string;
@@ -102,6 +118,7 @@ export interface Invoice {
   end_time: string; // "HH:MM"
   subtotal: number;
   dp_amount: number;
+  pelunasan_amount: number | null;
 }
 
 export interface Block {
@@ -247,11 +264,23 @@ export interface Database {
         Args: { p_token: string; p_payload: Record<string, unknown> };
         Returns: unknown;
       };
+      record_pelunasan: {
+        Args: {
+          p_booking_id: string;
+          p_expected_total: number | null;
+          p_expected_dp: number;
+          p_expected_client_name: string;
+          p_expected_client_phone: string;
+          p_expected_bagian_mua: number | null;
+          p_bagian_mua: number | null;
+        };
+        Returns: Booking;
+      };
       create_invoice: {
         Args: {
           p_booking_id: string;
           p_issued_on: string;
-          p_due_on: string;
+          p_due_on: string | null;
         };
         Returns: Invoice;
       };
