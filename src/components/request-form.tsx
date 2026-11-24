@@ -17,8 +17,10 @@ import {
 import { getDaySchedule, type DaySchedule } from "@/lib/day-schedule";
 import type { RpcClient } from "@/lib/month-availability";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { getPublicWaNumber } from "@/lib/supabase/public-settings";
 import { BUSINESS_NAME } from "@/lib/brand";
 import { STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
+import { buildWaLink } from "@/lib/whatsapp";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,14 +43,15 @@ const PHOTOS_VIA_WHATSAPP_COPY =
  * - loading: the read is in flight.
  * - ready: the link is open — show the form.
  * - submitted: already sent (from the read) or just sent (from a submit).
- * - expired: the link is past its seven days; no submit action.
- * - error: missing token or a failed read; offers a retry.
+ * - expired or missing: request a fresh link from the artist.
+ * - error: a failed read; offers a retry.
  */
 type View =
   | { kind: "loading" }
   | { kind: "ready" }
   | { kind: "submitted"; justSubmitted: boolean }
   | { kind: "expired" }
+  | { kind: "missing" }
   | { kind: "error"; message: string };
 
 /**
@@ -59,6 +62,8 @@ type View =
  */
 export function RequestForm({ token }: { token: string }) {
   const [view, setView] = useState<View>({ kind: "loading" });
+  const [waNumber, setWaNumber] = useState<string | undefined>(process.env.NEXT_PUBLIC_WA_NUMBER);
+  const needsWhatsApp = view.kind === "submitted" || view.kind === "expired" || view.kind === "missing";
   const [fields, setFields] = useState<BookingRequestFormFields>(
     EMPTY_REQUEST_FORM,
   );
@@ -91,12 +96,8 @@ export function RequestForm({ token }: { token: string }) {
           case "expired":
             setView({ kind: "expired" });
             break;
-          default:
-            setView({
-              kind: "error",
-              message:
-                "Link permintaan tidak ditemukan. Pastikan linknya benar, lalu coba lagi.",
-            });
+          case "missing":
+            setView({ kind: "missing" });
         }
       },
       () => {
@@ -112,6 +113,20 @@ export function RequestForm({ token }: { token: string }) {
       cancelled = true;
     };
   }, [token, attempt]);
+
+  useEffect(() => {
+    if (!needsWhatsApp) return;
+    let cancelled = false;
+    getPublicWaNumber(supabaseBrowser()).then(
+      (number) => {
+        if (!cancelled) setWaNumber(number);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [needsWhatsApp]);
 
   // Fetch the public day schedule whenever the chosen date changes, so the
   // clash warning can be evaluated. A failed read degrades to "no warning"
@@ -198,8 +213,10 @@ export function RequestForm({ token }: { token: string }) {
           setView({ kind: "submitted", justSubmitted: false });
           return;
         case "expired":
-        case "not_found":
           setView({ kind: "expired" });
+          return;
+        case "not_found":
+          setView({ kind: "missing" });
           return;
         default:
           setFormError("Data permintaan tidak valid. Periksa lagi isianmu.");
@@ -247,42 +264,40 @@ export function RequestForm({ token }: { token: string }) {
     );
   }
 
-  if (view.kind === "submitted") {
+  if (view.kind === "submitted" || view.kind === "expired" || view.kind === "missing") {
+    const submitted = view.kind === "submitted";
+    const title = submitted
+      ? (view.justSubmitted ? "Permintaan terkirim" : "Permintaan sudah dikirim")
+      : (view.kind === "expired" ? "Link kedaluwarsa" : "Link tidak ditemukan");
+    const number = waNumber?.replace(/\D/g, "");
+    const href = number && /^\d{8,15}$/.test(number) && number !== "6280000000000"
+      ? buildWaLink(number, submitted
+        ? "Halo, saya mau menindaklanjuti permintaan makeup yang sudah saya kirim."
+        : "Halo, boleh minta link Format Booking yang baru?")
+      : undefined;
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="mt-6 rounded-xl border border-stone-200 bg-white p-6 text-center"
-      >
-        <h2 className="font-display text-lg font-bold">
-          {view.justSubmitted
-            ? "Permintaan terkirim"
-            : "Permintaan sudah dikirim"}
-        </h2>
-        <p className="mt-2 text-sm text-stone-700">
-          {view.justSubmitted
-            ? "Terima kasih! Permintaanmu sudah kami terima. Kami akan menghubungi kamu lewat WhatsApp."
-            : "Permintaan ini sudah pernah dikirim, jadi tidak perlu diisi ulang."}
-        </p>
-        <p className="mt-3 rounded-lg bg-gold-soft px-3 py-2 text-xs text-gold-deep">
-          {NOT_LOCKED_COPY}
-        </p>
-      </div>
-    );
-  }
-
-  if (view.kind === "expired") {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="mt-6 rounded-xl border border-stone-200 bg-white p-6 text-center"
-      >
-        <h2 className="font-display text-lg font-bold">Link kedaluwarsa</h2>
-        <p className="mt-2 text-sm text-stone-700">
-          Link ini sudah kedaluwarsa. Minta link baru ke {BUSINESS_NAME} lewat
-          WhatsApp untuk mengisi formulir lagi.
-        </p>
+      <div className="mt-6 rounded-xl border border-stone-200 bg-white p-6 text-center">
+        <div role="status">
+          <h2 className="font-display text-lg font-bold">{title}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-stone-700">
+            {submitted
+              ? "Penata rias akan memeriksa permintaanmu dan menghubungi kamu lewat WhatsApp untuk mengonfirmasi jadwal."
+              : `Minta link baru di chat WhatsApp dengan ${BUSINESS_NAME} untuk mengisi formulir.`}
+          </p>
+          {submitted ? (
+            <p className="mt-3 rounded-lg bg-gold-soft px-3 py-2 text-sm text-gold-deep">
+              {NOT_LOCKED_COPY}
+            </p>
+          ) : null}
+        </div>
+        {href ? (
+          <a
+            href={href}
+            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-espresso px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700"
+          >
+            {submitted ? "Kembali ke WhatsApp" : "Minta link baru lewat WhatsApp"}
+          </a>
+        ) : null}
       </div>
     );
   }
@@ -298,7 +313,7 @@ export function RequestForm({ token }: { token: string }) {
         <button
           type="button"
           onClick={() => setAttempt((value) => value + 1)}
-          className="mt-3 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
+          className="mt-3 min-h-11 rounded-full bg-espresso px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700"
         >
           Coba lagi
         </button>
