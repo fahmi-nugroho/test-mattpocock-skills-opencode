@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseAdminQueue } from "@/lib/admin/admin-tabs";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   BOOKING_REQUEST_COPY_FAILURE,
@@ -31,7 +32,6 @@ import {
 import { SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { buildFormatBookingWaLink } from "@/lib/whatsapp";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { Dialog } from "@/components/dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
@@ -66,7 +66,9 @@ type RowAction = "edit" | "delete" | "reissue";
 
 interface RequestsManagerProps {
   /** Reports how many submitted requests need attention after each load. */
-  onAttentionCountChange?: (count: number) => void;
+  onAttentionCountChange?: (count: number | null) => void;
+  queueHash: string | null;
+  onOpenBookingDraft: () => void;
 }
 
 /**
@@ -106,11 +108,8 @@ interface RequestsManagerProps {
  * answered request is one tap. Both actions are hidden once the link is spent
  * (accepted) or lapsed, where re-issuing is the route instead.
  *
- * The list itself lives in a dialog (form-layout-polish ticket 03): the
- * section keeps the link form and shows the "perlu ditindak" count plus a
- * trigger, while the dialog holds the badge, the refresh, the chips, the
- * search, the rows and every row action, capped at ten rows over whatever the
- * chip and the search currently match. Opening it fetches nothing.
+ * The inline queue keeps the list, status filter, search, and refresh together.
+ * The form below it generates new links without interrupting queue review.
  *
  * The load is hoisted out of its effect (admin-actions ticket 07) so the
  * section's own "Muat ulang" button can pull in a request that arrived while
@@ -123,6 +122,8 @@ interface RequestsManagerProps {
  */
 export function RequestsManager({
   onAttentionCountChange,
+  queueHash,
+  onOpenBookingDraft,
 }: RequestsManagerProps) {
   const [items, setItems] = useState<BookingRequest[]>([]);
   // First load only — a reload flips `refreshing` instead, so it never blanks.
@@ -144,16 +145,15 @@ export function RequestsManager({
   const [attentionCount, setAttentionCount] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BookingRequestFilter>("all");
-  // The list lives in a dialog (form-layout-polish ticket 03); the section
-  // keeps the link form and shows a summary plus this trigger.
-  const [listOpen, setListOpen] = useState(false);
-  // How many filtered rows have been revealed; reset on every chip or search
-  // change so a narrowed list always opens at one page.
   const [revealed, setRevealed] = useState(LIST_PAGE_SIZE);
-  // The "Jadikan Booking" close navigates to the form, so that one close must
-  // not pull focus back down to the trigger.
-  const [skipReturnFocus, setSkipReturnFocus] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (queueHash === null) return;
+    setFilter(parseAdminQueue(queueHash).requests);
+    setQuery("");
+    setRevealed(LIST_PAGE_SIZE);
+  }, [queueHash]);
+
   // A row op in flight: which row and which action, so only that action's
   // button shows a busy label while the row's controls are disabled. Re-issue
   // joins delete and edit here.
@@ -282,7 +282,10 @@ export function RequestsManager({
       onAttentionCountChange?.(count);
       setError(null);
     } catch {
-      if (mountedRef.current) setError("Gagal memuat permintaan. Coba lagi.");
+      if (mountedRef.current) {
+        setError("Gagal memuat permintaan. Muat ulang untuk mencoba lagi.");
+        onAttentionCountChange?.(null);
+      }
     } finally {
       if (mountedRef.current) {
         setLoading(false);
@@ -392,9 +395,7 @@ export function RequestsManager({
       draft: requestToBookingDraft(item),
       customerNotes: item.notes,
     });
-    setSkipReturnFocus(true);
-    setListOpen(false);
-    window.location.hash = "#booking";
+    onOpenBookingDraft();
   }
 
   async function onDelete(item: BookingRequest) {
@@ -752,52 +753,115 @@ export function RequestsManager({
     );
   }
 
-  if (loading) {
-    return <p className="mt-3 text-sm text-neutral-600">Memuat permintaan…</p>;
-  }
-
   return (
     <div className="mt-4">
-      {error ? (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <p role="alert" className="text-sm text-red-700">{error}</p>
+      <section aria-labelledby="permintaan-queue-title" className="min-w-0">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 id="permintaan-queue-title" tabIndex={-1} className="w-fit scroll-mt-24 text-base font-bold">
+            Daftar permintaan
+          </h3>
+          <button
+            type="button"
+            onClick={() => document.getElementById("request-link-form")?.focus()}
+            className="min-h-11 rounded-full bg-espresso px-4 text-sm font-semibold text-white hover:bg-stone-700"
+          >
+            Buat link
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              attentionCount > 0
+                ? "bg-amber-100 text-amber-800"
+                : "bg-neutral-100 text-neutral-600"
+            }`}
+          >
+            {loading ? "Memuat…" : error ? "Data belum tersedia" : `${attentionCount} perlu ditindak`}
+          </span>
           <button
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            className="min-h-10 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+            className="ml-auto min-h-11 rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
           >
             {refreshing ? "Memuat…" : "Muat ulang"}
           </button>
         </div>
-      ) : null}
 
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          setSkipReturnFocus(false);
-          setListOpen(true);
-        }}
-        aria-haspopup="dialog"
-        className="mb-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-gold-soft/55 px-4 py-3 text-left transition hover:bg-gold-soft"
-      >
-        <span>
-          <span className="block text-sm font-semibold">
-            Lihat daftar permintaan
-          </span>
-          <span className="mt-0.5 block text-xs text-neutral-600">
-            {error ? "Daftar gagal dimuat" : `${attentionCount} perlu ditindak`}
-          </span>
-        </span>
-        <span aria-hidden="true" className="ml-auto text-lg">
-          ›
-        </span>
-      </button>
+        {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
+        {loading ? <p role="status" className="mt-3 text-sm text-neutral-600">Memuat permintaan…</p> : null}
+
+        <div
+          className="mt-4 flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Filter status permintaan"
+          onKeyDown={onFilterKeyDown}
+        >
+          {BOOKING_REQUEST_FILTERS.map((value, index) => {
+            const selected = value === filter;
+            return (
+              <button
+                key={value}
+                ref={(el) => {
+                  filterRefs.current[index] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => changeFilter(value)}
+                className={`min-h-11 rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  selected
+                    ? "bg-stone-900 text-amber-50"
+                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {BOOKING_REQUEST_FILTER_LABEL[value]}
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => changeQuery(e.target.value)}
+          placeholder="Cari permintaan…"
+          aria-label="Cari permintaan"
+          className="mt-4 min-h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+
+        <ul className="mt-4 space-y-2">
+          {listWindow.visible.map(({ item, status }) => renderRow(item, status))}
+        </ul>
+        {listWindow.hidden > 0 ? (
+          <button
+            type="button"
+            onClick={() => setRevealed((n) => n + LIST_PAGE_SIZE)}
+            className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+          >
+            Muat lebih banyak ({listWindow.hidden} lagi)
+          </button>
+        ) : null}
+        {items.length === 0 && !loading && !error ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            Belum ada permintaan — buat link pertama untuk memulai.
+          </p>
+        ) : null}
+        {items.length > 0 && visibleRows.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            {query.trim()
+              ? `Tidak ada hasil untuk "${query.trim()}".`
+              : "Tidak ada permintaan dengan status ini."}
+          </p>
+        ) : null}
+      </section>
 
       <form
+        id="request-link-form"
+        tabIndex={-1}
         onSubmit={onCreate}
-        className="space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
+        className="mt-6 scroll-mt-24 space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
       >
         <h3 className="text-sm font-bold">Buat link Format Booking</h3>
         <fieldset className="min-w-0 space-y-3">
@@ -914,101 +978,6 @@ export function RequestsManager({
           </div>
         </div>
       ) : null}
-
-
-      <Dialog
-        open={listOpen}
-        onClose={() => setListOpen(false)}
-        title="Daftar permintaan"
-        returnFocusTo={triggerRef}
-        restoreFocus={!skipReturnFocus}
-        panelClassName="max-w-3xl"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-              attentionCount > 0
-                ? "bg-amber-100 text-amber-800"
-                : "bg-neutral-100 text-neutral-600"
-            }`}
-          >
-            {attentionCount} perlu ditindak
-          </span>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="ml-auto rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
-          >
-            {refreshing ? "Memuat…" : "Muat ulang"}
-          </button>
-        </div>
-
-        <div
-          className="mt-4 flex flex-wrap gap-2"
-          role="tablist"
-          aria-label="Filter status permintaan"
-          onKeyDown={onFilterKeyDown}
-        >
-          {BOOKING_REQUEST_FILTERS.map((value, index) => {
-            const selected = value === filter;
-            return (
-              <button
-                key={value}
-                ref={(el) => {
-                  filterRefs.current[index] = el;
-                }}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => changeFilter(value)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                  selected
-                    ? "bg-stone-900 text-amber-50"
-                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
-                }`}
-              >
-                {BOOKING_REQUEST_FILTER_LABEL[value]}
-              </button>
-            );
-          })}
-        </div>
-
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => changeQuery(e.target.value)}
-          placeholder="Cari permintaan…"
-          aria-label="Cari permintaan"
-          className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-
-        <ul className="mt-4 space-y-2">
-          {listWindow.visible.map(({ item, status }) => renderRow(item, status))}
-        </ul>
-        {listWindow.hidden > 0 ? (
-          <button
-            type="button"
-            onClick={() => setRevealed((n) => n + LIST_PAGE_SIZE)}
-            className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
-          >
-            Muat lebih banyak ({listWindow.hidden} lagi)
-          </button>
-        ) : null}
-        {items.length === 0 && !error ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            Belum ada permintaan — buat link pertama di atas.
-          </p>
-        ) : null}
-        {items.length > 0 && visibleRows.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            {query.trim()
-              ? `Tidak ada hasil untuk "${query.trim()}".`
-              : "Tidak ada permintaan dengan status ini."}
-          </p>
-        ) : null}
-      </Dialog>
     </div>
   );
 }

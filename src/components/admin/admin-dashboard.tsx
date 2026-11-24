@@ -38,7 +38,7 @@ export function AdminDashboard() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [summary, setSummary] = useState<OverviewSummary | null>(null);
-  const [requestCount, setRequestCount] = useState<number | null>(null);
+  const [requestCount, setRequestCount] = useState<number | null>();
   const [googleStatus, setGoogleStatus] =
     useState<GoogleCalendarStatus | null>(null);
   const [waNumber, setWaNumber] = useState("");
@@ -59,11 +59,10 @@ export function AdminDashboard() {
   // Hash-driven tab state (no router): survives reload via
   // window.location.hash on mount, updates on hashchange (back/forward,
   // external links). Tab clicks push the hash themselves.
-  const [activeTab, setActiveTab] = useState<AdminTabId>(() =>
-    typeof window !== "undefined"
-      ? parseAdminTab(window.location.hash)
-      : "ringkasan",
+  const [dashboardHash, setDashboardHash] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash : "",
   );
+  const activeTab = parseAdminTab(dashboardHash);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,7 +135,7 @@ export function AdminDashboard() {
   }, [authed, settingsAttempt]);
 
   useEffect(() => {
-    const onHashChange = () => setActiveTab(parseAdminTab(window.location.hash));
+    const onHashChange = () => setDashboardHash(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -194,12 +193,20 @@ export function AdminDashboard() {
    * hunting for an element that is not rendered yet; hashchange still drives
    * back/forward, which the listener above already handles.
    */
-  function openTab(tab: AdminTabId) {
-    setActiveTab(tab);
-    if (window.location.hash !== `#${tab}`) {
-      window.history.pushState(null, "", `#${tab}`);
+  function openTab(tab: AdminTabId, query = "", focusId?: string) {
+    const hash = `#${tab}${query}`;
+    setDashboardHash(hash);
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, "", hash);
     }
     window.scrollTo({ top: 0, behavior: "instant" });
+    if (focusId) {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(focusId);
+        target?.focus({ preventScroll: true });
+        target?.scrollIntoView({ block: "start", behavior: "instant" });
+      });
+    }
   }
 
   if (!authed) {
@@ -343,7 +350,7 @@ export function AdminDashboard() {
               title="Kalender Booking"
               description="Pilih tanggal untuk melihat booking, jam yang diblokir, dan status di kalender publik."
             />
-            <AdminCalendar />
+            <AdminCalendar onOpenBookings={(date) => openTab("booking", `?date=${date}`, "booking-queue-title")} />
           </section>
 
           <section
@@ -357,7 +364,7 @@ export function AdminDashboard() {
               title="Booking"
               description="Kelola jadwal, status, dan invoice, atau catat booking dari WhatsApp."
             />
-            <BookingsManager />
+            <BookingsManager queueHash={activeTab === "booking" ? dashboardHash : null} />
           </section>
 
           <section
@@ -371,7 +378,11 @@ export function AdminDashboard() {
               title="Permintaan"
               description="Tinjau formulir dari klien dan buat link Format Booking baru."
             />
-            <RequestsManager onAttentionCountChange={setRequestCount} />
+            <RequestsManager
+              queueHash={activeTab === "permintaan" ? dashboardHash : null}
+              onOpenBookingDraft={() => openTab("booking", "", "booking-form")}
+              onAttentionCountChange={setRequestCount}
+            />
           </section>
 
           <section

@@ -10,6 +10,7 @@ import {
   filterBookings,
   type BookingFilter,
 } from "@/lib/admin/booking-filter";
+import { parseAdminQueue } from "@/lib/admin/admin-tabs";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import {
   indexInvoicesByBooking,
@@ -29,7 +30,7 @@ import {
   ACCEPT_REQUEST_EVENT,
   type AcceptRequestDetail,
 } from "@/lib/admin/request-events";
-import { formatIDR } from "@/lib/format";
+import { formatDateId, formatIDR } from "@/lib/format";
 import { isStyle, STYLE_COPY, STYLE_VALUES } from "@/lib/style-reference";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
@@ -57,7 +58,6 @@ import { getSettings } from "@/lib/supabase/admin-settings";
 import { listServicesAdmin } from "@/lib/supabase/admin-services";
 import { notifyScheduleChanged, SCHEDULE_CHANGED_EVENT } from "@/lib/admin/schedule-events";
 import { SERVICE_CATALOG_CHANGED_EVENT } from "@/lib/admin/service-catalog-events";
-import { Dialog } from "@/components/dialog";
 import { InvoiceDialog } from "./invoice-dialog";
 import { StyleReferenceFacts } from "./style-reference-facts";
 import type {
@@ -323,18 +323,14 @@ function BookingServicesPicker({
  * (guarded) save links the request to the new booking — the accept path
  * never bypasses validation or the conflict guard.
  *
- * The list itself lives in a dialog (form-layout-polish ticket 03): the
- * section keeps the create form and shows a summary plus a trigger, and the
- * dialog splits the rows it already loaded into Mendatang and Riwayat, ten at
- * a time. Opening it fetches nothing. Status chips (invoice-and-booking-filter
- * ticket 06) narrow those rows before the search, so a Booking must match
- * both; the split and its paging then run on the filtered set while the
- * trigger's counts stay computed from every Booking.
+ * The inline queue splits the filtered rows into Mendatang and Riwayat,
+ * ten at a time. The create form remains available below the queue.
  */
-export function BookingsManager() {
+export function BookingsManager({ queueHash }: { queueHash: string | null }) {
   const [items, setItems] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [manualDraft, setManualDraft] = useState(() => ({
     ...blankBookingDraft(), date: getTodayKey(), start: "09:00", end: "10:00",
@@ -395,14 +391,13 @@ export function BookingsManager() {
   const [query, setQuery] = useState("");
   // The chosen status chip; `all` shows every Booking.
   const [filter, setFilter] = useState<BookingFilter>("all");
-  // The list lives in a dialog (form-layout-polish ticket 03); the section
-  // keeps the create form and shows a summary plus this trigger.
-  const [listOpen, setListOpen] = useState(false);
+  const [queueDate, setQueueDate] = useState("");
+  const [upcomingOnly, setUpcomingOnly] = useState(false);
   // How many rows each group has revealed; reset on every chip or search
   // change so a narrowed list always opens at one page.
   const [revealedUpcoming, setRevealedUpcoming] = useState(LIST_PAGE_SIZE);
   const [revealedHistory, setRevealedHistory] = useState(LIST_PAGE_SIZE);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const invoiceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const filterRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Invoices are loaded with the bookings so a row can show its count and
   // newest number without opening anything. The dialog reads the same rows.
@@ -419,10 +414,16 @@ export function BookingsManager() {
     [],
   );
   const [mirrorWork, setMirrorWork] = useState<GoogleCalendarWorkRow[]>([]);
-  // The row action is the invoice dialog's trigger: after the dialog closes
-  // and the booking list reopens, focus returns to it.
-  const invoiceButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  const pendingInvoiceFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (queueHash === null) return;
+    const destination = parseAdminQueue(queueHash);
+    setFilter(destination.bookings);
+    setQuery("");
+    setQueueDate(destination.date);
+    setUpcomingOnly(destination.bookings === "pending" && !destination.date);
+    setRevealedUpcoming(LIST_PAGE_SIZE);
+    setRevealedHistory(LIST_PAGE_SIZE);
+  }, [queueHash]);
 
   // One newest-first group per Booking: the row summary and the dialog list
   // read the same order, and neither reads the live Booking.
@@ -449,12 +450,16 @@ export function BookingsManager() {
     [settings],
   );
 
+  const todayKey = getTodayKey();
+
   // The chosen chip runs first through the pure `filterBookings`, then the
   // client-side search narrows that subset, so a Booking must match both.
   const visibleItems = useMemo(
     () =>
       filterByQuery(
-        filterBookings(items, filter),
+        filterBookings(items, filter).filter((item) =>
+          (!queueDate || item.date === queueDate) && (!upcomingOnly || item.date >= todayKey),
+        ),
         query,
         (item) => [
           item.date,
@@ -465,13 +470,12 @@ export function BookingsManager() {
           BOOKING_STATUS_LABEL[item.status],
         ],
       ),
-    [items, filter, query],
+    [items, filter, query, queueDate, upcomingOnly, todayKey],
   );
 
   // The dialog reads the rows the section already loaded — opening it fetches
   // nothing. Today's key is pinned per render so the split and the trigger's
   // counts agree with each other.
-  const todayKey = getTodayKey();
   const { upcoming, history } = useMemo(
     () => splitByToday(visibleItems, todayKey),
     [visibleItems, todayKey],
@@ -513,17 +517,9 @@ export function BookingsManager() {
     filterRefs.current[next]?.focus();
   }
 
-  /** Switch from the booking list to this booking's invoices. */
-  function openInvoices(item: Booking) {
-    setListOpen(false);
+  function openInvoices(item: Booking, trigger: HTMLButtonElement) {
+    invoiceTriggerRef.current = trigger;
     setInvoiceBookingId(item.id);
-  }
-
-  /** Close the invoice dialog back onto the booking list, at its row trigger. */
-  function closeInvoices() {
-    pendingInvoiceFocusRef.current = invoiceBookingId;
-    setInvoiceBookingId(null);
-    setListOpen(true);
   }
 
   /** A just-issued Invoice joins the loaded rows; its row summary updates. */
@@ -667,21 +663,7 @@ export function BookingsManager() {
       window.removeEventListener(SCHEDULE_CHANGED_EVENT, load);
       window.removeEventListener(SERVICE_CATALOG_CHANGED_EVENT, load);
     };
-  }, []);
-
-  // Closing the invoice dialog reopens the booking list in the same update.
-  // The list's own effect has already moved focus into its panel by now, so the
-  // dialog's trigger (the row's invoice action) takes focus back afterwards.
-  useEffect(() => {
-    if (!listOpen) return;
-    const bookingId = pendingInvoiceFocusRef.current;
-    if (!bookingId) return;
-    pendingInvoiceFocusRef.current = null;
-    const frame = requestAnimationFrame(() => {
-      invoiceButtonRefs.current.get(bookingId)?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [listOpen]);
+  }, [loadAttempt]);
 
   const activeRequestId = requestDraft?.requestId;
   const draftFieldsetProps = {
@@ -718,11 +700,6 @@ export function BookingsManager() {
         setFormError(null);
         setSaveNotice(null);
       }
-      requestAnimationFrame(() => {
-        const form = document.getElementById("booking-form");
-        form?.focus({ preventScroll: true });
-        form?.scrollIntoView({ block: "start", behavior: "instant" });
-      });
     };
     window.addEventListener(ACCEPT_REQUEST_EVENT, onAccept);
     return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
@@ -1238,7 +1215,7 @@ export function BookingsManager() {
               {mirrorState ? (
                 <span
                   aria-label={`Status Google Calendar: ${MIRROR_STATE_LABEL[mirrorState]}`}
-                  className={`ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${
+                  className={`ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-xs font-semibold ${
                     mirrorState === "synced"
                       ? "bg-green-100 text-green-800"
                       : mirrorState === "failed"
@@ -1305,12 +1282,8 @@ export function BookingsManager() {
                 </ConfirmAction>
               ) : null}
               <button
-                ref={(el) => {
-                  if (el) invoiceButtonRefs.current.set(item.id, el);
-                  else invoiceButtonRefs.current.delete(item.id);
-                }}
                 type="button"
-                onClick={() => openInvoices(item)}
+                onClick={(event) => openInvoices(item, event.currentTarget)}
                 aria-haspopup="dialog"
                 className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100"
               >
@@ -1355,7 +1328,7 @@ export function BookingsManager() {
               onClick={() => startEdit(item)}
               className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
             >
-              Ubah Jadwal
+              Ubah booking
             </button>
           )}
           {editingId !== item.id ? (
@@ -1399,43 +1372,154 @@ export function BookingsManager() {
     );
   }
 
-  if (loading) {
-    return <p className="mt-3 text-sm text-neutral-600">Memuat booking…</p>;
-  }
-
   return (
     <div className="mt-4">
-      {error ? (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      ) : null}
-
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setListOpen(true)}
-        aria-haspopup="dialog"
-        className="mb-4 flex w-full flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-gold-soft/55 px-4 py-3 text-left transition hover:bg-gold-soft"
-      >
-        <span>
-          <span className="block text-sm font-semibold">
-            Lihat daftar booking
-          </span>
-          <span className="mt-0.5 block text-xs text-neutral-600">
-            {upcomingCount} mendatang · {upcomingWaiting} masih menunggu
-          </span>
-        </span>
-        <span aria-hidden="true" className="ml-auto text-lg">
-          ›
-        </span>
-      </button>
+      <section aria-labelledby="booking-queue-title" className="min-w-0">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h3 id="booking-queue-title" tabIndex={-1} className="w-fit scroll-mt-24 text-base font-bold">
+              Daftar booking
+            </h3>
+            {!loading && !error ? (
+              <p className="mt-1 text-sm text-neutral-600">{upcomingCount} mendatang · {upcomingWaiting} menunggu</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => document.getElementById("booking-form")?.focus()}
+            className="min-h-11 rounded-full bg-espresso px-4 text-sm font-semibold text-white hover:bg-stone-700"
+          >
+            Tambah booking
+          </button>
+        </div>
+        {loading ? <p role="status" className="text-sm text-neutral-600">Memuat booking…</p> : null}
+        {error ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p role="alert" className="text-sm text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                setLoadAttempt((attempt) => attempt + 1);
+              }}
+              className="min-h-11 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100"
+            >
+              Muat ulang
+            </button>
+          </div>
+        ) : null}
+        {queueDate || upcomingOnly ? (
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-gold-soft/55 px-3 py-1">
+            <p className="text-sm font-medium text-gold-deep">{queueDate ? formatDateId(queueDate) : "Hari ini dan mendatang"}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setQueueDate("");
+                setUpcomingOnly(false);
+                resetReveals();
+                document.getElementById("booking-queue-title")?.focus();
+              }}
+              className="min-h-11 text-sm font-semibold underline underline-offset-4"
+            >
+              Lihat semua tanggal
+            </button>
+          </div>
+        ) : null}
+        <div
+          className="flex flex-wrap gap-2"
+          role="tablist"
+          aria-label="Filter status booking"
+          onKeyDown={onFilterKeyDown}
+        >
+          {BOOKING_FILTERS.map((value, index) => {
+            const selected = value === filter;
+            return (
+              <button
+                key={value}
+                ref={(el) => {
+                  filterRefs.current[index] = el;
+                }}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => changeFilter(value)}
+                className={`min-h-11 rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                  selected
+                    ? "bg-stone-900 text-amber-50"
+                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {BOOKING_FILTER_LABEL[value]}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => changeQuery(e.target.value)}
+          placeholder="Cari booking…"
+          aria-label="Cari booking"
+          className="mt-4 min-h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+        {items.length === 0 && !loading && !error ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            Belum ada booking — catat hasil negosiasi WhatsApp untuk memulai.
+          </p>
+        ) : null}
+        {items.length > 0 && visibleItems.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            {query.trim()
+              ? filter === "all"
+                ? `Tidak ada hasil untuk "${query.trim()}".`
+                : `Tidak ada hasil untuk "${query.trim()}" dengan status ${BOOKING_FILTER_LABEL[filter]}.`
+              : queueDate ? "Tidak ada booking untuk tanggal ini dengan filter yang dipilih."
+              : "Tidak ada booking dengan filter yang dipilih."}
+          </p>
+        ) : null}
+        {upcoming.length > 0 ? (
+          <section aria-label="Booking mendatang" className="mt-4">
+            <h3 className="text-sm font-bold">Mendatang</h3>
+            <ul className="mt-2 space-y-2">
+              {upcomingWindow.visible.map(renderRow)}
+            </ul>
+            {upcomingWindow.hidden > 0 ? (
+              <button
+                type="button"
+                onClick={() => setRevealedUpcoming((n) => n + LIST_PAGE_SIZE)}
+                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+              >
+                Muat lebih banyak ({upcomingWindow.hidden} lagi)
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+        {history.length > 0 ? (
+          <section aria-label="Riwayat booking" className="mt-6">
+            <h3 className="text-sm font-bold">Riwayat</h3>
+            <ul className="mt-2 space-y-2">
+              {historyWindow.visible.map(renderRow)}
+            </ul>
+            {historyWindow.hidden > 0 ? (
+              <button
+                type="button"
+                onClick={() => setRevealedHistory((n) => n + LIST_PAGE_SIZE)}
+                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+              >
+                Muat lebih banyak ({historyWindow.hidden} lagi)
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+      </section>
 
       <form
         id="booking-form"
         onSubmit={onCreate}
         tabIndex={-1}
-        className="scroll-mt-24 space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
+        className="mt-6 scroll-mt-24 space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
       >
         <header className="space-y-2">
           <h3 className="text-sm font-bold">{requestDraft ? "Booking dari permintaan" : "Tambah booking"}</h3>
@@ -1704,100 +1788,6 @@ export function BookingsManager() {
         </div>
       </form>
 
-      <Dialog
-        open={listOpen}
-        onClose={() => setListOpen(false)}
-        title="Daftar booking"
-        returnFocusTo={triggerRef}
-      >
-        <div
-          className="flex flex-wrap gap-2"
-          role="tablist"
-          aria-label="Filter status booking"
-          onKeyDown={onFilterKeyDown}
-        >
-          {BOOKING_FILTERS.map((value, index) => {
-            const selected = value === filter;
-            return (
-              <button
-                key={value}
-                ref={(el) => {
-                  filterRefs.current[index] = el;
-                }}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => changeFilter(value)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                  selected
-                    ? "bg-stone-900 text-amber-50"
-                    : "bg-stone-200/60 text-stone-700 hover:bg-stone-200"
-                }`}
-              >
-                {BOOKING_FILTER_LABEL[value]}
-              </button>
-            );
-          })}
-        </div>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => changeQuery(e.target.value)}
-          placeholder="Cari booking…"
-          aria-label="Cari booking"
-          className="mt-4 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-        {items.length === 0 && !error ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            Belum ada booking — catat hasil negosiasi WA pertama di atas.
-          </p>
-        ) : null}
-        {items.length > 0 && visibleItems.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            {query.trim()
-              ? filter === "all"
-                ? `Tidak ada hasil untuk "${query.trim()}".`
-                : `Tidak ada hasil untuk "${query.trim()}" dengan status ${BOOKING_FILTER_LABEL[filter]}.`
-              : "Tidak ada booking dengan status ini."}
-          </p>
-        ) : null}
-        {upcoming.length > 0 ? (
-          <section aria-label="Booking mendatang" className="mt-4">
-            <h3 className="text-sm font-bold">Mendatang</h3>
-            <ul className="mt-2 space-y-2">
-              {upcomingWindow.visible.map(renderRow)}
-            </ul>
-            {upcomingWindow.hidden > 0 ? (
-              <button
-                type="button"
-                onClick={() => setRevealedUpcoming((n) => n + LIST_PAGE_SIZE)}
-                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
-              >
-                Muat lebih banyak ({upcomingWindow.hidden} lagi)
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-        {history.length > 0 ? (
-          <section aria-label="Riwayat booking" className="mt-6">
-            <h3 className="text-sm font-bold">Riwayat</h3>
-            <ul className="mt-2 space-y-2">
-              {historyWindow.visible.map(renderRow)}
-            </ul>
-            {historyWindow.hidden > 0 ? (
-              <button
-                type="button"
-                onClick={() => setRevealedHistory((n) => n + LIST_PAGE_SIZE)}
-                className="mt-3 rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
-              >
-                Muat lebih banyak ({historyWindow.hidden} lagi)
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-      </Dialog>
-
       <InvoiceDialog
         booking={invoiceBooking}
         invoices={invoiceBookingInvoices}
@@ -1806,9 +1796,9 @@ export function BookingsManager() {
         onCreated={onInvoiceCreated}
         onUpdated={onInvoiceUpdated}
         onDeleted={onInvoiceDeleted}
-        onClose={closeInvoices}
-        returnFocusTo={triggerRef}
-        restoreFocus={false}
+        onClose={() => setInvoiceBookingId(null)}
+        returnFocusTo={invoiceTriggerRef}
+        restoreFocus
       />
     </div>
   );

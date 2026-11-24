@@ -22,6 +22,20 @@ export type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const TAB_IDS = new Set<string>(ADMIN_TABS.map((t) => t.id));
 
 export function parseAdminTab(hash: string): AdminTabId {
-  const id = hash.startsWith("#") ? hash.slice(1) : hash;
+  const id = hash.replace(/^#/, "").split("?")[0];
   return TAB_IDS.has(id) ? (id as AdminTabId) : "ringkasan";
+}
+
+export function parseAdminQueue(hash: string) {
+  const tab = parseAdminTab(hash);
+  const params = new URLSearchParams(hash.split("?")[1]);
+  const filter = params.get("filter");
+  const day = params.get("date");
+  const parsedDay = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Date(`${day}T00:00:00Z`) : null;
+  const date = parsedDay && Number.isFinite(parsedDay.getTime()) && parsedDay.toISOString().slice(0, 10) === day ? day : "";
+  return {
+    bookings: tab === "booking" && filter === "pending" ? "pending" as const : "all" as const,
+    requests: tab === "permintaan" && filter === "needs_action" ? "needs_action" as const : "all" as const,
+    date: tab === "booking" ? date : "",
+  };
 }
