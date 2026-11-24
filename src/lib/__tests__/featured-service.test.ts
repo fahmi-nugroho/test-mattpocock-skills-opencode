@@ -38,6 +38,12 @@ describe("getFeaturedService", () => {
     expect(getFeaturedService(items)?.id).toBe("shown");
   });
 
+  it("chooses the same featured service when matching sort values arrive in different orders", () => {
+    const items = [service({ id: "b" }), service({ id: "a" })];
+    expect(getFeaturedService(items)?.id).toBe("a");
+    expect(getFeaturedService([...items].reverse())?.id).toBe("a");
+  });
+
   it("returns null when no active service exists", () => {
     expect(getFeaturedService([])).toBeNull();
     expect(

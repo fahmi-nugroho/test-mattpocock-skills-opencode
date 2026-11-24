@@ -20,6 +20,33 @@ import {
 } from "@/lib/supabase/admin-portfolio";
 import type { PortfolioItem } from "@/lib/supabase/database";
 
+function UploadPreview({ file }: { file: File | null }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!file) {
+      setUrl("");
+      return;
+    }
+    try {
+      checkImageFile(file);
+    } catch {
+      setUrl("");
+      return;
+    }
+    const preview = URL.createObjectURL(file);
+    setUrl(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [file]);
+
+  return file && url ? (
+    <figure className="mt-2 flex items-start gap-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Pratinjau foto portofolio" className="h-28 w-24 shrink-0 rounded-lg bg-neutral-100 object-contain" />
+      <figcaption className="min-w-0 break-words text-sm text-neutral-600">Pratinjau sebelum disimpan</figcaption>
+    </figure>
+  ) : null;
+}
+
 /**
  * Portfolio CRUD manager for the admin dashboard (ticket 06).
  * Creates upload to the `portfolio/` bucket, edits title/category/
@@ -258,22 +285,30 @@ export function PortfolioManager() {
         </p>
       ) : null}
 
+      <p id="portfolio-sort-hint" className="mb-3 text-sm text-neutral-600">
+        Nomor urutan yang lebih kecil tampil lebih dulu. Karya publik pertama menjadi foto pembuka situs.
+      </p>
       <details className="rounded-xl border border-neutral-200 bg-white">
         <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-bold hover:bg-neutral-50">Tambah karya</summary>
         <form onSubmit={onCreate} onChange={() => setCreated(false)} className="space-y-3 border-t border-neutral-200 p-4">
           <fieldset disabled={saving} className="min-w-0 space-y-3 disabled:opacity-70">
             <legend className="sr-only">Tambah karya</legend>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-medium">Judul</span>
+              <div>
+                <label htmlFor="portfolio-title" className="text-sm font-medium">Judul karya</label>
+                <p id="portfolio-title-hint" className="mt-0.5 text-sm text-neutral-600">
+                  Gunakan judul yang menggambarkan riasan di foto.
+                </p>
                 <input
+                  id="portfolio-title"
                   type="text"
                   required
+                  aria-describedby="portfolio-title-hint"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
               <label className="block">
                 <span className="text-sm font-medium">
                   Kategori ({distinctCategories.length}/{MAX_CATEGORIES})
@@ -301,6 +336,7 @@ export function PortfolioManager() {
                   step={1}
                   required
                   value={sort}
+                  aria-describedby="portfolio-sort-hint"
                   onChange={(e) => setSort(e.target.value)}
                   className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 />
@@ -325,6 +361,7 @@ export function PortfolioManager() {
                 className="mt-1 block w-full min-w-0 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-2 file:font-semibold"
               />
             </label>
+            <UploadPreview file={file} />
             {formError ? (
               <p role="alert" className="text-sm text-red-600">
                 {formError}
@@ -370,7 +407,7 @@ export function PortfolioManager() {
                 {editingId === item.id ? (
                   <div className="grid gap-2 sm:grid-cols-3">
                     <label className="block min-w-0">
-                      <span className="text-sm font-medium">Judul</span>
+                      <span className="text-sm font-medium">Judul karya</span>
                       <input
                         type="text"
                         autoFocus
@@ -395,6 +432,7 @@ export function PortfolioManager() {
                         min={0}
                         step={1}
                         value={editSort}
+                        aria-describedby="portfolio-sort-hint"
                         onChange={(e) => setEditSort(e.target.value)}
                         className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                       />
@@ -408,6 +446,9 @@ export function PortfolioManager() {
                         className="mt-1 block w-full min-w-0 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-2 file:font-semibold"
                       />
                     </label>
+                    {editFile ? (
+                      <div className="sm:col-span-3"><UploadPreview file={editFile} /></div>
+                    ) : null}
                   </div>
                 ) : (
                   <>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTodayKey } from "@/lib/calendar";
+import { MAX_VISIBLE_STATS, MAX_VISIBLE_TESTIMONIALS } from "@/lib/hero-proof";
 import { ADMIN_TABS, parseAdminTab, type AdminTabId } from "@/lib/admin/admin-tabs";
 import { summarizeBookings, type OverviewSummary } from "@/lib/admin/overview";
 import { validateSettingsInput } from "@/lib/admin/validate-settings";
@@ -438,14 +439,31 @@ export function AdminDashboard() {
               title="Profil & Testimoni"
               description="Kelola profil, pencapaian, dan ulasan klien di halaman publik."
             />
+            <nav aria-label="Bagian profil dan testimoni" className="mt-3 flex flex-wrap gap-2 sm:hidden">
+              {[["profil-pencapaian", "Pencapaian"], ["profil-testimoni-daftar", "Testimoni"]].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    const heading = document.getElementById(id);
+                    heading?.focus({ preventScroll: true });
+                    heading?.scrollIntoView({ block: "start" });
+                  }}
+                  className="min-h-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
             <ProfileForm />
             <div className="mt-8 border-t border-neutral-200 pt-5">
-              <h3 className="text-base font-bold">Pencapaian</h3>
-              <p className="mt-1 text-sm text-neutral-600">Hingga 4 pencapaian tampil di halaman publik.</p>
+              <h3 id="profil-pencapaian" tabIndex={-1} className="scroll-mt-24 text-base font-bold">Pencapaian</h3>
+              <p className="mt-1 text-sm text-neutral-600">Hingga {MAX_VISIBLE_STATS} pencapaian yang diaktifkan tampil, dimulai dari nomor urutan terkecil.</p>
               <StatsManager />
             </div>
             <div className="mt-8 border-t border-neutral-200 pt-5">
-              <h3 className="text-base font-bold">Testimoni</h3>
+              <h3 id="profil-testimoni-daftar" tabIndex={-1} className="scroll-mt-24 text-base font-bold">Testimoni</h3>
+              <p className="mt-1 text-sm text-neutral-600">Hingga {MAX_VISIBLE_TESTIMONIALS} testimoni yang diaktifkan tampil, dimulai dari nomor urutan terkecil.</p>
               <TestimonialsManager />
             </div>
           </section>

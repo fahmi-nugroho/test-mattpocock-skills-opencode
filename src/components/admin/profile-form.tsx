@@ -191,6 +191,9 @@ export function ProfileForm() {
       className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
     >
       <h3 className="text-base font-bold">Edit profil</h3>
+      <p className="text-sm text-neutral-600">
+        Foto profil menjadi foto pembuka di halaman publik saat belum ada karya portofolio yang ditampilkan.
+      </p>
       <fieldset disabled={saving} className="grid min-w-0 gap-4 disabled:opacity-70">
         <legend className="sr-only">Detail profil</legend>
         <label className="block">
@@ -257,17 +260,16 @@ export function ProfileForm() {
               className="h-24 w-20 rounded-lg bg-neutral-100 object-cover"
             />
             <p className="text-xs text-neutral-500">
-              Pratinjau portrait —{" "}
               {file || manualUrl.trim() !== currentPortrait
-                ? "foto ini akan dipakai saat profil disimpan."
-                : "foto yang tersimpan sekarang."}
+                ? "Pratinjau foto profil baru."
+                : "Foto profil yang tersimpan."}
             </p>
           </div>
         ) : (
           <p role="status" className="text-sm text-neutral-600">
             {portraitRemoved
-              ? "Foto akan dihapus saat profil disimpan. Halaman publik akan memakai cover portfolio."
-              : "Tanpa foto profil, halaman publik memakai cover portfolio pertama."}
+              ? "Foto profil akan dihapus saat profil disimpan."
+              : "Belum ada foto profil."}
           </p>
         )}
         {currentPortrait ? (

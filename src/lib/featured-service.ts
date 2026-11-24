@@ -12,7 +12,11 @@ export function getFeaturedService(services: Service[]): Service | null {
   let featured: Service | null = null;
   for (const service of services) {
     if (!service.active) continue;
-    if (featured === null || service.sort < featured.sort) {
+    if (
+      featured === null ||
+      service.sort < featured.sort ||
+      (service.sort === featured.sort && service.id < featured.id)
+    ) {
       featured = service;
     }
   }

@@ -55,13 +55,14 @@ export interface DbProfileStat {
  * defense-in-depth so a hidden row can never leak into the landing.
  */
 function resolveVisibleOrdered<
-  T extends { sort?: number; visible: boolean },
+  T extends { id?: string | number; sort?: number; visible: boolean },
 >(dbRows: readonly T[] | null | undefined, max: number): T[] {
   return [...(dbRows ?? []).filter((row) => row.visible)]
     .sort(
       (a, b) =>
         (a.sort ?? Number.MAX_SAFE_INTEGER) -
-        (b.sort ?? Number.MAX_SAFE_INTEGER),
+        (b.sort ?? Number.MAX_SAFE_INTEGER) ||
+        String(a.id ?? "").localeCompare(String(b.id ?? "")),
     )
     .slice(0, max);
 }
