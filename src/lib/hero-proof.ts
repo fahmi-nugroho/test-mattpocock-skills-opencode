@@ -1,21 +1,8 @@
-/**
- * Hero trust content (ticket 02-hero-trust): hardcoded stats + testimonials
- * in one editable location. No new table — the owner edits these literals
- * directly. Portrait: owner-supplied URL via NEXT_PUBLIC_HERO_PORTRAIT,
- * else the first visible portfolio cover (see getHeroPortraitUrl).
- */
-
 export interface HeroStat {
   id?: string | number;
   value: string;
   label: string;
 }
-
-export const HERO_STATS: HeroStat[] = [
-  { value: "5+ Tahun", label: "Pengalaman" },
-  { value: "500+", label: "Klien" },
-  { value: "4.9★", label: "Rating" },
-];
 
 /** Hardcoded hero copy fallback (mirrors the 0013 settings defaults). */
 export const FALLBACK_HEADLINE = "Tampil memukau di hari spesialmu";
@@ -27,21 +14,6 @@ export interface Testimonial {
   quote: string;
   name: string;
 }
-
-export const TESTIMONIALS: Testimonial[] = [
-  {
-    quote: "Riasannya natural tapi tahan lama, nyaman dipakai seharian.",
-    name: "Dinda, Pengantin",
-  },
-  {
-    quote: "Ramah dan tepat waktu, hasilnya sesuai referensi yang kumau.",
-    name: "Salsa, Wisuda",
-  },
-  {
-    quote: "Sudah langganan untuk acara keluarga, selalu memuaskan.",
-    name: "Bu Ratna, Engagement",
-  },
-];
 
 /**
  * Hero portrait fallback: first visible portfolio cover (portfolio is
@@ -105,17 +77,10 @@ export interface HeroProfile {
   portrait_url?: string | null;
 }
 
-/**
- * DB rows → landing testimonial list (ticket 02 end-to-end). Empty or
- * all-hidden DB input falls back to the hardcoded TESTIMONIALS so the
- * section never appears blank; otherwise resolveVisibleOrdered orders +
- * slices, then map (client_name → name, id preserved for stable keys).
- */
 export function resolveDisplayedTestimonials(
   dbRows: readonly DbTestimonial[] | null | undefined,
 ): Testimonial[] {
   const visible = resolveVisibleOrdered(dbRows, MAX_VISIBLE_TESTIMONIALS);
-  if (visible.length === 0) return TESTIMONIALS;
   return visible.map((row) => ({
     ...(row.id !== undefined ? { id: row.id } : {}),
     quote: row.quote,
@@ -123,17 +88,10 @@ export function resolveDisplayedTestimonials(
   }));
 }
 
-/**
- * DB rows → landing stat list (ticket 03 end-to-end). Empty or all-hidden
- * DB input falls back to the hardcoded HERO_STATS so the section never
- * appears blank; otherwise resolveVisibleOrdered orders + slices, then
- * map (id preserved for stable React keys).
- */
 export function resolveDisplayedStats(
   dbRows: readonly DbProfileStat[] | null | undefined,
 ): HeroStat[] {
   const visible = resolveVisibleOrdered(dbRows, MAX_VISIBLE_STATS);
-  if (visible.length === 0) return HERO_STATS;
   return visible.map((row) => ({
     ...(row.id !== undefined ? { id: row.id } : {}),
     value: row.value,

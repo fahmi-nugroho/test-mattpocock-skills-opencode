@@ -1,7 +1,7 @@
 import type { Service } from "./supabase/database";
 
 /** Badge copy for the top-sorted active service (ticket 04-price-badge). */
-export const FEATURED_BADGE_LABEL = "Paling Dipilih";
+export const FEATURED_BADGE_LABEL = "Layanan unggulan";
 
 /**
  * Featured-service selector: first active service by ascending sort,

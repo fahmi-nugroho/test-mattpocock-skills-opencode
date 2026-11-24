@@ -45,7 +45,7 @@ describe("getFeaturedService", () => {
     ).toBeNull();
   });
 
-  it("uses the Paling Dipilih badge copy", () => {
-    expect(FEATURED_BADGE_LABEL).toBe("Paling Dipilih");
+  it("labels a curated service without claiming popularity", () => {
+    expect(FEATURED_BADGE_LABEL).toBe("Layanan unggulan");
   });
 });

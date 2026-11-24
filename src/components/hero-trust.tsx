@@ -1,10 +1,5 @@
 import Image from "next/image";
-import type {
-  PortfolioItem,
-  ProfileStatRow,
-  TestimonialRow,
-} from "@/lib/supabase/database";
-import { buildGeneralWaLink } from "@/lib/whatsapp";
+import type { PortfolioItem, ProfileStatRow, TestimonialRow } from "@/lib/supabase/database";
 import {
   resolveDisplayedStats,
   resolveDisplayedTestimonials,
@@ -12,133 +7,105 @@ import {
   resolveHeroPortraitUrl,
 } from "@/lib/hero-proof";
 import type { PublicProfile } from "@/lib/supabase/public-profile";
-import { BUSINESS_NAME } from "@/lib/brand";
 
-/** Owner-supplied portrait; empty until the owner provides one. */
 const OWNER_PORTRAIT_URL = process.env.NEXT_PUBLIC_HERO_PORTRAIT ?? "";
 
-/**
- * Hero trust block (ticket 03): 2-column copy + portrait on desktop,
- * stacked on mobile. Trust stats and testimonials sit above the existing
- * WA CTAs; WA links and copy intent are unchanged from ticket 01.
- * Live profil (headline/subcopy/portrait) + stats render from the DB
- * when present, falling back to the hardcoded HERO_STATS / copy /
- * portfolio-cover portrait when the tables are empty.
- */
 export function HeroTrust({
   portfolio,
-  testimonials,
-  stats,
   profile,
-  waNumber,
 }: {
   portfolio: PortfolioItem[];
-  testimonials?: TestimonialRow[];
-  stats?: ProfileStatRow[];
-  profile?: PublicProfile | null;
-  waNumber: string;
+  profile: PublicProfile | null;
 }) {
-  // DB portrait wins; env portrait second; portfolio cover last; null
-  // renders the placeholder state (empty portrait falls back to the
-  // first portfolio cover, then to the existing placeholder).
-  const portraitUrl = resolveHeroPortraitUrl(
-    profile?.portrait_url || OWNER_PORTRAIT_URL || null,
+  const leadLook = portfolio[0];
+  const imageUrl = leadLook?.image_url ?? resolveHeroPortraitUrl(
+    profile?.portrait_url?.trim() || OWNER_PORTRAIT_URL,
     portfolio,
   );
-  const { headline, subcopy } = resolveHeroCopy(
-    profile ? { headline: profile.headline, subcopy: profile.subcopy } : null,
-  );
-  // DB-curated testimonials/stats when present, hardcoded fallbacks
-  // when empty — the sections never render blank.
-  const displayedTestimonials = resolveDisplayedTestimonials(testimonials);
-  const displayedStats = resolveDisplayedStats(stats);
+  const { headline, subcopy } = resolveHeroCopy(profile);
 
   return (
     <section
       aria-label="Perkenalan"
-      className="grid grid-cols-1 items-center gap-8 py-14 sm:py-20 lg:grid-cols-2 lg:gap-12"
+      className={`grid items-center gap-6 pb-9 pt-3 sm:gap-8 sm:pb-12 sm:pt-5 ${imageUrl ? "md:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)] lg:gap-14" : "max-w-2xl"}`}
     >
-      <div className="flex min-w-0 flex-col text-center lg:text-left">
-        <p className="text-sm font-medium uppercase tracking-widest text-gold">
-          {BUSINESS_NAME}
-        </p>
-        <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
+      {imageUrl ? (
+        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-gold-soft sm:aspect-[16/10] md:aspect-[6/7] lg:aspect-square">
+          <Image
+            src={imageUrl}
+            alt={leadLook?.title ?? "Potret penata rias Wandana Makeup"}
+            fill
+            sizes="(min-width: 1152px) 550px, (min-width: 768px) 50vw, 100vw"
+            className="object-cover object-[center_22%]"
+            loading="eager"
+            fetchPriority="high"
+          />
+        </div>
+      ) : null}
+      <div className="min-w-0 py-1 md:py-6">
+        <h1 className="max-w-xl text-balance break-words font-display text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
           {headline}
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-stone-600 lg:mx-0">
+        <p className="mt-3 max-w-prose break-words text-base leading-relaxed text-stone-700 sm:mt-4">
           {subcopy}
         </p>
-        <dl className="mt-6 flex items-start justify-center gap-6 sm:gap-8 lg:justify-start">
-          {displayedStats.map((stat, i) => (
-            <div
-              key={
-                stat.id !== undefined ? String(stat.id) : `${stat.label}-${i}`
-              }
-              className="flex min-w-0 flex-col"
-            >
-              <dt className="order-2 mt-1 text-xs text-stone-600 sm:text-sm">
-                {stat.label}
-              </dt>
-              <dd className="order-1 font-display text-xl font-bold sm:text-2xl">
-                {stat.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {/* Swipeable on phones so the hero CTAs stay above the fold;
-            a stacked list from sm up. order-last keeps the CTAs before
-            the proof on small screens. */}
-        <ul
-          aria-label="Testimoni klien"
-          className="order-last mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 text-left sm:order-none sm:block sm:space-y-3 sm:overflow-visible"
-        >
-          {displayedTestimonials.map((t, i) => (
-            <li
-              key={t.id ?? `${t.name}-${i}`}
-              className="w-[85%] shrink-0 snap-start rounded-xl border border-stone-200/70 bg-white px-4 py-3 shadow-sm sm:w-auto"
-            >
-              <p className="text-sm text-stone-700">“{t.quote}”</p>
-              <p className="mt-1 text-xs font-medium text-stone-500">
-                — {t.name}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-6 flex flex-wrap justify-center gap-3 lg:justify-start">
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 sm:mt-7">
           <a
-            href={buildGeneralWaLink(waNumber)}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full bg-green-700 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-green-800"
+            href={leadLook ? "#portfolio" : "#harga"}
+            className="inline-flex min-h-11 items-center rounded-full bg-espresso px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
           >
-            Chat WhatsApp
+            {leadLook ? "Lihat hasil rias" : "Lihat harga"}
           </a>
           <a
-            href="#harga"
-            className="rounded-full bg-stone-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
+            href="#jadwal"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-espresso underline decoration-stone-400 underline-offset-4 hover:decoration-current"
           >
-            Lihat Harga
+            Cek jadwal
           </a>
         </div>
       </div>
-      <div className="mx-auto w-full max-w-sm min-w-0 lg:mx-0 lg:max-w-none">
-        {portraitUrl ? (
-          <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-stone-200/70 bg-stone-100 shadow-sm">
-            <Image
-              src={portraitUrl}
-              alt="Portrait makeup artist"
-              fill
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-cover"
-              priority
-            />
-          </div>
-        ) : (
-          <div className="flex aspect-[4/5] items-center justify-center rounded-2xl border border-stone-200/70 bg-stone-100 p-6 text-center text-sm text-stone-500">
-            Foto portrait segera hadir — silakan lihat portfolio di bawah.
-          </div>
-        )}
-      </div>
+    </section>
+  );
+}
+
+export function LandingProof({
+  stats,
+  testimonials,
+}: {
+  stats: ProfileStatRow[];
+  testimonials: TestimonialRow[];
+}) {
+  const displayedStats = resolveDisplayedStats(stats);
+  const displayedTestimonials = resolveDisplayedTestimonials(testimonials);
+  if (displayedStats.length === 0 && displayedTestimonials.length === 0) return null;
+
+  return (
+    <section aria-labelledby="testimoni-heading" className="border-t border-stone-200 py-8 sm:py-10">
+      <h2 id="testimoni-heading" className="font-display text-2xl font-bold sm:text-3xl">
+        {displayedTestimonials.length ? "Testimoni klien" : "Tentang Wandana Makeup"}
+      </h2>
+      {displayedStats.length > 0 ? (
+        <dl className="mt-4 grid max-w-xl grid-cols-2 gap-4 sm:grid-cols-4">
+          {displayedStats.map((stat, index) => (
+            <div key={stat.id ?? `${stat.label}-${index}`} className="min-w-0 break-words">
+              <dt className="text-sm text-stone-600">{stat.label === "Client" ? "Klien" : stat.label}</dt>
+              <dd className="mt-1 text-lg font-semibold text-espresso">{stat.value.replaceAll("⭐", "★")}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {displayedTestimonials.length > 0 ? (
+        <ul className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-3">
+          {displayedTestimonials.map((testimonial, index) => (
+            <li key={testimonial.id ?? `${testimonial.name}-${index}`} className="min-w-0 border-t border-stone-200 pt-3 break-words">
+              <figure>
+                <blockquote className="text-sm leading-relaxed text-stone-700">“{testimonial.quote}”</blockquote>
+                <figcaption className="mt-2 text-sm font-medium text-stone-600">{testimonial.name}</figcaption>
+              </figure>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }

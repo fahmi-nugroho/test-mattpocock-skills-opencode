@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_VISIBLE_TESTIMONIALS,
-  TESTIMONIALS,
   resolveDisplayedTestimonials,
 } from "../hero-proof";
 
 // Seam (pure): DB rows → landing testimonial list. Catches missing
-// fallback, missing max-6 slice, and leaked hidden rows. Misses the DB
+// empty state, missing max-6 slice, and leaked hidden rows. Misses the DB
 // visible=true filter itself (covered by profile-queries.test.ts).
 describe("resolveDisplayedTestimonials", () => {
-  it("falls back to the hardcoded list when the DB has no visible rows", () => {
-    expect(resolveDisplayedTestimonials([])).toEqual(TESTIMONIALS);
+  it("shows no testimonials when the DB has no rows", () => {
+    expect(resolveDisplayedTestimonials([])).toEqual([]);
   });
 
   it("maps DB rows (client_name) to landing items in sort order", () => {
@@ -68,11 +67,11 @@ describe("resolveDisplayedTestimonials", () => {
     ).toEqual([{ quote: "Tampil", name: "A" }]);
   });
 
-  it("falls back when every DB row is hidden", () => {
+  it("shows no testimonials when every DB row is hidden", () => {
     expect(
       resolveDisplayedTestimonials([
         { quote: "Sembunyi", client_name: "B", visible: false },
       ]),
-    ).toEqual(TESTIMONIALS);
+    ).toEqual([]);
   });
 });

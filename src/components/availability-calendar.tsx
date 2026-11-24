@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Dialog } from "@/components/dialog";
 import type { DayStatus } from "@/lib/availability";
 import {
   WEEKDAY_HEADERS_ID,
@@ -29,20 +30,12 @@ const STATUS_META: Record<
   DayStatus,
   { label: string; swatch: string; cell: string }
 > = {
-  // Warm-tinted shades within the green/amber/red families: lime-100 and
-  // orange-100 lean warm (yellow/earth undertone) while the deep
-  // green/amber/red text keeps the Tersedia/Penuh/Tutup signal readable.
-  // The stone inset ring adds a warm tinge and lifts cells off the cream
-  // page. Labels, derivation, and RPC contracts are untouched.
   available: {
-    label: "Tersedia",
+    label: "Bisa ditanyakan",
     swatch: "bg-lime-600",
     cell: "bg-lime-100 text-green-900 ring-1 ring-inset ring-stone-900/5",
   },
-  // DEAD CODE (hours-removal contract): fully_booked is unreachable —
-  // coverage derivation was removed with the operating window, so no
-  // RPC or derivation resolves to this status. Kept so the legend can
-  // be revived with the status itself (see docs/adr/0001-hours-removal.md).
+  // Retain the label for responses from before the operating-hours removal.
   fully_booked: {
     label: "Penuh",
     swatch: "bg-amber-600",
@@ -129,7 +122,7 @@ export function AvailabilityCalendar({
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   // Invoking date button for focus return after the popup closes.
-  const invokerRef = useRef<string | null>(null);
+  const invokerRef = useRef<HTMLButtonElement | null>(null);
 
   const todayKey = useMemo(() => getTodayKey(), []);
   const partialSet = useMemo(
@@ -200,37 +193,11 @@ export function AvailabilityCalendar({
     setEndTime("");
   }
 
-  // Popup chrome: Escape dismisses, background scrolling locks, and
-  // focus returns to the invoking date button on close.
-  useEffect(() => {
-    if (!popupOpen) return;
-    document.body.style.overflow = "hidden";
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") closePopup();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = "";
-      document.removeEventListener("keydown", onKeyDown);
-      const invoker = invokerRef.current;
-      if (invoker) {
-        invokerRef.current = null;
-        requestAnimationFrame(() => {
-          document
-            .querySelector<HTMLElement>(`[data-date="${invoker}"]`)
-            ?.focus();
-        });
-      }
-    };
-  }, [popupOpen]);
-
   const { year, month } = parseMonthKey(monthKey);
   const cells = useMemo(() => getMonthCells(year, month), [year, month]);
   const monthLabel = formatMonthId(monthKey);
-  const headerStatus: DayStatus | undefined =
-    detail?.status ??
-    (selectedDate !== null ? statusByDate[selectedDate] : undefined);
   const empty = loaded && !error && Object.keys(statusByDate).length === 0;
+  const hasFullDates = Object.values(statusByDate).includes("fully_booked");
   const isClosedDetail =
     detail !== null && (detail.status === "blocked" || detail.allDayBlocked);
   const mergedOccupied = useMemo(
@@ -254,21 +221,6 @@ export function AvailabilityCalendar({
     setMonthKey((m) => shiftMonth(m, delta));
   }
 
-  function handleDateTap(date: string): void {
-    if (selectedDate === date) {
-      closePopup();
-      return;
-    }
-    invokerRef.current = date;
-    // Fresh state per tap so no stale day detail lingers.
-    setDetail(null);
-    setDetailLoaded(false);
-    setDetailError(null);
-    setStartTime("");
-    setEndTime("");
-    setSelectedDate(date);
-  }
-
   return (
     // Capped width: a full-width 7-column month at desktop sizes made
     // ~100px day cells. Phones are narrower than the cap, so unchanged.
@@ -278,7 +230,7 @@ export function AvailabilityCalendar({
           type="button"
           onClick={() => shiftMonthClearingSelection(-1)}
           aria-label="Bulan sebelumnya"
-          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-stone-100"
+          className="size-11 rounded-full border border-stone-300 text-lg font-semibold transition hover:bg-stone-100"
         >
           ‹
         </button>
@@ -289,7 +241,7 @@ export function AvailabilityCalendar({
           type="button"
           onClick={() => shiftMonthClearingSelection(1)}
           aria-label="Bulan berikutnya"
-          className="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold transition hover:bg-stone-100"
+          className="size-11 rounded-full border border-stone-300 text-lg font-semibold transition hover:bg-stone-100"
         >
           ›
         </button>
@@ -374,8 +326,11 @@ export function AvailabilityCalendar({
                   data-date={date}
                   title={ariaLabel}
                   aria-label={ariaLabel}
-                  aria-pressed={selected}
-                  onClick={() => handleDateTap(date)}
+                  aria-haspopup="dialog"
+                  onClick={(event) => {
+                    invokerRef.current = event.currentTarget;
+                    setSelectedDate(date);
+                  }}
                   className={`${dayClass} transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-1`}
                 >
                   <span>{dayNum}</span>
@@ -385,7 +340,9 @@ export function AvailabilityCalendar({
             })}
           </div>
           <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-600">
-            {(Object.keys(STATUS_META) as DayStatus[]).map((status) => (
+            {(Object.keys(STATUS_META) as DayStatus[]).filter(
+              (status) => status !== "fully_booked" || hasFullDates,
+            ).map((status) => (
               <li key={status} className="flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
@@ -405,43 +362,20 @@ export function AvailabilityCalendar({
         </div>
       )}
 
-      {popupOpen && selectedDate !== null ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          <div
-            aria-hidden="true"
-            onClick={closePopup}
-            className="absolute inset-0 bg-stone-900/50"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Jadwal ${formatDayId(selectedDate)}`}
-            aria-live="polite"
-            className="relative max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-stone-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:pb-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-bold">
-                Jadwal {formatDayId(selectedDate)}
-                {headerStatus ? ` · ${STATUS_META[headerStatus].label}` : ""}
-              </p>
-              <button
-                // biome-ignore lint/a11y/noAutofocus: move focus into the
-                // modal on open so keyboard and screen-reader users land
-                // inside the popup; focus returns to the date on close.
-                autoFocus
-                type="button"
-                onClick={closePopup}
-                aria-label="Tutup"
-                className="rounded-full border border-stone-300 px-3 py-1 text-sm font-semibold transition hover:bg-stone-100"
-              >
-                ✕
-              </button>
-            </div>
+      {selectedDate !== null ? (
+        <Dialog
+          open={popupOpen}
+          onClose={closePopup}
+          title={`Jadwal ${formatDayId(selectedDate)}`}
+          returnFocusTo={invokerRef}
+          panelClassName="max-w-md max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:[padding-bottom:env(safe-area-inset-bottom)]"
+        >
+          <div>
             {!detailLoaded && !detailError ? (
-              <p className="mt-2 text-sm text-stone-600">Memuat detail…</p>
+              <p role="status" className="text-sm text-stone-600">Memuat detail…</p>
             ) : detailError || detail === null ? (
               <div className="mt-2 text-center">
-                <p className="text-sm text-stone-600">
+                <p role="alert" className="text-sm text-stone-600">
                   {detailError ?? "Gagal memuat detail jadwal. Coba lagi."}
                 </p>
                 <button
@@ -482,12 +416,15 @@ export function AvailabilityCalendar({
                   </p>
                 ) : (
                   <p className="mt-2 rounded-lg bg-lime-100 px-3 py-2 text-sm font-medium text-green-900 ring-1 ring-inset ring-stone-900/5">
-                    Seharian tersedia
+                    Belum ada jam terisi di jadwal ini.
                   </p>
                 )}
                 {isBookableDetail ? (
                   <div className="mt-3 border-t border-stone-200 pt-3">
                     <p className="text-sm font-semibold">Mau jam berapa?</p>
+                    <p className="mt-1 text-sm text-stone-600">
+                      Penata rias akan mengonfirmasi jamnya lewat WhatsApp.
+                    </p>
                     <div className="mt-2 flex gap-2">
                       <label className="flex-1 text-xs font-medium text-stone-600">
                         Jam mulai
@@ -561,7 +498,7 @@ export function AvailabilityCalendar({
               </div>
             )}
           </div>
-        </div>
+        </Dialog>
       ) : null}
 
       {/* Single-action rule: the popup's date chat action carries the
