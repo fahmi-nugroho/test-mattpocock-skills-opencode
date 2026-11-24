@@ -9,6 +9,7 @@ import {
 import type { PublicProfile } from "@/lib/supabase/public-profile";
 
 const OWNER_PORTRAIT_URL = process.env.NEXT_PUBLIC_HERO_PORTRAIT ?? "";
+const PUBLIC_STAT_LABELS = new Map([["client", "Klien"], ["rating", "Penilaian"]]);
 
 export function HeroTrust({
   portfolio,
@@ -88,7 +89,9 @@ export function LandingProof({
         <dl className="mt-4 grid max-w-xl grid-cols-2 gap-4 sm:grid-cols-4">
           {displayedStats.map((stat, index) => (
             <div key={stat.id ?? `${stat.label}-${index}`} className="min-w-0 break-words">
-              <dt className="text-sm text-stone-600">{stat.label === "Client" ? "Klien" : stat.label}</dt>
+              <dt className="text-sm text-stone-600">
+                {PUBLIC_STAT_LABELS.get(stat.label.trim().toLowerCase()) ?? stat.label}
+              </dt>
               <dd className="mt-1 text-lg font-semibold text-espresso">{stat.value.replaceAll("⭐", "★")}</dd>
             </div>
           ))}

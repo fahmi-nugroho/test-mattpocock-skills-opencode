@@ -304,17 +304,15 @@ export function AdminDashboard() {
                 Mirror aktif, tetapi pembaruan terakhir gagal
                 {googleStatus?.connection.last_error
                   ? `: ${googleStatus.connection.last_error}`
-                  : "."}{" "}
-                Periksa koneksi di{" "}
-                <button
-                  type="button"
-                  onClick={() => openTab("pengaturan")}
-                  className="font-semibold underline underline-offset-2"
-                >
-                  Pengaturan
-                </button>
-                .
+                : "."}
               </p>
+              <button
+                type="button"
+                onClick={() => openTab("pengaturan", "", "google-calendar")}
+                className="mt-1 min-h-11 text-sm font-semibold text-amber-900 underline underline-offset-4"
+              >
+                Periksa Google Calendar
+              </button>
             </div>
           ) : null}
 
@@ -517,8 +515,8 @@ export function AdminDashboard() {
                         placeholder="6281234567890"
                         className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
                       />
-                      <span id="admin-whatsapp-hint" className="mt-1 block text-xs text-neutral-600">
-                        Pakai kode negara, misalnya 62 untuk Indonesia.
+                      <span id="admin-whatsapp-hint" className="mt-1 block text-sm text-neutral-600">
+                        Dipakai pada tombol WhatsApp di situs dan kontak di bagian atas invoice. Awali dengan kode negara, misalnya 62.
                       </span>
                     </label>
                     <label className="block min-w-0">
@@ -532,11 +530,17 @@ export function AdminDashboard() {
                         placeholder="@wandanamakeup"
                         className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
                       />
+                      <span className="mt-1 block text-sm text-neutral-600">
+                        Tampil bersama kontak WhatsApp di bagian atas invoice.
+                      </span>
                     </label>
                   </div>
                   <fieldset className="min-w-0 border-t border-neutral-200 pt-3">
                     <legend className="pr-2 text-sm font-semibold">Rekening untuk invoice</legend>
-                    <p className="mb-3 text-xs text-neutral-600">Detail rekening boleh dikosongkan.</p>
+                    <p className="mb-3 text-sm text-neutral-600">
+                      Dicetak di bagian Informasi Pembayaran untuk invoice yang masih memiliki sisa tagihan.
+                      Kolom kosong tampil sebagai tanda pisah (—).
+                    </p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="block min-w-0">
                         <span className="text-sm font-medium">Nama bank</span>

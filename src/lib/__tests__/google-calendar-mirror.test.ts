@@ -33,6 +33,7 @@ const CONNECTION: GoogleCalendarConnection = {
   enabled: true,
   calendar_id: CONFIG.calendarId,
   last_verified_at: "2026-10-21T00:00:00.000Z",
+  last_synced_at: null,
   last_error: "",
   updated_at: "2026-10-21T00:00:00.000Z",
 };
@@ -319,6 +320,7 @@ describe("drainMirrorQueue", () => {
       expect.objectContaining({ booking_id: "b1", google_event_id: "g-created-1" }),
     ]);
     expect(state.work[0]?.processed_at).not.toBeNull();
+    expect(state.connection.last_synced_at).toBe(NOW.toISOString());
     expect(result).toMatchObject({ ok: true, failed: 0, results: [
       { bookingId: "b1", operation: "upsert", outcome: "created", error: null },
     ] });
@@ -374,6 +376,7 @@ describe("drainMirrorQueue", () => {
     expect(port.calls).toContainEqual(["delete", CONFIG.calendarId, "g1"]);
     expect(state.events).toEqual([]);
     expect(result.results[0]).toMatchObject({ outcome: "deleted" });
+    expect(state.connection.last_synced_at).toBe(NOW.toISOString());
   });
 
   it("removes a hard-deleted Booking's event because the tracked row survived", async () => {
@@ -391,9 +394,11 @@ describe("drainMirrorQueue", () => {
   });
 
   it("leaves the intent open with its error when Google fails, without throwing", async () => {
+    const lastSyncedAt = "2026-10-20T02:00:00.000Z";
     const { client, state } = fakeClient({
       bookings: [booking()],
       work: [work()],
+      connection: { last_synced_at: lastSyncedAt },
     });
     const port = fakePort({ createErrors: [new Error("Google sedang down")] });
 
@@ -415,6 +420,7 @@ describe("drainMirrorQueue", () => {
     });
     expect(state.work[0]?.next_attempt_at).not.toBe(NOW.toISOString());
     expect(state.connection.last_error).toMatch(/Google sedang down/);
+    expect(state.connection.last_synced_at).toBe(lastSyncedAt);
 
     // The failure is visible on the Booking, derived from the open row.
     expect(

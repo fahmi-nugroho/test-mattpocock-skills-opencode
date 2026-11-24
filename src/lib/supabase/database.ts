@@ -169,6 +169,7 @@ export interface GoogleCalendarConnection {
   enabled: boolean;
   calendar_id: string;
   last_verified_at: string | null; // ISO timestamp
+  last_synced_at: string | null; // latest successful booking change
   last_error: string; // "" when healthy
   updated_at: string; // ISO timestamp
 }

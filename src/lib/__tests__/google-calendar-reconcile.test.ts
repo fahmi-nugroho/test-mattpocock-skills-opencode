@@ -38,6 +38,7 @@ const CONNECTION: GoogleCalendarConnection = {
   enabled: true,
   calendar_id: CONFIG.calendarId,
   last_verified_at: "2026-10-21T00:00:00.000Z",
+  last_synced_at: null,
   last_error: "",
   updated_at: "2026-10-21T00:00:00.000Z",
 };
