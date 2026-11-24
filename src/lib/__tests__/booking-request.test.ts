@@ -262,6 +262,15 @@ describe("validateBookingRequestPayload", () => {
     ).toThrow(/mulai|start/i);
   });
 
+  it("identifies the first invalid field in the form's schedule-first order", () => {
+    expect(() => validateBookingRequestPayload({
+      ...VALID_PAYLOAD, end_time: VALID_PAYLOAD.start_time, client_phone: "",
+    })).toThrow(expect.objectContaining({ field: "end_time" }));
+    expect(() => validateBookingRequestPayload({
+      ...VALID_PAYLOAD, client_phone: "", hairdo: "",
+    })).toThrow(expect.objectContaining({ field: "client_phone" }));
+  });
+
   it("accepts a partial slot (each field is optional, absent -> null)", () => {
     const { date, start_time, end_time, ...rest } = VALID_PAYLOAD;
     void date;

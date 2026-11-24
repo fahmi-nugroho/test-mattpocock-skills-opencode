@@ -108,6 +108,30 @@ interface ServiceDraft {
   pricing?: { unit_price: string; quantity: string };
 }
 
+function blankBookingDraft() {
+  return {
+    date: "",
+    start: "",
+    end: "",
+    selectedServices: [] as ServiceDraft[],
+    clientName: "",
+    clientPhone: "",
+    notes: "",
+    status: "pending" as BookingStatus,
+    eventType: "",
+    headcount: "1",
+    venue: "",
+    hairdo: "",
+    reference: "",
+    legacyPrefillHairdo: "",
+    manualTotal: "",
+    dpAmount: "0",
+    bagianMua: "",
+  };
+}
+
+type BookingCreateDraft = ReturnType<typeof blankBookingDraft>;
+
 function serviceDraft({ id, name, pricing }: BookingService): ServiceDraft {
   return {
     id,
@@ -312,28 +336,32 @@ export function BookingsManager() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [date, setDate] = useState(() => getTodayKey());
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("10:00");
-  const [selectedServices, setSelectedServices] = useState<ServiceDraft[]>([]);
-  const [clientName, setClientName] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
-  const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState<BookingStatus>("pending");
-  const [eventType, setEventType] = useState("");
-  const [headcount, setHeadcount] = useState("1");
-  const [venue, setVenue] = useState("");
-  const [hairdo, setHairdo] = useState("");
-  const [reference, setReference] = useState("");
-  // A request accepted from before the change carries free text in the reused
-  // column; the radio cannot show it, so it is kept here and shown read-only.
-  const [legacyPrefillHairdo, setLegacyPrefillHairdo] = useState("");
-  const [manualTotal, setManualTotal] = useState("");
-  const [dpAmount, setDpAmount] = useState("0");
-  const [bagianMua, setBagianMua] = useState("");
-  // Set when "Jadikan Booking" prefilled this form from a request; the next
-  // successful save links the request to the new booking.
-  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [manualDraft, setManualDraft] = useState(() => ({
+    ...blankBookingDraft(), date: getTodayKey(), start: "09:00", end: "10:00",
+  }));
+  const [requestDraft, setRequestDraft] = useState<{
+    requestId: string;
+    customerNotes: string;
+    values: BookingCreateDraft;
+  } | null>(null);
+  const [unlinkedBookings, setUnlinkedBookings] = useState<Partial<Record<string, string>>>({});
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const savedBookingId = requestDraft ? unlinkedBookings[requestDraft.requestId] : undefined;
+  const {
+    date, start, end, selectedServices, clientName, clientPhone, notes, status,
+    eventType, headcount, venue, hairdo, reference, legacyPrefillHairdo,
+    manualTotal, dpAmount, bagianMua,
+  } = requestDraft?.values ?? manualDraft;
+
+  function updateDraft(changes: Partial<BookingCreateDraft>) {
+    if (requestDraft) {
+      setRequestDraft((current) => current && {
+        ...current, values: { ...current.values, ...changes },
+      });
+    } else {
+      setManualDraft((current) => ({ ...current, ...changes }));
+    }
+  }
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -655,35 +683,41 @@ export function BookingsManager() {
     return () => cancelAnimationFrame(frame);
   }, [listOpen]);
 
-  // "Jadikan Booking" hand-off: the Permintaan section dispatches the request
-  // draft, this always-mounted form fills itself in (client/event fields
-  // always; slot only when the admin already set one, else keep the form
-  // defaults) and remembers the request to link after a normal save.
+  const activeRequestId = requestDraft?.requestId;
+  const draftFieldsetProps = {
+    disabled: saving || Boolean(savedBookingId),
+    hidden: Boolean(savedBookingId),
+  };
+
   useEffect(() => {
     const onAccept = (event: Event) => {
       const detail = (event as CustomEvent<AcceptRequestDetail>).detail;
-      if (!detail) return;
-      const { requestId, draft } = detail;
-      setClientName(draft.client_name);
-      setClientPhone(draft.client_phone);
-      setEventType(draft.event_type);
-      setHeadcount(String(draft.headcount));
-      setVenue(draft.venue);
-      // A legacy request's text is not one of the two Styles, so it cannot
-      // seed the radio; keep it read-only and leave the radio unselected.
-      setHairdo(isStyle(draft.hairdo) ? draft.hairdo : "");
-      setLegacyPrefillHairdo(
-        draft.hairdo !== "" && !isStyle(draft.hairdo) ? draft.hairdo : "",
-      );
-      setReference(draft.reference);
-      if (draft.date) setDate(draft.date);
-      if (draft.start_time) setStart(draft.start_time);
-      if (draft.end_time) setEnd(draft.end_time);
-      setPendingRequestId(requestId);
-      setSelectedServices([]);
-      setManualTotal("");
-      setBagianMua("");
-      setFormError(null);
+      if (!detail || saving) return;
+      if (activeRequestId && activeRequestId !== detail.requestId) {
+        setFormError("Selesaikan draf permintaan ini atau kembali ke booking manual sebelum membuka permintaan lain.");
+      } else {
+        const { requestId, draft, customerNotes } = detail;
+        setRequestDraft((current) => current ?? {
+          requestId,
+          customerNotes,
+          values: {
+            ...blankBookingDraft(),
+            clientName: draft.client_name,
+            clientPhone: draft.client_phone,
+            eventType: draft.event_type,
+            headcount: String(draft.headcount),
+            venue: draft.venue,
+            hairdo: isStyle(draft.hairdo) ? draft.hairdo : "",
+            legacyPrefillHairdo: isStyle(draft.hairdo) ? "" : draft.hairdo,
+            reference: draft.reference,
+            date: draft.date,
+            start: draft.start_time,
+            end: draft.end_time,
+          },
+        });
+        setFormError(null);
+        setSaveNotice(null);
+      }
       requestAnimationFrame(() => {
         const form = document.getElementById("booking-form");
         form?.focus({ preventScroll: true });
@@ -692,7 +726,7 @@ export function BookingsManager() {
     };
     window.addEventListener(ACCEPT_REQUEST_EVENT, onAccept);
     return () => window.removeEventListener(ACCEPT_REQUEST_EVENT, onAccept);
-  }, []);
+  }, [activeRequestId, saving]);
 
   const createSelections = serviceSelections(selectedServices);
   const totalPrice = selectedServices.length
@@ -712,77 +746,62 @@ export function BookingsManager() {
     e.preventDefault();
     if (saving) return;
     setFormError(null);
-    let validated;
-    try {
-      validated = validateBookingInput({
-        date,
-        start_time: start,
-        end_time: end,
-        selected_services: createSelections,
-        client_name: clientName,
-        client_phone: clientPhone,
-        notes,
-        status,
-        event_type: eventType,
-        headcount: parseIntField(headcount, 1),
-        venue,
-        hairdo,
-        reference,
-        total_price: parseIntField(totalPrice, null),
-        dp_amount: parseIntField(dpAmount, 0),
-        bagian_mua: parseIntField(bagianMua, null),
-      });
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Input tidak valid");
-      return;
-    }
+    setSaveNotice(null);
+    let bookingId = savedBookingId;
+    let created = false;
+    let linked = false;
     setSaving(true);
     try {
-      const row = await createBooking(supabaseBrowser(), validated);
-      // One ordering rule now: the dialog's Mendatang/Riwayat split sorts
-      // whatever is loaded, so a create no longer re-sorts here.
-      setItems((prev) => [...prev, row]);
-      setClientName("");
-      setClientPhone("");
-      setNotes("");
-      setSelectedServices([]);
-      setStatus("pending");
-      setEventType("");
-      setHeadcount("1");
-      setVenue("");
-      setHairdo("");
-      setReference("");
-      setLegacyPrefillHairdo("");
-      setManualTotal("");
-      setDpAmount("0");
-      setBagianMua("");
-      // A prefilled accept path links the request to the booking it just
-      // created. The booking already exists, so a link failure is reported
-      // rather than retried — it must never be created a second time. The
-      // pending id is cleared no matter what, so a later manual save can
-      // never link this request to an unrelated booking.
-      if (pendingRequestId) {
-        try {
-          await linkBookingRequest(supabaseBrowser(), pendingRequestId, row.id);
-        } catch (linkErr) {
-          setFormError(
-            linkErr instanceof Error
-              ? linkErr.message
-              : "Booking tersimpan, tetapi permintaan gagal ditautkan.",
-          );
-        } finally {
-          setPendingRequestId(null);
+      const client = supabaseBrowser();
+      if (!bookingId) {
+        const validated = validateBookingInput({
+          date,
+          start_time: start,
+          end_time: end,
+          selected_services: createSelections,
+          client_name: clientName,
+          client_phone: clientPhone,
+          notes,
+          status,
+          event_type: eventType,
+          headcount: parseIntField(headcount, 1),
+          venue,
+          hairdo,
+          reference,
+          total_price: parseIntField(totalPrice, null),
+          dp_amount: parseIntField(dpAmount, 0),
+          bagian_mua: parseIntField(bagianMua, null),
+        });
+        const row = await createBooking(client, validated);
+        bookingId = row.id;
+        created = true;
+        setItems((previous) => [...previous, row]);
+        if (requestDraft) {
+          const { requestId } = requestDraft;
+          setUnlinkedBookings((previous) => ({ ...previous, [requestId]: row.id }));
+        } else {
+          setManualDraft({ ...blankBookingDraft(), date, start, end });
         }
       }
-      notifyScheduleChanged();
-      // Google work happens after the local save has fully succeeded and is
-      // never awaited by this form, so a slow or broken Google cannot block it.
-      void drainAndRefreshMirror();
+      if (requestDraft) {
+        const { requestId } = requestDraft;
+        await linkBookingRequest(client, requestId, bookingId);
+        linked = true;
+        setUnlinkedBookings((previous) => {
+          const remaining = { ...previous };
+          delete remaining[requestId];
+          return remaining;
+        });
+        setRequestDraft(null);
+        setSaveNotice("Booking dari permintaan tersimpan. Kamu bisa melanjutkan draf manual.");
+      }
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Gagal menyimpan booking. Coba lagi.",
-      );
+      const message = err instanceof Error ? err.message : "Coba lagi.";
+      setFormError(bookingId && requestDraft ? `Booking sudah tersimpan. ${message}` : message);
     } finally {
+      if (created || linked) notifyScheduleChanged();
+      // The Google mirror runs after the app has saved the booking.
+      if (created) void drainAndRefreshMirror();
       setSaving(false);
     }
   }
@@ -916,6 +935,9 @@ export function BookingsManager() {
     try {
       await deleteBooking(supabaseBrowser(), item.id);
       setItems((prev) => prev.filter((p) => p.id !== item.id));
+      setUnlinkedBookings((previous) => Object.fromEntries(
+        Object.entries(previous).filter(([, bookingId]) => bookingId !== item.id),
+      ));
       // The FK cascades in the database; the loaded list follows at once.
       setInvoices((prev) => prev.filter((row) => row.booking_id !== item.id));
       notifyScheduleChanged();
@@ -1415,8 +1437,40 @@ export function BookingsManager() {
         tabIndex={-1}
         className="scroll-mt-24 space-y-5 rounded-xl border border-neutral-200 bg-white p-4 sm:p-5"
       >
-        <h3 className="text-sm font-bold">Tambah booking</h3>
-        <fieldset className="min-w-0 space-y-3">
+        <header className="space-y-2">
+          <h3 className="text-sm font-bold">{requestDraft ? "Booking dari permintaan" : "Tambah booking"}</h3>
+          {requestDraft ? (
+            <div className="space-y-2">
+              <p className="text-sm text-neutral-600">
+                {savedBookingId
+                  ? "Booking sudah tersimpan. Selesaikan penautan ke permintaan."
+                  : "Draf manual tetap tersedia selama dashboard ini terbuka."}
+              </p>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(event) => {
+                  event.currentTarget.form?.focus();
+                  setRequestDraft(null);
+                  setFormError(null);
+                }}
+                className="min-h-11 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+              >
+                {savedBookingId ? "Kembali ke booking manual" : "Batalkan draf permintaan"}
+              </button>
+            </div>
+          ) : null}
+          {saveNotice ? <p role="status" className="text-sm text-green-700">{saveNotice}</p> : null}
+        </header>
+        {requestDraft ? (
+          <dl className="space-y-1 rounded-lg bg-neutral-50 px-4 py-3">
+            <dt className="text-sm font-semibold">Catatan dari klien</dt>
+            <dd className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-neutral-700">
+              {requestDraft.customerNotes || "Klien tidak menambahkan catatan."}
+            </dd>
+          </dl>
+        ) : null}
+        <fieldset {...draftFieldsetProps} className="min-w-0 space-y-3 disabled:opacity-70">
           <legend className="text-sm font-semibold">Jadwal</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block min-w-0">
@@ -1425,7 +1479,7 @@ export function BookingsManager() {
                 type="date"
                 required
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => updateDraft({ date: e.target.value })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
@@ -1435,7 +1489,7 @@ export function BookingsManager() {
                 type="time"
                 required
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={(e) => updateDraft({ start: e.target.value })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
@@ -1445,7 +1499,7 @@ export function BookingsManager() {
                 type="time"
                 required
                 value={end}
-                onChange={(e) => setEnd(e.target.value)}
+                onChange={(e) => updateDraft({ end: e.target.value })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
@@ -1453,7 +1507,7 @@ export function BookingsManager() {
               <span className="text-sm font-medium">Status</span>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as BookingStatus)}
+                onChange={(e) => updateDraft({ status: e.target.value as BookingStatus })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               >
                 {BOOKING_STATUSES.map((s) => (
@@ -1465,7 +1519,7 @@ export function BookingsManager() {
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 space-y-3">
+        <fieldset {...draftFieldsetProps} className="min-w-0 space-y-3 disabled:opacity-70">
           <legend className="text-sm font-semibold">Klien</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block min-w-0">
@@ -1474,7 +1528,7 @@ export function BookingsManager() {
                 type="text"
                 required
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
+                onChange={(e) => updateDraft({ clientName: e.target.value })}
                 placeholder="Nama klien"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
@@ -1485,14 +1539,14 @@ export function BookingsManager() {
                 type="tel"
                 required
                 value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
+                onChange={(e) => updateDraft({ clientPhone: e.target.value })}
                 placeholder="08…"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 space-y-3">
+        <fieldset {...draftFieldsetProps} className="min-w-0 space-y-3 disabled:opacity-70">
           <legend className="text-sm font-semibold">
             Layanan dan detail acara
           </legend>
@@ -1502,7 +1556,7 @@ export function BookingsManager() {
               <input
                 type="text"
                 value={eventType}
-                onChange={(e) => setEventType(e.target.value)}
+                onChange={(e) => updateDraft({ eventType: e.target.value })}
                 placeholder="Wisuda, lamaran…"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
@@ -1513,7 +1567,7 @@ export function BookingsManager() {
                 type="number"
                 min={1}
                 value={headcount}
-                onChange={(e) => setHeadcount(e.target.value)}
+                onChange={(e) => updateDraft({ headcount: e.target.value })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
@@ -1521,14 +1575,14 @@ export function BookingsManager() {
               selected={selectedServices}
               catalog={services}
               headcount={headcount}
-              onChange={setSelectedServices}
+              onChange={(value) => updateDraft({ selectedServices: value })}
             />
             <label className="block">
               <span className="text-sm font-medium">Lokasi</span>
               <input
                 type="text"
                 value={venue}
-                onChange={(e) => setVenue(e.target.value)}
+                onChange={(e) => updateDraft({ venue: e.target.value })}
                 placeholder="Gedung / alamat"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
@@ -1558,10 +1612,7 @@ export function BookingsManager() {
                         name="create-hairdo"
                         value={value}
                         checked={selected}
-                        onChange={() => {
-                          setHairdo(value);
-                          setLegacyPrefillHairdo("");
-                        }}
+                        onChange={() => updateDraft({ hairdo: value, legacyPrefillHairdo: "" })}
                         className="h-4 w-4 accent-espresso"
                       />
                       <span className="text-sm font-medium">{option.label}</span>
@@ -1583,14 +1634,14 @@ export function BookingsManager() {
               <input
                 type="text"
                 value={reference}
-                onChange={(e) => setReference(e.target.value)}
+                onChange={(e) => updateDraft({ reference: e.target.value })}
                 placeholder="Link foto atau deskripsi singkat"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
         </fieldset>
-        <fieldset className="min-w-0 space-y-3">
+        <fieldset {...draftFieldsetProps} className="min-w-0 space-y-3 disabled:opacity-70">
           <legend className="text-sm font-semibold">
             Pembayaran dan catatan
           </legend>
@@ -1604,7 +1655,7 @@ export function BookingsManager() {
                 min={0}
                 value={totalPrice}
                 readOnly={selectedServices.length > 0}
-                onChange={selectedServices.length ? undefined : (e) => setManualTotal(e.target.value)}
+                onChange={selectedServices.length ? undefined : (e) => updateDraft({ manualTotal: e.target.value })}
                 placeholder={selectedServices.length ? "Lengkapi rincian layanan" : "Kosongkan bila belum disepakati"}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm read-only:bg-neutral-50"
               />
@@ -1615,22 +1666,22 @@ export function BookingsManager() {
                 type="number"
                 min={0}
                 value={dpAmount}
-                onChange={(e) => setDpAmount(e.target.value)}
+                onChange={(e) => updateDraft({ dpAmount: e.target.value })}
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
             </label>
-            <BagianMuaField value={bagianMua} total={totalPrice} onChange={(e) => setBagianMua(e.target.value)} />
+            <BagianMuaField value={bagianMua} total={totalPrice} onChange={(e) => updateDraft({ bagianMua: e.target.value })} />
             {createRemaining !== null ? (
               <p className="text-sm text-neutral-600 sm:col-span-2">
                 Sisa pembayaran: {formatIDR(createRemaining)}
               </p>
             ) : null}
             <label className="block sm:col-span-2">
-              <span className="text-sm font-medium">Catatan</span>
+              <span className="text-sm font-medium">Catatan internal</span>
               <input
                 type="text"
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => updateDraft({ notes: e.target.value })}
                 placeholder="Hasil negosiasi WA, permintaan khusus…"
                 className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
@@ -1648,7 +1699,7 @@ export function BookingsManager() {
             disabled={saving}
             className="min-h-11 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
           >
-            {saving ? "Menyimpan…" : "Tambah booking"}
+            {saving ? "Memproses…" : savedBookingId ? "Tautkan booking" : "Tambah booking"}
           </button>
         </div>
       </form>

@@ -21,6 +21,12 @@ export interface ValidatedRequestSlot {
   end_time: string | null;
 }
 
+export class RequestSlotValidationError extends Error {
+  constructor(public readonly field: keyof RequestSlotInput, message: string) {
+    super(message);
+  }
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -44,16 +50,16 @@ export function validateRequestSlot(
   const end_time = present(input.end_time);
 
   if (date !== null && !DATE_RE.test(date)) {
-    throw new Error("Tanggal permintaan harus format YYYY-MM-DD");
+    throw new RequestSlotValidationError("date", "Tanggal permintaan harus format YYYY-MM-DD");
   }
   if (start_time !== null && !HHMM_RE.test(start_time)) {
-    throw new Error("Jam permintaan harus format HH:MM (00:00–23:59)");
+    throw new RequestSlotValidationError("start_time", "Jam permintaan harus format HH:MM (00:00–23:59)");
   }
   if (end_time !== null && !HHMM_RE.test(end_time)) {
-    throw new Error("Jam permintaan harus format HH:MM (00:00–23:59)");
+    throw new RequestSlotValidationError("end_time", "Jam permintaan harus format HH:MM (00:00–23:59)");
   }
   if (start_time !== null && end_time !== null && !(start_time < end_time)) {
-    throw new Error("Jam mulai harus sebelum jam selesai");
+    throw new RequestSlotValidationError("end_time", "Jam mulai harus sebelum jam selesai");
   }
 
   return { date, start_time, end_time };

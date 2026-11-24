@@ -153,7 +153,10 @@ export async function linkBookingRequest(
   if (readError) {
     throw new Error(`Gagal memuat permintaan: ${readError.message}`);
   }
-  throw new Error(refusalMessage(deriveBookingRequestState(current as BookingRequest, new Date())));
+  const request = current as BookingRequest;
+  // A retry may follow a lost response after the first link was saved.
+  if (request.accepted_booking_id === bookingId) return request;
+  throw new Error(refusalMessage(deriveBookingRequestState(request, new Date())));
 }
 
 /**

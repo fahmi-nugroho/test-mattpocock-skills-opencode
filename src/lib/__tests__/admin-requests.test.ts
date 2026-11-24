@@ -285,6 +285,12 @@ describe("linkBookingRequest", () => {
     );
   });
 
+  it("treats a retry of the same link as success", async () => {
+    const current = { ...REQUEST_ROW, accepted_booking_id: "b-1" };
+    const { client } = requestClient({ updateRows: [], current });
+    await expect(linkBookingRequest(client, "req-1", "b-1")).resolves.toEqual(current);
+  });
+
   it("refuses an expired request in Indonesian", async () => {
     const current = { ...REQUEST_ROW, expires_at: "2020-01-01T00:00:00.000Z" };
     const { client } = requestClient({ updateRows: [], current });

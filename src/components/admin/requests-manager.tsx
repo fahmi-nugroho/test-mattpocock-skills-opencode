@@ -390,6 +390,7 @@ export function RequestsManager({
     notifyAcceptRequest({
       requestId: item.id,
       draft: requestToBookingDraft(item),
+      customerNotes: item.notes,
     });
     setSkipReturnFocus(true);
     setListOpen(false);
