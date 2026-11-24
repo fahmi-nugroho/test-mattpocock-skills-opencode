@@ -1258,9 +1258,47 @@ export function BookingsManager({ queueHash }: { queueHash: string | null }) {
             ) : null}
           </div>
         )}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {editingId !== item.id ? (
-            <>
+        {editingId === item.id ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="submit"
+              form={editFormId}
+              disabled={rowBusy === item.id}
+              className="min-h-11 rounded-full bg-espresso px-4 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingBooking(null)}
+              className="min-h-11 rounded-full border border-neutral-300 px-4 text-sm font-semibold"
+            >
+              Batal
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3 border-t border-neutral-200 pt-3">
+            <div role="group" aria-label="Booking" className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={rowBusy !== null}
+                onClick={() => startEdit(item)}
+                className="min-h-11 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+              >
+                Ubah booking
+              </button>
+              {item.status !== "confirmed" ? (
+                <ConfirmAction
+                  label="Konfirmasi booking"
+                  title={`Konfirmasi booking ${item.client_name}?`}
+                  description="Jam booking ini akan tercatat sebagai terisi di kalender publik."
+                  onConfirm={() => onSetStatus(item, "confirmed")}
+                  disabled={rowBusy !== null}
+                />
+              ) : null}
+            </div>
+            <div role="group" aria-label="Pembayaran dan invoice" className="flex flex-wrap items-center gap-2">
+              <p className="w-full text-sm font-medium text-neutral-600">Pembayaran &amp; invoice</p>
               {settlementAmount > 0 ? (
                 <ConfirmAction
                   label={settlementLabel}
@@ -1285,84 +1323,48 @@ export function BookingsManager({ queueHash }: { queueHash: string | null }) {
                 type="button"
                 onClick={(event) => openInvoices(item, event.currentTarget)}
                 aria-haspopup="dialog"
-                className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100"
+                className="min-h-11 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold transition hover:bg-neutral-100"
               >
                 {newestInvoice
                   ? `Invoice (${bookingInvoices.length}) · ${newestInvoice.number} · ${invoiceSentLabel(newestInvoice)}`
                   : "Buat invoice"}
               </button>
-              {mirrorState === "failed" ? (
-                <button
-                  type="button"
-                  disabled={rowBusy === item.id}
-                  onClick={() => onRetryMirror(item)}
-                  className="rounded-full border border-amber-400 px-4 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
-                >
-                  {rowBusy === item.id ? "Mencoba…" : "Coba lagi"}
-                </button>
-              ) : null}
-            </>
-          ) : null}
-          {editingId === item.id ? (
-            <>
-              <button
-                type="submit"
-                form={editFormId}
-                disabled={rowBusy === item.id}
-                className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-              >
-                {rowBusy === item.id ? "Menyimpan…" : "Simpan"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingBooking(null)}
-                className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold"
-              >
-                Batal
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={rowBusy !== null}
-              onClick={() => startEdit(item)}
-              className="min-h-10 rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
-            >
-              Ubah booking
-            </button>
-          )}
-          {editingId !== item.id ? (
-            <>
-              {item.status !== "confirmed" ? (
+            </div>
+            <details className="border-t border-neutral-200">
+              <summary className="w-fit cursor-pointer py-3 text-sm font-semibold text-neutral-700">Tindakan lain</summary>
+              <div className="flex flex-wrap items-center gap-2">
+                {mirrorState === "failed" ? (
+                  <button
+                    type="button"
+                    disabled={rowBusy === item.id}
+                    onClick={() => onRetryMirror(item)}
+                    className="min-h-11 rounded-full border border-amber-400 px-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+                  >
+                    {rowBusy === item.id ? "Mencoba…" : "Ulangi sinkronisasi Google"}
+                  </button>
+                ) : null}
+                {item.status !== "cancelled" ? (
+                  <ConfirmAction
+                    label="Batalkan booking"
+                    title={`Batalkan booking ${item.client_name}?`}
+                    description="Booking akan tetap tercatat sebagai batal. Jamnya dapat tersedia kembali di kalender publik."
+                    onConfirm={() => onSetStatus(item, "cancelled")}
+                    disabled={rowBusy !== null}
+                    destructive
+                  />
+                ) : null}
                 <ConfirmAction
-                  label="Konfirmasi booking"
-                  title={`Konfirmasi booking ${item.client_name}?`}
-                  description="Jam booking ini akan tercatat sebagai terisi di kalender publik."
-                  onConfirm={() => onSetStatus(item, "confirmed")}
-                  disabled={rowBusy !== null}
-                />
-              ) : null}
-              {item.status !== "cancelled" ? (
-                <ConfirmAction
-                  label="Batalkan booking"
-                  title={`Batalkan booking ${item.client_name}?`}
-                  description="Booking akan tetap tercatat sebagai batal. Jamnya dapat tersedia kembali di kalender publik."
-                  onConfirm={() => onSetStatus(item, "cancelled")}
+                  label="Hapus booking"
+                  title={`Hapus booking ${item.client_name}?`}
+                  description="Booking dan invoice terkait akan dihapus. Jadwal publik akan diperbarui."
+                  onConfirm={() => onDelete(item)}
                   disabled={rowBusy !== null}
                   destructive
                 />
-              ) : null}
-              <ConfirmAction
-                label="Hapus booking"
-                title={`Hapus booking ${item.client_name}?`}
-                description="Booking dan invoice terkait akan dihapus. Jadwal publik akan diperbarui."
-                onConfirm={() => onDelete(item)}
-                disabled={rowBusy !== null}
-                destructive
-              />
-            </>
-          ) : null}
-        </div>
+              </div>
+            </details>
+          </div>
+        )}
         {rowError?.id === item.id ? (
           <p role="alert" className="mt-2 text-xs text-red-600">
             {rowError.message}

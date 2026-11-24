@@ -63,7 +63,7 @@ export const BOOKING_REQUEST_STATUS_LABEL: Record<
   string
 > = {
   open: "Terbuka",
-  submitted: "Terkirim",
+  submitted: "Diisi klien",
   accepted: "Diterima",
   expired: "Kedaluwarsa",
 };

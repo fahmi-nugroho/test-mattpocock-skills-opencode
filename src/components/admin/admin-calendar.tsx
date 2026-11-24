@@ -147,7 +147,7 @@ export function AdminCalendar({ onOpenBookings }: { onOpenBookings: (date: strin
       setFullDates(next);
       notifyScheduleChanged();
     } catch {
-      setToggleError("Gagal mengubah tanda penuh. Coba lagi.");
+      setToggleError("Gagal mengubah penutupan manual. Coba lagi.");
     } finally {
       setToggling(false);
     }
@@ -322,11 +322,11 @@ export function AdminCalendar({ onOpenBookings }: { onOpenBookings: (date: strin
             </button>
           ) : null}
           <ConfirmAction
-            label={selectedIsFull ? "Hapus tanda penuh" : "Tandai penuh"}
-            title={`${selectedIsFull ? "Hapus tanda penuh untuk" : "Tandai penuh"} ${formatDateId(selected)}?`}
+            label={selectedIsFull ? "Hapus penutupan manual" : "Tutup tanggal secara manual"}
+            title={`${selectedIsFull ? "Hapus penutupan manual untuk" : "Tutup kalender publik untuk"} ${formatDateId(selected)}?`}
             description={selectedIsFull
-              ? "Kalender publik akan kembali mengikuti blokir pada tanggal ini."
-              : "Tanggal ini akan tampil tutup di kalender publik."}
+              ? "Kalender publik akan kembali mengikuti booking dan blokir yang masih tercatat."
+              : "Tanggal ini akan tampil tutup di kalender publik. Booking dan blokir yang sudah tercatat tetap berlaku."}
             onConfirm={onToggleSelected}
             disabled={toggling}
           />

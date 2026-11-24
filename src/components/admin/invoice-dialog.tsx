@@ -195,6 +195,7 @@ export function InvoiceDialog({
       });
       onCreated(invoice);
       setSelectedId(invoice.id);
+      requestAnimationFrame(() => document.getElementById("invoice-preview-title")?.focus());
     } catch (err) {
       setCreateError(
         err instanceof Error
@@ -319,55 +320,7 @@ export function InvoiceDialog({
     >
       {booking ? (
         <>
-          <form
-            onSubmit={onCreate}
-            className="space-y-3 rounded-xl border border-neutral-200 bg-white p-3 sm:p-4"
-          >
-            <h3 className="text-sm font-bold">Terbitkan invoice baru</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-medium">Tanggal terbit</span>
-                <input
-                  type="date"
-                  required
-                  value={issuedOn}
-                  onChange={(e) => setIssuedOn(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-              </label>
-              {!bookingPaid ? (
-                <label className="block">
-                  <span className="text-sm font-medium">Jatuh tempo</span>
-                  <input
-                    type="date"
-                    required
-                    value={dueOn}
-                    onChange={(e) => setDueOn(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                  />
-                </label>
-              ) : null}
-            </div>
-            {refusal ? (
-              <p role="status" className="text-sm text-amber-800">
-                {refusal}
-              </p>
-            ) : null}
-            {createError ? (
-              <p role="alert" className="text-sm text-red-600">
-                {createError}
-              </p>
-            ) : null}
-            <button
-              type="submit"
-              disabled={creating || refusal !== null}
-              className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
-            >
-              {creating ? "Menerbitkan…" : "Terbitkan invoice"}
-            </button>
-          </form>
-
-          <section aria-label="Daftar invoice" className="mt-4">
+          <section aria-label="Daftar invoice">
             <h3 className="text-sm font-bold">Invoice booking ini</h3>
             {rows.length === 0 ? (
               <p className="mt-2 text-sm text-neutral-600">
@@ -438,9 +391,9 @@ export function InvoiceDialog({
               className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:p-4"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-bold">Pratinjau {selected.number}</h3>
+                <h3 id="invoice-preview-title" tabIndex={-1} className="text-sm font-bold">Pratinjau {selected.number}</h3>
                 <p className="text-xs text-neutral-600">
-                  Dari invoice tersimpan, bukan booking saat ini.
+                  Pratinjau memakai data dari invoice tersimpan.
                 </p>
               </div>
               {businessLoadFailed ? (
@@ -491,21 +444,16 @@ export function InvoiceDialog({
               </p>
 
               <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-                <h4 className="text-xs font-bold uppercase tracking-wide text-neutral-600">
-                  Kirim ke klien
-                </h4>
-                <p className="mt-1 text-xs text-neutral-600">
-                  Di ponsel, Bagikan membuka lembar berbagi dengan PNG ini. Di
-                  desktop, berkas yang sama diunduh untuk dilampirkan sendiri.
-                  Tidak ada yang diunggah dan tidak ada yang menandai invoice
-                  terkirim.
+                <h4 className="text-sm font-semibold">Bagikan ke klien</h4>
+                <p className="mt-1 text-sm text-neutral-600">
+                  Bagikan membuka pilihan berbagi jika didukung perangkat. Jika PNG diunduh, lampirkan di chat WhatsApp klien.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={!readyPng || sharing}
                     onClick={() => onShare(selected, readyPng)}
-                    className="rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+                    className="min-h-11 rounded-full bg-espresso px-4 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-60"
                   >
                     {sharing ? "Menyiapkan…" : "Bagikan"}
                   </button>
@@ -517,7 +465,7 @@ export function InvoiceDialog({
                     )}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold transition hover:bg-neutral-100"
+                    className="inline-flex min-h-11 items-center rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100"
                   >
                     Buka WhatsApp
                   </a>
@@ -532,6 +480,23 @@ export function InvoiceDialog({
                     {shareError}
                   </p>
                 ) : null}
+              </div>
+
+              <div className="mt-4 border-t border-neutral-200 pt-3">
+                <h4 className="text-sm font-semibold">Status pengiriman</h4>
+                <p className="mt-1 text-sm text-neutral-600">Tandai setelah klien dikirimi invoice.</p>
+                <button
+                  type="button"
+                  disabled={busyAction !== null}
+                  onClick={() => toggleSent(selected)}
+                  className="mt-2 min-h-11 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:bg-neutral-100 disabled:opacity-60"
+                >
+                  {busyAction === "sent"
+                    ? "Menyimpan…"
+                    : selectedSent
+                      ? "Batalkan tanda terkirim"
+                      : "Tandai terkirim"}
+                </button>
               </div>
 
               {!selectedSent && dateEditId === selected.id ? (
@@ -604,18 +569,6 @@ export function InvoiceDialog({
                     Koreksi tanggal
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  disabled={busyAction !== null}
-                  onClick={() => toggleSent(selected)}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
-                >
-                  {busyAction === "sent"
-                    ? "Menyimpan…"
-                    : selectedSent
-                      ? "Batalkan tanda terkirim"
-                      : "Tandai terkirim"}
-                </button>
                 {!selectedSent ? (
                   <ConfirmAction
                     label="Hapus invoice"
@@ -634,6 +587,55 @@ export function InvoiceDialog({
               ) : null}
             </section>
           ) : null}
+          <form
+            onSubmit={onCreate}
+            className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-white p-3 sm:p-4"
+          >
+            <h3 className="text-sm font-bold">Terbitkan invoice baru</h3>
+            <p className="text-sm text-neutral-600">Simpan salinan data booking saat ini untuk dibagikan ke klien.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-medium">Tanggal terbit</span>
+                <input
+                  type="date"
+                  required
+                  value={issuedOn}
+                  onChange={(e) => setIssuedOn(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+              {!bookingPaid ? (
+                <label className="block">
+                  <span className="text-sm font-medium">Jatuh tempo</span>
+                  <input
+                    type="date"
+                    required
+                    value={dueOn}
+                    onChange={(e) => setDueOn(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+              ) : null}
+            </div>
+            {refusal ? (
+              <p role="status" className="text-sm text-amber-800">
+                {refusal}
+              </p>
+            ) : null}
+            {createError ? (
+              <p role="alert" className="text-sm text-red-600">
+                {createError}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={creating || refusal !== null}
+              className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {creating ? "Menerbitkan…" : "Terbitkan invoice"}
+            </button>
+          </form>
+
         </>
       ) : null}
     </Dialog>

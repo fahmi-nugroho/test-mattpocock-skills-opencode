@@ -20,4 +20,8 @@ describe("buildWaLink", () => {
       "https://wa.me/6281234567890?text=Halo%20%26%20sampai%20jumpa%3F",
     );
   });
+
+  it("uses Indonesia's country code for a local mobile number", () => {
+    expect(buildWaLink("0812-3456-7890", "Halo")).toBe("https://wa.me/6281234567890?text=Halo");
+  });
 });
