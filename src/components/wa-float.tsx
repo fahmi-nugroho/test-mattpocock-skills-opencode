@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { buildGeneralWaLink } from "@/lib/whatsapp";
 
 /**
@@ -6,13 +9,26 @@ import { buildGeneralWaLink } from "@/lib/whatsapp";
  * labelled pill from sm up. Sits at z-40 so any open dialog (z-50) is
  * above it, and globals.css hides it while a dialog is open.
  */
-export function WaFloat({ waNumber }: { waNumber: string }) {
+export function WaFloat({ waNumber, hideWhileVisible }: { waNumber: string; hideWhileVisible: string }) {
+  const [coveredSectionVisible, setCoveredSectionVisible] = useState(false);
+
+  useEffect(() => {
+    const section = document.getElementById(hideWhileVisible);
+    if (!section) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setCoveredSectionVisible(entry.isIntersecting);
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [hideWhileVisible]);
+
   return (
     <a
       href={buildGeneralWaLink(waNumber)}
       target="_blank"
       rel="noreferrer"
       aria-label="Chat WhatsApp"
+      hidden={coveredSectionVisible}
       className="wa-float fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-green-700 text-white shadow-lg shadow-stone-900/20 transition hover:bg-green-800 sm:bottom-5 sm:right-5 sm:h-auto sm:w-auto sm:gap-2 sm:px-5 sm:py-3"
     >
       <svg

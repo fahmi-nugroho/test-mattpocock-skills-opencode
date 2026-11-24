@@ -5,6 +5,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateStatInput } from "@/lib/admin/validate-stat";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
+import { resolveDisplayedStats } from "@/lib/hero-proof";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createProfileStat,
@@ -171,6 +172,8 @@ export function StatsManager() {
     return <p className="mt-3 text-sm text-neutral-600">Memuat stat…</p>;
   }
 
+  const displayedIds = new Set(resolveDisplayedStats(items).map((item) => item.id));
+
   return (
     <div className="mt-4">
       {error ? (
@@ -307,7 +310,9 @@ export function StatsManager() {
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
                     urutan {item.sort} ·{" "}
-                    {item.visible ? "tampil" : "disembunyikan"}
+                    {item.visible
+                      ? displayedIds.has(item.id) ? "Tampil di situs" : "Di luar batas tampilan"
+                      : "Disembunyikan"}
                   </p>
                 </>
               )}

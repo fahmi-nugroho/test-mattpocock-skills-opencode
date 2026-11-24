@@ -15,6 +15,7 @@ export const ACCEPT_REQUEST_EVENT = "mua:accept-request";
 export interface AcceptRequestDetail {
   requestId: string;
   draft: BookingPrefillDraft;
+  customerNotes: string;
 }
 
 export function notifyAcceptRequest(detail: AcceptRequestDetail): void {

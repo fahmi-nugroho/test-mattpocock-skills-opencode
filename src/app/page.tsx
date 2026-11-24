@@ -1,7 +1,7 @@
 import { AvailabilityCalendar } from "@/components/availability-calendar";
 import { PortfolioGrid } from "@/components/portfolio-grid";
 import { PriceList } from "@/components/price-list";
-import { HeroTrust } from "@/components/hero-trust";
+import { HeroTrust, LandingProof } from "@/components/hero-trust";
 import { WaFloat } from "@/components/wa-float";
 import { BUSINESS_NAME } from "@/lib/brand";
 import type {
@@ -22,6 +22,7 @@ import {
   type PublicProfile,
 } from "@/lib/supabase/public-profile";
 import { supabaseServer } from "@/lib/supabase/server";
+import { buildGeneralWaLink } from "@/lib/whatsapp";
 
 // Ticket 06: no ISR cache — admin portfolio/price edits read the same
 // tables live, so the landing reflects them on the very next load.
@@ -59,18 +60,13 @@ async function getLandingData(): Promise<{
         getPublicProfile(supabase),
         getPublicWaNumber(supabase),
       ]);
-    // Profil/stats/testimoni fall back to hardcoded landing content when
-    // their reads fail; services/portfolio fall back to empty sections.
-    // WA keeps its env fallback. The landing never 500s on backend
-    // failure (ticket 03: empty settings/stats → hardcoded fallback).
-    if (waNumber.status === "rejected") throw waNumber.reason;
     return {
       services: settledValue(services, []),
       portfolio: settledValue(portfolio, []),
       testimonials: settledValue(testimonials, []),
       stats: settledValue(stats, []),
       profile: settledValue(profileResult, null),
-      waNumber: waNumber.value,
+      waNumber: settledValue(waNumber, FALLBACK_WA_NUMBER),
     };
   } catch {
     // Landing stays readable when the backend is unreachable: empty
@@ -91,68 +87,66 @@ export default async function Home() {
     await getLandingData();
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-      {/* Hero trust block (ticket 03): live profil + stats, hardcoded fallback. */}
-      <HeroTrust
-        portfolio={portfolio}
-        testimonials={testimonials}
-        stats={stats}
-        profile={profile}
-        waNumber={waNumber}
-      />
+    <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 lg:px-8">
+      <header className="flex items-center justify-between gap-3 border-b border-stone-200 py-2">
+        <p className="font-display text-lg font-bold sm:text-xl">{BUSINESS_NAME}</p>
+        <nav aria-label="Navigasi halaman">
+          <a href="#harga" className="inline-flex min-h-11 items-center text-sm font-semibold text-stone-700 hover:underline hover:underline-offset-4">
+            Harga &amp; layanan
+          </a>
+        </nav>
+      </header>
+      <HeroTrust portfolio={portfolio} profile={profile} />
 
       <section
         id="portfolio"
-        aria-label="Portfolio"
-        className="scroll-mt-6 py-8"
+        aria-labelledby="portfolio-heading"
+        className="scroll-mt-4 border-t border-stone-200 py-7 sm:py-9"
       >
-        <h2 className="font-display text-2xl font-bold sm:text-3xl">
-          Portfolio
+        <h2 id="portfolio-heading" className="mb-4 font-display text-2xl font-bold sm:text-3xl">
+          Portofolio
         </h2>
-        <p className="mb-4 mt-1 text-sm text-stone-600">
-          Filter berdasarkan kategori untuk melihat gaya riasan.
-        </p>
         <PortfolioGrid items={portfolio} waNumber={waNumber} />
       </section>
 
       <section
         id="harga"
-        aria-label="Harga dan layanan"
-        className="mx-auto max-w-5xl scroll-mt-6 py-8"
+        aria-labelledby="harga-heading"
+        className="scroll-mt-4 border-t border-stone-200 py-7 sm:py-9"
       >
-        <h2 className="font-display text-2xl font-bold sm:text-3xl">
+        <h2 id="harga-heading" className="mb-4 font-display text-2xl font-bold sm:text-3xl">
           Harga &amp; Layanan
         </h2>
-        <p className="mb-4 mt-1 text-sm text-stone-600">
-          Ketuk tombol WhatsApp pada layanan untuk bertanya langsung.
-        </p>
         <PriceList services={services} waNumber={waNumber} />
       </section>
 
       <section
         id="jadwal"
-        aria-label="Jadwal"
-        className="mx-auto max-w-3xl scroll-mt-6 py-8"
+        aria-labelledby="jadwal-heading"
+        className="scroll-mt-4 border-t border-stone-200 py-7 sm:py-9"
       >
-        <h2 className="font-display text-2xl font-bold sm:text-3xl">Jadwal</h2>
-        <p className="mb-4 mt-1 text-sm text-stone-600">
-          Cek perkiraan ketersediaan per tanggal, lalu tanyakan tanggal yang
-          kamu mau langsung via WhatsApp.
+        <h2 id="jadwal-heading" className="font-display text-2xl font-bold sm:text-3xl">Jadwal</h2>
+        <p className="mb-4 mt-2 max-w-prose text-sm text-stone-600">
+          Pilih tanggal untuk melihat jam yang sudah terisi. Penata rias akan mengonfirmasi ketersediaan lewat WhatsApp.
         </p>
         <AvailabilityCalendar waNumber={waNumber} />
       </section>
 
-      <footer className="mt-10 border-t border-stone-200/80 py-8 text-center">
+      <LandingProof stats={stats} testimonials={testimonials} />
+
+      <footer className="border-t border-stone-200 py-8 text-center">
         <p className="font-display text-lg font-bold">{BUSINESS_NAME}</p>
         <p className="mt-1 text-sm text-stone-600">
-          Pemesanan dan konsultasi langsung via WhatsApp.
+          <a href={buildGeneralWaLink(waNumber)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center font-semibold text-green-800 underline underline-offset-4">
+            Pemesanan dan konsultasi via WhatsApp
+          </a>
         </p>
         <p className="mt-4 text-xs text-stone-500">
           © {new Date().getFullYear()} {BUSINESS_NAME}
         </p>
       </footer>
 
-      <WaFloat waNumber={waNumber} />
+      <WaFloat waNumber={waNumber} hideWhileVisible="jadwal" />
     </main>
   );
 }

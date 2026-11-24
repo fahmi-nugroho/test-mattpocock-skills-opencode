@@ -652,11 +652,17 @@ export async function drainMirrorQueue(
 
   const failed = results.filter((item) => item.outcome === "failed");
   const firstError = failed[0]?.error ?? null;
+  const changedGoogleEvent = results.some(
+    (item) => item.outcome !== "failed" && item.outcome !== "skipped",
+  );
   try {
-    if (firstError) {
-      await setConnectionError(client, firstError, now);
-    } else if (results.length > 0) {
-      await setConnectionError(client, "", now);
+    if (results.length > 0) {
+      await setConnectionError(
+        client,
+        firstError ?? "",
+        now,
+        changedGoogleEvent ? now.toISOString() : undefined,
+      );
     }
   } catch {
     // The drain result already carries the concrete error.

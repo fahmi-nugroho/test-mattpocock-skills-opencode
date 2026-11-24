@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T10:57:31+07:00",
+  "title": "Design System for Wandana Makeup",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "card-shadow",
+        "value": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        "purpose": "Small lift on public service and testimonial cards."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "40rem" },
+      { "name": "lg", "value": "64rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "WhatsApp action",
+      "kind": "button",
+      "refersTo": "button-whatsapp",
+      "description": "The public contact action.",
+      "html": "<button type=\"button\" class=\"ds-chat\">Chat WhatsApp</button>",
+      "css": ".ds-chat { background: oklch(52.7% 0.154 150.069); color: white; border: 0; border-radius: 9999px; padding: .625rem 1.5rem; font: 600 .875rem/1.25rem Inter, system-ui, sans-serif; } .ds-chat:hover { background: oklch(44.8% 0.119 151.328); } .ds-chat:focus-visible { outline: 2px solid var(--color-gold, #b45309); outline-offset: 2px; }"
+    },
+    {
+      "name": "Price list action",
+      "kind": "button",
+      "refersTo": "button-prices",
+      "description": "The secondary hero action.",
+      "html": "<button type=\"button\" class=\"ds-prices\">Lihat Harga</button>",
+      "css": ".ds-prices { background: oklch(21.6% 0.006 56.043); color: white; border: 0; border-radius: 9999px; padding: .625rem 1.5rem; font: 600 .875rem/1.25rem Inter, system-ui, sans-serif; } .ds-prices:hover { background: oklch(37.4% 0.01 67.558); } .ds-prices:focus-visible { outline: 2px solid var(--color-gold, #b45309); outline-offset: 2px; }"
+    },
+    {
+      "name": "Admin field",
+      "kind": "input",
+      "refersTo": "field-admin",
+      "description": "A bordered input with a visible label.",
+      "html": "<label class=\"ds-field\">Nama bank<input type=\"text\"></label>",
+      "css": ".ds-field { display: block; font: 500 .875rem/1.25rem Inter, system-ui, sans-serif; } .ds-field input { display: block; box-sizing: border-box; margin-top: .25rem; min-height: 2.75rem; width: 100%; border: 1px solid oklch(87% 0 none); border-radius: .5rem; padding: 0 .75rem; font: 400 .875rem/1.25rem Inter, system-ui, sans-serif; } .ds-field input:focus-visible { outline: 2px solid var(--color-gold, #b45309); outline-offset: 2px; }"
+    },
+    {
+      "name": "Active admin tab",
+      "kind": "nav",
+      "refersTo": "nav-admin-active",
+      "description": "The current destination in the desktop dashboard.",
+      "html": "<button type=\"button\" class=\"ds-nav\" aria-current=\"page\">Booking</button>",
+      "css": ".ds-nav { width: 100%; text-align: left; border: 0; border-radius: .5rem; background: var(--color-gold-soft, #f7ead3); color: var(--color-gold-deep, #92400e); padding: .625rem .75rem; font: 600 .875rem/1.25rem Inter, system-ui, sans-serif; } .ds-nav:focus-visible { outline: 2px solid var(--color-gold, #b45309); outline-offset: 2px; }"
+    },
+    {
+      "name": "Featured service badge",
+      "kind": "chip",
+      "refersTo": "badge-featured",
+      "description": "The small label for the featured service.",
+      "html": "<span class=\"ds-badge\">Paling Dipilih</span>",
+      "css": ".ds-badge { display: inline-block; border-radius: 9999px; background: var(--color-gold-soft, #f7ead3); color: var(--color-gold-deep, #92400e); padding: .25rem .75rem; font: 700 .75rem/1rem Inter, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .025em; box-shadow: 0 1px 3px 0 rgb(0 0 0 / .1), 0 1px 2px -1px rgb(0 0 0 / .1); }"
+    },
+    {
+      "name": "Service card",
+      "kind": "card",
+      "refersTo": "card-service",
+      "description": "A service summary with an emphasized price.",
+      "html": "<article class=\"ds-service\"><h3>Makeup</h3><p>Rp350.000 <small>· 90 menit</small></p></article>",
+      "css": ".ds-service { background: white; color: var(--color-espresso, #2e2620); border: 1px solid oklch(92.3% .003 48.717 / .7); border-radius: 1rem; padding: 1rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / .1), 0 1px 2px -1px rgb(0 0 0 / .1); font-family: Inter, system-ui, sans-serif; } .ds-service h3 { margin: 0; font-size: 1rem; font-weight: 600; } .ds-service p { margin: .5rem 0 0; font-size: 1.25rem; font-weight: 800; } .ds-service small { font-size: .75rem; font-weight: 400; color: oklch(55.3% .013 58.071); }"
+    }
+  ]
+}

@@ -46,6 +46,12 @@ export interface ValidatedBookingRequestPayload {
   end_time: string | null; // "HH:MM"
 }
 
+export class BookingRequestFieldError extends Error {
+  constructor(public readonly field: keyof ValidatedBookingRequestPayload, message: string) {
+    super(message);
+  }
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const STATES: readonly BookingRequestState[] = [
@@ -130,26 +136,26 @@ export function mapBookingRequestContext(row: unknown): BookingRequestContext {
 
 function requiredName(value: unknown): string {
   if (typeof value !== "string") {
-    throw new Error("Nama klien tidak boleh kosong");
+    throw new BookingRequestFieldError("client_name", "Nama klien tidak boleh kosong");
   }
   const name = value.trim();
-  if (!name) throw new Error("Nama klien tidak boleh kosong");
+  if (!name) throw new BookingRequestFieldError("client_name", "Nama klien tidak boleh kosong");
   if (name.length > NAME_MAX) {
-    throw new Error(`Nama klien maksimal ${NAME_MAX} karakter`);
+    throw new BookingRequestFieldError("client_name", `Nama klien maksimal ${NAME_MAX} karakter`);
   }
   return name;
 }
 
 function requiredPhone(value: unknown): string {
   if (typeof value !== "string") {
-    throw new Error("Nomor telepon/WA klien tidak valid (minimal 9 digit)");
+    throw new BookingRequestFieldError("client_phone", "Nomor telepon/WA klien tidak valid (minimal 9 digit)");
   }
   const phone = value.trim();
   if (phone.length > PHONE_MAX) {
-    throw new Error(`Nomor telepon/WA klien maksimal ${PHONE_MAX} karakter`);
+    throw new BookingRequestFieldError("client_phone", `Nomor telepon/WA klien maksimal ${PHONE_MAX} karakter`);
   }
   if (phone.replace(/\D/g, "").length < PHONE_MIN_DIGITS) {
-    throw new Error("Nomor telepon/WA klien tidak valid (minimal 9 digit)");
+    throw new BookingRequestFieldError("client_phone", "Nomor telepon/WA klien tidak valid (minimal 9 digit)");
   }
   return phone;
 }
@@ -161,13 +167,13 @@ function requiredHeadcount(value: unknown): number {
   } else if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     count = Number(value.trim());
   } else {
-    throw new Error("Jumlah orang harus angka minimal 1");
+    throw new BookingRequestFieldError("headcount", "Jumlah orang harus angka minimal 1");
   }
   if (!Number.isInteger(count) || count < HEADCOUNT_MIN) {
-    throw new Error("Jumlah orang harus angka minimal 1");
+    throw new BookingRequestFieldError("headcount", "Jumlah orang harus angka minimal 1");
   }
   if (count > HEADCOUNT_MAX) {
-    throw new Error(`Jumlah orang maksimal ${HEADCOUNT_MAX}`);
+    throw new BookingRequestFieldError("headcount", `Jumlah orang maksimal ${HEADCOUNT_MAX}`);
   }
   return count;
 }
@@ -179,34 +185,43 @@ function requiredHeadcount(value: unknown): number {
  */
 function requiredStyle(value: unknown): Style {
   if (value === undefined || value === null) {
-    throw new Error("Gaya rambut wajib dipilih");
+    throw new BookingRequestFieldError("hairdo", "Gaya rambut wajib dipilih");
   }
   if (typeof value !== "string") {
-    throw new Error("Gaya rambut tidak valid");
+    throw new BookingRequestFieldError("hairdo", "Gaya rambut tidak valid");
   }
   if (value.trim() === "") {
-    throw new Error("Gaya rambut tidak boleh kosong");
+    throw new BookingRequestFieldError("hairdo", "Gaya rambut tidak boleh kosong");
   }
   if (!isStyle(value)) {
-    throw new Error("Gaya rambut tidak valid");
+    throw new BookingRequestFieldError("hairdo", "Gaya rambut tidak valid");
   }
   return value;
 }
 
-function optionalText(value: unknown, max: number, label: string): string {
+function optionalText(
+  value: unknown,
+  field: keyof ValidatedBookingRequestPayload,
+  max: number,
+  label: string,
+): string {
   if (value === undefined || value === null) return "";
-  if (typeof value !== "string") throw new Error(`${label} tidak valid`);
+  if (typeof value !== "string") throw new BookingRequestFieldError(field, `${label} tidak valid`);
   const trimmed = value.trim();
   if (trimmed.length > max) {
-    throw new Error(`${label} maksimal ${max} karakter`);
+    throw new BookingRequestFieldError(field, `${label} maksimal ${max} karakter`);
   }
   return trimmed;
 }
 
 /** "" / null / undefined are absent; any other non-string is a malformed slot. */
-function slotValue(value: unknown, label: string): string | null {
+function slotValue(
+  value: unknown,
+  field: "date" | "start_time" | "end_time",
+  label: string,
+): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string") throw new Error(`${label} tidak valid`);
+  if (typeof value !== "string") throw new BookingRequestFieldError(field, `${label} tidak valid`);
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
 }
@@ -226,21 +241,19 @@ export function validateBookingRequestPayload(
 ): ValidatedBookingRequestPayload {
   if (!isObject(input)) throw new Error("Data permintaan tidak valid");
 
+  const slot = validateRequestSlot({
+    date: slotValue(input.date, "date", "Tanggal permintaan"),
+    start_time: slotValue(input.start_time, "start_time", "Jam mulai"),
+    end_time: slotValue(input.end_time, "end_time", "Jam selesai"),
+  });
   const client_name = requiredName(input.client_name);
   const client_phone = requiredPhone(input.client_phone);
+  const event_type = optionalText(input.event_type, "event_type", EVENT_TYPE_MAX, "Jenis acara");
   const headcount = requiredHeadcount(input.headcount);
-  const event_type = optionalText(input.event_type, EVENT_TYPE_MAX, "Jenis acara");
-  const venue = optionalText(input.venue, VENUE_MAX, "Lokasi");
+  const venue = optionalText(input.venue, "venue", VENUE_MAX, "Lokasi");
   const hairdo = requiredStyle(input.hairdo);
-  const reference = optionalText(input.reference, REFERENCE_MAX, "Referensi");
-  const notes = optionalText(input.notes, NOTES_MAX, "Catatan");
-
-  // Each field is optional on its own; slotValue fails closed on a non-string
-  // and the shared validator enforces the formats and start < end.
-  const date = slotValue(input.date, "Tanggal permintaan");
-  const start_time = slotValue(input.start_time, "Jam permintaan");
-  const end_time = slotValue(input.end_time, "Jam permintaan");
-  const slot = validateRequestSlot({ date, start_time, end_time });
+  const reference = optionalText(input.reference, "reference", REFERENCE_MAX, "Referensi");
+  const notes = optionalText(input.notes, "notes", NOTES_MAX, "Catatan");
 
   return {
     client_name,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  HERO_STATS,
   MAX_VISIBLE_STATS,
   resolveDisplayedStats,
   resolveHeroCopy,
@@ -8,12 +7,12 @@ import {
 } from "../hero-proof";
 
 // Seam (pure): DB profil/stats → landing hero content. Catches missing
-// fallback, missing max-4 slice, leaked hidden rows, and wrong portrait
+// empty state, missing max-4 slice, leaked hidden rows, and wrong portrait
 // priority (profile > portfolio cover > null). Misses the DB visible=true
 // filter itself (covered by profile-queries.test.ts).
 describe("resolveDisplayedStats", () => {
-  it("falls back to the hardcoded list when the DB has no visible rows", () => {
-    expect(resolveDisplayedStats([])).toEqual(HERO_STATS);
+  it("shows no stats when the DB has no rows", () => {
+    expect(resolveDisplayedStats([])).toEqual([]);
   });
 
   it("maps DB rows (value/label) to landing items in sort order", () => {
@@ -58,10 +57,10 @@ describe("resolveDisplayedStats", () => {
     ).toEqual([{ value: "Tampil", label: "A" }]);
   });
 
-  it("falls back when every DB row is hidden", () => {
+  it("shows no stats when every DB row is hidden", () => {
     expect(
       resolveDisplayedStats([{ value: "X", label: "Y", visible: false }]),
-    ).toEqual(HERO_STATS);
+    ).toEqual([]);
   });
 });
 

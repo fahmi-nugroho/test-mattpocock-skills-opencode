@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTodayKey } from "@/lib/calendar";
+import { MAX_VISIBLE_STATS, MAX_VISIBLE_TESTIMONIALS } from "@/lib/hero-proof";
 import { ADMIN_TABS, parseAdminTab, type AdminTabId } from "@/lib/admin/admin-tabs";
 import { summarizeBookings, type OverviewSummary } from "@/lib/admin/overview";
 import { validateSettingsInput } from "@/lib/admin/validate-settings";
@@ -38,7 +39,7 @@ export function AdminDashboard() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [summary, setSummary] = useState<OverviewSummary | null>(null);
-  const [requestCount, setRequestCount] = useState<number | null>(null);
+  const [requestCount, setRequestCount] = useState<number | null>();
   const [googleStatus, setGoogleStatus] =
     useState<GoogleCalendarStatus | null>(null);
   const [waNumber, setWaNumber] = useState("");
@@ -59,11 +60,10 @@ export function AdminDashboard() {
   // Hash-driven tab state (no router): survives reload via
   // window.location.hash on mount, updates on hashchange (back/forward,
   // external links). Tab clicks push the hash themselves.
-  const [activeTab, setActiveTab] = useState<AdminTabId>(() =>
-    typeof window !== "undefined"
-      ? parseAdminTab(window.location.hash)
-      : "ringkasan",
+  const [dashboardHash, setDashboardHash] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash : "",
   );
+  const activeTab = parseAdminTab(dashboardHash);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,7 +136,7 @@ export function AdminDashboard() {
   }, [authed, settingsAttempt]);
 
   useEffect(() => {
-    const onHashChange = () => setActiveTab(parseAdminTab(window.location.hash));
+    const onHashChange = () => setDashboardHash(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -194,12 +194,20 @@ export function AdminDashboard() {
    * hunting for an element that is not rendered yet; hashchange still drives
    * back/forward, which the listener above already handles.
    */
-  function openTab(tab: AdminTabId) {
-    setActiveTab(tab);
-    if (window.location.hash !== `#${tab}`) {
-      window.history.pushState(null, "", `#${tab}`);
+  function openTab(tab: AdminTabId, query = "", focusId?: string) {
+    const hash = `#${tab}${query}`;
+    setDashboardHash(hash);
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, "", hash);
     }
     window.scrollTo({ top: 0, behavior: "instant" });
+    if (focusId) {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(focusId);
+        target?.focus({ preventScroll: true });
+        target?.scrollIntoView({ block: "start", behavior: "instant" });
+      });
+    }
   }
 
   if (!authed) {
@@ -296,17 +304,15 @@ export function AdminDashboard() {
                 Mirror aktif, tetapi pembaruan terakhir gagal
                 {googleStatus?.connection.last_error
                   ? `: ${googleStatus.connection.last_error}`
-                  : "."}{" "}
-                Periksa koneksi di{" "}
-                <button
-                  type="button"
-                  onClick={() => openTab("pengaturan")}
-                  className="font-semibold underline underline-offset-2"
-                >
-                  Pengaturan
-                </button>
-                .
+                : "."}
               </p>
+              <button
+                type="button"
+                onClick={() => openTab("pengaturan", "", "google-calendar")}
+                className="mt-1 min-h-11 text-sm font-semibold text-amber-900 underline underline-offset-4"
+              >
+                Periksa Google Calendar
+              </button>
             </div>
           ) : null}
 
@@ -343,7 +349,7 @@ export function AdminDashboard() {
               title="Kalender Booking"
               description="Pilih tanggal untuk melihat booking, jam yang diblokir, dan status di kalender publik."
             />
-            <AdminCalendar />
+            <AdminCalendar onOpenBookings={(date) => openTab("booking", `?date=${date}`, "booking-queue-title")} />
           </section>
 
           <section
@@ -357,7 +363,7 @@ export function AdminDashboard() {
               title="Booking"
               description="Kelola jadwal, status, dan invoice, atau catat booking dari WhatsApp."
             />
-            <BookingsManager />
+            <BookingsManager queueHash={activeTab === "booking" ? dashboardHash : null} />
           </section>
 
           <section
@@ -371,7 +377,11 @@ export function AdminDashboard() {
               title="Permintaan"
               description="Tinjau formulir dari klien dan buat link Format Booking baru."
             />
-            <RequestsManager onAttentionCountChange={setRequestCount} />
+            <RequestsManager
+              queueHash={activeTab === "permintaan" ? dashboardHash : null}
+              onOpenBookingDraft={() => openTab("booking", "", "booking-form")}
+              onAttentionCountChange={setRequestCount}
+            />
           </section>
 
           <section
@@ -427,14 +437,31 @@ export function AdminDashboard() {
               title="Profil & Testimoni"
               description="Kelola profil, pencapaian, dan ulasan klien di halaman publik."
             />
+            <nav aria-label="Bagian profil dan testimoni" className="mt-3 flex flex-wrap gap-2 sm:hidden">
+              {[["profil-pencapaian", "Pencapaian"], ["profil-testimoni-daftar", "Testimoni"]].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    const heading = document.getElementById(id);
+                    heading?.focus({ preventScroll: true });
+                    heading?.scrollIntoView({ block: "start" });
+                  }}
+                  className="min-h-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-semibold hover:bg-neutral-100"
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
             <ProfileForm />
             <div className="mt-8 border-t border-neutral-200 pt-5">
-              <h3 className="text-base font-bold">Pencapaian</h3>
-              <p className="mt-1 text-sm text-neutral-600">Hingga 4 pencapaian tampil di halaman publik.</p>
+              <h3 id="profil-pencapaian" tabIndex={-1} className="scroll-mt-24 text-base font-bold">Pencapaian</h3>
+              <p className="mt-1 text-sm text-neutral-600">Hingga {MAX_VISIBLE_STATS} pencapaian yang diaktifkan tampil, dimulai dari nomor urutan terkecil.</p>
               <StatsManager />
             </div>
             <div className="mt-8 border-t border-neutral-200 pt-5">
-              <h3 className="text-base font-bold">Testimoni</h3>
+              <h3 id="profil-testimoni-daftar" tabIndex={-1} className="scroll-mt-24 text-base font-bold">Testimoni</h3>
+              <p className="mt-1 text-sm text-neutral-600">Hingga {MAX_VISIBLE_TESTIMONIALS} testimoni yang diaktifkan tampil, dimulai dari nomor urutan terkecil.</p>
               <TestimonialsManager />
             </div>
           </section>
@@ -488,8 +515,8 @@ export function AdminDashboard() {
                         placeholder="6281234567890"
                         className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
                       />
-                      <span id="admin-whatsapp-hint" className="mt-1 block text-xs text-neutral-600">
-                        Pakai kode negara, misalnya 62 untuk Indonesia.
+                      <span id="admin-whatsapp-hint" className="mt-1 block text-sm text-neutral-600">
+                        Dipakai pada tombol WhatsApp di situs dan kontak di bagian atas invoice. Awali dengan kode negara, misalnya 62.
                       </span>
                     </label>
                     <label className="block min-w-0">
@@ -503,11 +530,17 @@ export function AdminDashboard() {
                         placeholder="@wandanamakeup"
                         className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 text-sm"
                       />
+                      <span className="mt-1 block text-sm text-neutral-600">
+                        Tampil bersama kontak WhatsApp di bagian atas invoice.
+                      </span>
                     </label>
                   </div>
                   <fieldset className="min-w-0 border-t border-neutral-200 pt-3">
                     <legend className="pr-2 text-sm font-semibold">Rekening untuk invoice</legend>
-                    <p className="mb-3 text-xs text-neutral-600">Detail rekening boleh dikosongkan.</p>
+                    <p className="mb-3 text-sm text-neutral-600">
+                      Dicetak di bagian Informasi Pembayaran untuk invoice yang masih memiliki sisa tagihan.
+                      Kolom kosong tampil sebagai tanda pisah (—).
+                    </p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="block min-w-0">
                         <span className="text-sm font-medium">Nama bank</span>

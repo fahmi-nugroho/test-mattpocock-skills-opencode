@@ -29,7 +29,8 @@ describe("shareInvoicePng", () => {
     const shared: ShareData[] = [];
     const target: InvoiceShareTarget = {
       canShare: (data) => data?.files?.[0]?.type === "image/png",
-      share: async (data) => {
+      async share(data) {
+        if (this !== target) throw new TypeError("Illegal invocation");
         shared.push(data);
       },
     };

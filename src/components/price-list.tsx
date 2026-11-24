@@ -1,21 +1,9 @@
 import Image from "next/image";
 import type { Service } from "@/lib/supabase/database";
 import { formatIDR } from "@/lib/format";
-import { buildServiceWaLink } from "@/lib/whatsapp";
-import {
-  FEATURED_BADGE_LABEL,
-  getFeaturedService,
-} from "@/lib/featured-service";
+import { buildGeneralWaLink, buildServiceWaLink } from "@/lib/whatsapp";
+import { FEATURED_BADGE_LABEL, getFeaturedService } from "@/lib/featured-service";
 
-/**
- * Price list: cover image, prominent IDR price with subtle duration,
- * per-service WA prefill. Exactly one "Paling Dipilih" badge renders
- * on the first active service by ascending sort (none when empty) —
- * the owner controls it through the existing sort field.
- *
- * Phones get a scannable horizontal row (thumbnail + details); from sm
- * up the card is the original vertical image-first card.
- */
 export function PriceList({
   services,
   waNumber,
@@ -26,67 +14,67 @@ export function PriceList({
   if (services.length === 0) {
     return (
       <p className="text-stone-600">
-        Harga belum tersedia — silakan chat WhatsApp untuk info terbaru.
+        Harga belum tersedia.{" "}
+        <a href={buildGeneralWaLink(waNumber)} target="_blank" rel="noreferrer" className="font-semibold text-green-800 underline underline-offset-4">
+          Tanya harga via WhatsApp
+        </a>.
       </p>
     );
   }
 
   const featuredId = getFeaturedService(services)?.id;
+  const singleService = services.length === 1;
 
   return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+    <ul className={`grid gap-4 ${singleService ? "max-w-3xl" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
       {services.map((service) => {
-        const isFeatured = service.id === featuredId;
+        const description = service.description.trim();
+        const sidePoster = singleService && service.cover_image_url;
         return (
           <li
             key={service.id}
-            className="relative flex overflow-hidden rounded-2xl border border-stone-200/70 bg-white shadow-sm sm:flex-col"
+            className={`grid overflow-hidden rounded-2xl border border-stone-200 bg-white ${sidePoster ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]" : "grid-rows-[1fr_auto]"}`}
           >
-            {service.cover_image_url ? (
-              <div className="relative w-24 shrink-0 overflow-hidden bg-stone-100 sm:aspect-[4/3] sm:w-full">
-                <Image
-                  src={service.cover_image_url}
-                  alt={service.name}
-                  fill
-                  sizes="(max-width: 640px) 96px, (max-width: 1024px) 50vw, 33vw"
-                  className="object-cover"
-                  loading="lazy"
-                />
-              </div>
-            ) : null}
-            <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
-              {isFeatured ? (
-                <span className="mb-1 self-start rounded-full bg-gold-soft px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold-deep shadow-sm sm:absolute sm:left-2 sm:top-2 sm:z-10 sm:mb-0 sm:text-xs">
+            <div className="flex min-w-0 flex-col items-start p-4 sm:p-6">
+              {service.id === featuredId ? (
+                <span className="mb-2 rounded-full bg-gold-soft px-3 py-1 text-xs font-semibold text-gold-deep">
                   {FEATURED_BADGE_LABEL}
                 </span>
               ) : null}
-              <h3 className="text-sm font-semibold sm:text-base">
-                {service.name}
-              </h3>
-              {service.description ? (
-                <p className="mt-1 line-clamp-2 text-xs text-stone-600 sm:text-sm">
-                  {service.description}
+              <h3 className="break-words font-display text-xl font-bold">{service.name}</h3>
+              <p className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-xl font-semibold tabular-nums sm:text-2xl">{formatIDR(service.price_idr)}</span>
+                <span className="whitespace-nowrap text-sm text-stone-600">{service.duration_min} menit</span>
+              </p>
+              {description && description.toLowerCase() !== service.name.trim().toLowerCase() ? (
+                <p className="mt-3 max-w-prose whitespace-pre-line break-words text-sm leading-relaxed text-stone-700">
+                  {description}
                 </p>
               ) : null}
-              <p className="mt-2">
-                <span className="text-lg font-extrabold sm:text-xl">
-                  {formatIDR(service.price_idr)}
-                </span>
-                <span className="whitespace-nowrap text-xs text-stone-500">
-                  {" "}
-                  · {service.duration_min} menit
-                </span>
-              </p>
               <a
                 href={buildServiceWaLink(waNumber, service.name)}
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`Tanya ${service.name} via WhatsApp`}
-                className="mt-3 inline-block rounded-full bg-green-700 px-4 py-2 text-center text-xs font-semibold text-white transition hover:bg-green-800 sm:text-sm"
+                className="mt-4 inline-flex min-h-11 items-center rounded-full bg-green-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-green-800"
               >
                 Tanya via WhatsApp
               </a>
             </div>
+            {service.cover_image_url ? (
+              <a
+                href={service.cover_image_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Lihat poster lengkap ${service.name} (tab baru)`}
+                className={`flex items-center gap-3 border-t border-stone-200 bg-cream px-4 py-3 text-sm font-semibold text-espresso hover:bg-gold-soft focus-visible:-outline-offset-2 ${sidePoster ? "sm:border-l sm:border-t-0" : ""}`}
+              >
+                <span className="relative block h-20 w-12 shrink-0">
+                  <Image src={service.cover_image_url} alt="" fill sizes="48px" className="object-contain" />
+                </span>
+                <span className="underline underline-offset-4">Lihat poster lengkap</span>
+              </a>
+            ) : null}
           </li>
         );
       })}

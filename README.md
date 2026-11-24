@@ -100,8 +100,8 @@ cp .env.example .env.local
 
 # 4. Run dev server
 npm run dev
-# → http://localhost:3000       (landing)
-# → http://localhost:3000/admin (dashboard)
+# → http://localhost:4000       (landing)
+# → http://localhost:4000/admin (dashboard)
 ```
 
 Create an admin user in Supabase Dashboard → Authentication → Users, then sign in at `/admin/login`.

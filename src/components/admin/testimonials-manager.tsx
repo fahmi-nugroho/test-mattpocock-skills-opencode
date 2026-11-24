@@ -5,6 +5,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { filterByQuery } from "@/lib/admin/filter-items";
 import { validateTestimonialInput } from "@/lib/admin/validate-testimonial";
 import { parseRequiredNumber } from "@/lib/admin/form-number";
+import { resolveDisplayedTestimonials } from "@/lib/hero-proof";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   createTestimonial,
@@ -172,6 +173,8 @@ export function TestimonialsManager() {
     return <p className="mt-3 text-sm text-neutral-600">Memuat testimoni…</p>;
   }
 
+  const displayedIds = new Set(resolveDisplayedTestimonials(items).map((item) => item.id));
+
   return (
     <div className="mt-4">
       {error ? (
@@ -304,7 +307,9 @@ export function TestimonialsManager() {
                   <p className="text-sm text-neutral-800">“{item.quote}”</p>
                   <p className="mt-1 text-xs text-neutral-500">
                     {item.client_name} · urutan {item.sort} ·{" "}
-                    {item.visible ? "tampil" : "disembunyikan"}
+                    {item.visible
+                      ? displayedIds.has(item.id) ? "Tampil di situs" : "Di luar batas tampilan"
+                      : "Disembunyikan"}
                   </p>
                 </>
               )}

@@ -63,7 +63,7 @@ export const BOOKING_REQUEST_STATUS_LABEL: Record<
   string
 > = {
   open: "Terbuka",
-  submitted: "Terkirim",
+  submitted: "Diisi klien",
   accepted: "Diterima",
   expired: "Kedaluwarsa",
 };
@@ -293,9 +293,8 @@ export function deleteRefusalMessage(status: BookingRequestStatus): string {
 
 /**
  * The admin booking form's prefill shape. It mirrors only the booking form
- * fields the request actually supplies — a client submission never carries
- * money, status, service, or notes, and the form's own defaults already leave
- * those to the admin.
+ * fields the request supplies. Customer notes travel separately as read-only
+ * context. Money, status, service, and private notes are the admin's fields.
  */
 export interface BookingPrefillDraft {
   client_name: string;

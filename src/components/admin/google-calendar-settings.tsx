@@ -221,10 +221,13 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
   return (
     <div
       id="google-calendar"
+      tabIndex={-1}
+      role="region"
+      aria-labelledby="google-calendar-title"
       className="mt-10 scroll-mt-24 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-display text-base font-bold">Google Calendar</h3>
+        <h3 id="google-calendar-title" className="font-display text-base font-bold">Google Calendar</h3>
         {connection ? (
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -258,7 +261,7 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
         </div>
       ) : status && connection ? (
         <>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <StatusFact
               label="Konfigurasi server"
               value={
@@ -274,12 +277,16 @@ export function GoogleCalendarSettings({ onStatusChange }: Props) {
               value={connection.enabled ? "Aktif" : "Nonaktif"}
             />
             <StatusFact
-              label="Terakhir diverifikasi"
+              label="Akses terakhir diverifikasi"
               value={
                 connection.last_verified_at
                   ? formatDateTimeId(connection.last_verified_at)
                   : "Belum pernah"
               }
+            />
+            <StatusFact
+              label="Sinkronisasi booking terakhir berhasil"
+              value={connection.last_synced_at ? formatDateTimeId(connection.last_synced_at) : "Belum tercatat"}
             />
             <StatusFact
               label="Error terakhir"

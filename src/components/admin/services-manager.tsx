@@ -20,6 +20,7 @@ import {
 } from "@/lib/supabase/admin-services";
 import type { Service } from "@/lib/supabase/database";
 import { formatIDR } from "@/lib/format";
+import { FEATURED_BADGE_LABEL, getFeaturedService } from "@/lib/featured-service";
 
 /**
  * Price/service CRUD manager for the admin dashboard (ticket 06).
@@ -262,6 +263,8 @@ export function ServicesManager() {
     return <p className="mt-3 text-sm text-neutral-600">Memuat harga…</p>;
   }
 
+  const featuredId = getFeaturedService(items)?.id;
+
   return (
     <div className="mt-4">
       {error ? (
@@ -275,6 +278,9 @@ export function ServicesManager() {
         </p>
       ) : null}
 
+      <p id="service-sort-hint" className="mb-3 text-sm text-neutral-600">
+        Nomor urutan yang lebih kecil tampil lebih dulu. Layanan aktif pertama menjadi Layanan unggulan.
+      </p>
       <details className="rounded-xl border border-neutral-200 bg-white">
         <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-bold hover:bg-neutral-50">Tambah layanan</summary>
         <form onSubmit={onCreate} onChange={() => setCreated(false)} className="space-y-3 border-t border-neutral-200 p-4">
@@ -292,15 +298,20 @@ export function ServicesManager() {
                   className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 />
               </label>
-              <label className="block">
-                <span className="text-sm font-medium">Deskripsi</span>
-                <input
-                  type="text"
+              <div className="sm:col-span-2">
+                <label htmlFor="service-description" className="text-sm font-medium">Deskripsi</label>
+                <p id="service-description-hint" className="mt-0.5 text-sm text-neutral-600">
+                  Tulis isi paket dan biaya tambahan yang berlaku. Gunakan satu baris per poin.
+                </p>
+                <textarea
+                  id="service-description"
+                  rows={3}
+                  aria-describedby="service-description-hint"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
               <label className="block">
                 <span className="text-sm font-medium">Harga (IDR)</span>
                 <input
@@ -335,6 +346,7 @@ export function ServicesManager() {
                   step={1}
                   required
                   value={sort}
+                  aria-describedby="service-sort-hint"
                   onChange={(e) => setSort(e.target.value)}
                   className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                 />
@@ -414,15 +426,20 @@ export function ServicesManager() {
                         className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                       />
                     </label>
-                    <label className="block min-w-0">
-                      <span className="text-sm font-medium">Deskripsi</span>
-                      <input
-                        type="text"
+                    <div className="min-w-0 sm:col-span-2">
+                      <label htmlFor="service-edit-description" className="text-sm font-medium">Deskripsi</label>
+                      <p id="service-edit-description-hint" className="mt-0.5 text-sm text-neutral-600">
+                        Tulis isi paket dan biaya tambahan yang berlaku. Gunakan satu baris per poin.
+                      </p>
+                      <textarea
+                        id="service-edit-description"
+                        rows={3}
+                        aria-describedby="service-edit-description-hint"
                         value={editDescription}
                         onChange={(e) => setEditDescription(e.target.value)}
                         className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                       />
-                    </label>
+                    </div>
                     <label className="block min-w-0">
                       <span className="text-sm font-medium">Harga (IDR)</span>
                       <input
@@ -452,6 +469,7 @@ export function ServicesManager() {
                         min={0}
                         step={1}
                         value={editSort}
+                        aria-describedby="service-sort-hint"
                         onChange={(e) => setEditSort(e.target.value)}
                         className="mt-1 min-h-10 w-full min-w-0 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
                       />
@@ -473,8 +491,11 @@ export function ServicesManager() {
                       {formatIDR(item.price_idr)} · {item.duration_min} menit ·
                       urutan {item.sort} · {item.active ? "aktif" : "nonaktif"}
                     </p>
+                    {item.id === featuredId ? (
+                      <p className="mt-1 text-xs font-semibold text-gold-deep">{FEATURED_BADGE_LABEL}</p>
+                    ) : null}
                     {item.description ? (
-                      <p className="mt-1 truncate text-xs text-neutral-600">
+                      <p className="mt-1 whitespace-pre-line break-words text-sm text-neutral-600">
                         {item.description}
                       </p>
                     ) : null}

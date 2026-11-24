@@ -92,7 +92,7 @@ export async function shareInvoicePng(
 
   if (share && canShareFile(file, target)) {
     try {
-      await share({ files: [file], title });
+      await share.call(target, { files: [file], title });
       return "shared";
     } catch (err) {
       if (isAbortError(err)) return "cancelled";

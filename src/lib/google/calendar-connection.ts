@@ -95,17 +95,18 @@ export function ensureMirrorEnabled(
 
 /**
  * Record the latest mirror failure (or clear it with "") on the one connection
- * row, so the settings section and dashboard banner read the same fact the
- * drain used.
+ * row, alongside the successful booking sync time when the drain changed an event.
  */
 export async function setConnectionError(
   client: TypedClient,
   message: string,
   now: Date = new Date(),
+  syncedAt?: string,
 ): Promise<void> {
   await updateConnection(client, {
     last_error: message,
     updated_at: now.toISOString(),
+    ...(syncedAt ? { last_synced_at: syncedAt } : {}),
   });
 }
 

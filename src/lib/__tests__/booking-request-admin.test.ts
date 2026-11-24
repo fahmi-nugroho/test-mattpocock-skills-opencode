@@ -222,7 +222,7 @@ describe("status copy (single home)", () => {
   it("labels every derived state in Indonesian", () => {
     expect(BOOKING_REQUEST_STATUS_LABEL).toEqual({
       open: "Terbuka",
-      submitted: "Terkirim",
+      submitted: "Diisi klien",
       accepted: "Diterima",
       expired: "Kedaluwarsa",
     });

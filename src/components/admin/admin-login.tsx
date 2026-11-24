@@ -68,7 +68,7 @@ export function AdminLogin() {
   }
 
   return (
-    <main className="mx-auto max-w-sm bg-cream px-4 py-20 text-espresso">
+    <main className="mx-auto max-w-sm bg-cream px-4 py-10 text-espresso sm:py-20">
       <p className="text-center text-sm font-medium uppercase tracking-widest text-gold">
         {BUSINESS_NAME}
       </p>
@@ -76,21 +76,21 @@ export function AdminLogin() {
         Login Admin
       </h1>
       <p className="mt-1 text-center text-sm text-neutral-600">
-        Khusus pemilik — kelola jadwal dan pengaturan.
+        Masuk untuk mengelola jadwal dan pengaturan.
       </p>
       <form
         onSubmit={onSubmit}
-        className="mt-6 space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+        className="mt-6 space-y-4 rounded-xl border border-neutral-200 bg-white p-5 sm:p-6"
       >
         <label className="block">
           <span className="text-sm font-medium">Email</span>
           <input
             type="email"
             required
-            autoComplete="email"
+            autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-base"
           />
         </label>
         <div className="block">
@@ -105,7 +105,7 @@ export function AdminLogin() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-24 text-sm"
+              className="min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 pr-24 text-base"
             />
             <button
               type="button"
@@ -115,7 +115,7 @@ export function AdminLogin() {
                   ? "Sembunyikan kata sandi"
                   : "Tampilkan kata sandi"
               }
-              className="absolute inset-y-0 right-0 px-3 text-sm font-medium text-neutral-600 transition hover:text-neutral-900"
+              className="absolute inset-y-0 right-0 min-w-11 rounded-r-lg px-3 text-sm font-medium text-neutral-600 hover:text-neutral-900"
             >
               {showPassword ? "Sembunyi" : "Tampilkan"}
             </button>
@@ -129,11 +129,19 @@ export function AdminLogin() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-neutral-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-700 disabled:opacity-60"
+          className="min-h-11 w-full rounded-full bg-espresso px-6 py-2.5 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-60"
         >
           {loading ? "Masuk…" : "Masuk"}
         </button>
       </form>
+      <details className="mt-3 px-1">
+        <summary className="w-fit cursor-pointer py-3 text-sm font-semibold underline underline-offset-4">
+          Lupa kata sandi?
+        </summary>
+        <p className="text-sm leading-relaxed text-neutral-700">
+          Hubungi pengelola proyek Supabase untuk memulihkan akses. Siapkan alamat email akun admin.
+        </p>
+      </details>
     </main>
   );
 }

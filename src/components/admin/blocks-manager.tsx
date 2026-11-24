@@ -140,7 +140,7 @@ export function BlocksManager() {
       notifyScheduleChanged();
     } catch (err) {
       setToggleError(
-        err instanceof Error ? err.message : "Gagal mengubah tanda penuh. Coba lagi.",
+        err instanceof Error ? err.message : "Gagal mengubah penutupan manual. Coba lagi.",
       );
     } finally {
       setToggling(false);
@@ -216,6 +216,9 @@ export function BlocksManager() {
         className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
       >
         <h3 className="text-sm font-bold">Tambah blokir</h3>
+        <p className="text-sm text-neutral-600">
+          Blokir jam tertentu atau satu hari penuh. Untuk melepas blokir, hapus dari daftar blokir.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm font-medium">Tanggal</span>
@@ -244,7 +247,7 @@ export function BlocksManager() {
               onChange={(e) => setAllDay(e.target.checked)}
               className="h-4 w-4 accent-espresso"
             />
-            <span className="text-sm font-medium">Sehari penuh</span>
+            <span className="text-sm font-medium">Blokir sepanjang hari</span>
           </label>
           {!allDay ? (
             <>
@@ -286,9 +289,9 @@ export function BlocksManager() {
       </form>
 
       <section aria-labelledby="full-date-title" className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
-        <h3 id="full-date-title" className="text-sm font-bold">Tanda tanggal penuh</h3>
-        <p className="text-xs text-neutral-600">
-          Tanggal yang ditandai tampil tutup di kalender publik.
+        <h3 id="full-date-title" className="text-sm font-bold">Penutupan manual kalender publik</h3>
+        <p className="text-sm text-neutral-600">
+          Tutup satu tanggal untuk pertanyaan baru dari klien. Saat penutupan manual dihapus, booking dan blokir yang tercatat tetap berlaku.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
@@ -305,11 +308,11 @@ export function BlocksManager() {
             />
           </label>
           <ConfirmAction
-            label={markedFull ? "Hapus tanda penuh" : "Tandai penuh"}
-            title={`${markedFull ? "Hapus tanda penuh untuk" : "Tandai penuh"} ${validFullDate ? formatDateId(fullDateInput) : "tanggal ini"}?`}
+            label={markedFull ? "Hapus penutupan manual" : "Tutup tanggal secara manual"}
+            title={`${markedFull ? "Hapus penutupan manual untuk" : "Tutup kalender publik untuk"} ${validFullDate ? formatDateId(fullDateInput) : "tanggal ini"}?`}
             description={markedFull
-              ? "Kalender publik akan kembali mengikuti blokir pada tanggal ini."
-              : "Tanggal ini akan tampil tutup di kalender publik."}
+              ? "Kalender publik akan kembali mengikuti booking dan blokir yang masih tercatat."
+              : "Tanggal ini akan tampil tutup di kalender publik. Booking dan blokir yang sudah tercatat tetap berlaku."}
             onConfirm={onToggleFull}
             disabled={toggling || !validFullDate}
           />
@@ -332,7 +335,7 @@ export function BlocksManager() {
           </ul>
         ) : (
           <p className="text-xs text-neutral-600">
-            Belum ada tanggal yang ditandai penuh.
+            Belum ada tanggal yang ditutup secara manual.
           </p>
         )}
       </section>
@@ -371,7 +374,7 @@ export function BlocksManager() {
                     onChange={(e) => setEditAllDay(e.target.checked)}
                     className="h-4 w-4 accent-espresso"
                   />
-                  <span className="text-sm">Sehari penuh</span>
+                  <span className="text-sm">Blokir sepanjang hari</span>
                 </label>
                 {!editAllDay ? (
                   <>

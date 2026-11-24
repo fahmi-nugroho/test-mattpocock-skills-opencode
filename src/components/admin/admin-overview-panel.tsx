@@ -6,8 +6,8 @@ import type { OverviewSummary } from "@/lib/admin/overview";
 interface AdminOverviewPanelProps {
   summary: OverviewSummary | null;
   /** Submitted requests the Permintaan panel counts as needing action. */
-  requestCount: number | null;
-  onOpenTab: (tab: AdminTabId) => void;
+  requestCount: number | null | undefined;
+  onOpenTab: (tab: AdminTabId, query?: string, focusId?: string) => void;
   onRetryBookings?: () => void;
 }
 
@@ -16,6 +16,7 @@ interface ActionRow {
   title: string;
   detail: string;
   target: AdminTabId;
+  filter: "needs_action" | "pending";
   cta: string;
 }
 
@@ -34,12 +35,13 @@ export function AdminOverviewPanel({
   const pending = summary ? summary.todayPending + summary.upcomingPending : 0;
   const actions: ActionRow[] = [];
 
-  if (requestCount !== null && requestCount > 0) {
+  if (typeof requestCount === "number" && requestCount > 0) {
     actions.push({
       id: "permintaan",
       title: `${requestCount} permintaan perlu ditindak`,
       detail: "Tinjau permintaan yang masuk, lalu jadikan booking.",
       target: "permintaan",
+      filter: "needs_action",
       cta: "Buka Permintaan",
     });
   }
@@ -55,6 +57,7 @@ export function AdminOverviewPanel({
       title: `${pending} booking menunggu konfirmasi`,
       detail,
       target: "booking",
+      filter: "pending",
       cta: "Buka Booking",
     });
   }
@@ -80,33 +83,35 @@ export function AdminOverviewPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onOpenTab(action.target)}
+                  onClick={() => onOpenTab(action.target, `?filter=${action.filter}`, `${action.target}-queue-title`)}
                   className="min-h-10 shrink-0 rounded-full border border-neutral-300 px-4 text-sm font-semibold transition hover:border-neutral-400 hover:bg-neutral-100"
                 >
                   {action.cta}
                 </button>
               </li>
             ))
-          ) : summary && requestCount !== null && !onRetryBookings ? (
+          ) : summary && requestCount === 0 && !onRetryBookings ? (
             <li className="px-4 py-3.5">
               <p className="text-sm text-neutral-600">
                 Tidak ada yang menunggu tindakan.
               </p>
               <button
                 type="button"
-                onClick={() => onOpenTab("booking")}
+                onClick={() => onOpenTab("booking", "", "booking-form")}
                 className="mt-1 inline-flex min-h-10 items-center text-sm font-semibold text-gold-deep underline underline-offset-4"
               >
                 Catat booking baru
               </button>
             </li>
           ) : null}
-          {requestCount === null ? (
+          {requestCount === undefined ? (
+            <li role="status" className="px-4 py-3 text-sm text-neutral-600">Memuat jumlah permintaan…</li>
+          ) : requestCount === null ? (
             <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
               <p className="text-sm text-neutral-600">Jumlah permintaan belum tersedia.</p>
               <button
                 type="button"
-                onClick={() => onOpenTab("permintaan")}
+                onClick={() => onOpenTab("permintaan", "?filter=needs_action", "permintaan-queue-title")}
                 className="min-h-10 text-sm font-semibold text-gold-deep underline underline-offset-4"
               >
                 Buka Permintaan
@@ -117,7 +122,7 @@ export function AdminOverviewPanel({
               <p className="text-sm text-neutral-600">Jumlah booking menunggu belum tersedia.</p>
               <button
                 type="button"
-                onClick={() => onOpenTab("booking")}
+                onClick={() => onOpenTab("booking", "?filter=pending", "booking-queue-title")}
                 className="min-h-10 text-sm font-semibold text-gold-deep underline underline-offset-4"
               >
                 Buka Booking

@@ -36,6 +36,7 @@ const ROW: GoogleCalendarConnection = {
   enabled: false,
   calendar_id: "",
   last_verified_at: null,
+  last_synced_at: null,
   last_error: "",
   updated_at: "2026-10-01T00:00:00.000Z",
 };

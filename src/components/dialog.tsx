@@ -28,15 +28,8 @@ interface DialogProps {
 }
 
 /**
- * The admin dashboard's shared dialog (form-layout-polish ticket 03). It owns
- * the overlay, Escape dismissal, backdrop dismissal, the body scroll-lock,
- * moving focus into the panel on open and returning it to the trigger on
- * close, a titled panel with a close button, and an internally scrolling
- * body so a phone-sized screen still reaches every row.
- *
- * It is a controlled component — `open` plus `onClose` — so a manager's
- * existing open/close state stays where it was. The two modals on the public
- * site are deliberately not built on it.
+ * Controlled native modal with a scrollable body, backdrop dismissal,
+ * and focus restoration to the opening control.
  */
 export function Dialog({
   open,
@@ -90,6 +83,31 @@ export function Dialog({
       onClick={(event) => {
         if (!closeDisabled && event.target === event.currentTarget) onClose();
       }}
+      onKeyDown={(event) => {
+        const panel = event.currentTarget;
+        if (event.key !== "Tab" || (event.target as Element).closest("dialog") !== panel) return;
+
+        // Keep edge tabs inside the modal. Native showModal makes the page
+        // inert, but the browser can still take focus into its own toolbar.
+        const controls = Array.from(panel.querySelectorAll<HTMLElement>(
+          'a[href], button, input, select, textarea, [tabindex]',
+        )).filter((control) =>
+          control.tabIndex >= 0 &&
+          !control.matches(":disabled") &&
+          control.getClientRects().length > 0 &&
+          control.closest("dialog") === panel,
+        );
+        const first = controls[0];
+        const last = controls.at(-1);
+        const active = panel.ownerDocument.activeElement;
+        if (event.shiftKey && active === first && last) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last && first) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
       className={`m-auto max-h-[85dvh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl bg-white text-espresso shadow-2xl backdrop:bg-stone-950/60 open:flex ${panelClassName}`}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2">
@@ -100,7 +118,7 @@ export function Dialog({
           type="button"
           onClick={onClose}
           disabled={closeDisabled}
-          className="min-h-10 rounded-full px-3 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
+          className="min-h-11 rounded-full px-3 text-sm font-semibold transition hover:bg-neutral-100 disabled:opacity-60"
         >
           Tutup
         </button>

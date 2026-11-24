@@ -38,6 +38,12 @@ describe("getFeaturedService", () => {
     expect(getFeaturedService(items)?.id).toBe("shown");
   });
 
+  it("chooses the same featured service when matching sort values arrive in different orders", () => {
+    const items = [service({ id: "b" }), service({ id: "a" })];
+    expect(getFeaturedService(items)?.id).toBe("a");
+    expect(getFeaturedService([...items].reverse())?.id).toBe("a");
+  });
+
   it("returns null when no active service exists", () => {
     expect(getFeaturedService([])).toBeNull();
     expect(
@@ -45,7 +51,7 @@ describe("getFeaturedService", () => {
     ).toBeNull();
   });
 
-  it("uses the Paling Dipilih badge copy", () => {
-    expect(FEATURED_BADGE_LABEL).toBe("Paling Dipilih");
+  it("labels a curated service without claiming popularity", () => {
+    expect(FEATURED_BADGE_LABEL).toBe("Layanan unggulan");
   });
 });
